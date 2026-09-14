@@ -1,0 +1,46 @@
+-- Offline contracts for the canonical PlayerData store and metadata-first sync.
+local root=(arg[0]:gsub("tools[/\\]test_playerdata_sync.lua$","")).."LIVE/Holy_Storm/"
+local clock=1000
+unpack=unpack or table.unpack
+function time()return clock end;function GetTime()return clock end;function UnitGUID()return"Player-Local"end;function IsInGuild()return true end
+local HolyStorm={db={global={localPlayerId="account-local",installId="install",data={characters={},players={},characterOwners={}}}},Data={},State={Set=function()end}}
+function HolyStorm:GetAddon()return self end
+local locale=setmetatable({}, {__index=function(_,key)return key end})
+function LibStub(name)if name=="AceLocale-3.0"then return{GetLocale=function()return locale end}end;return HolyStorm end
+assert(loadfile(root.."Core/Utils.lua"))();assert(loadfile(root.."Core/Serializer.lua"))()
+HolyStorm.Logger={Write=function()end};HolyStorm.Events={listeners={},emitted={}}
+function HolyStorm.Events:Register(event,owner,fn)self.listeners[event]=self.listeners[event]or{};self.listeners[event][owner]=fn end
+function HolyStorm.Events:Emit(event,...)self.emitted[#self.emitted+1]=event;for _,fn in pairs(self.listeners[event]or{})do fn(event,...)end end
+HS_Player_DB={ ["Player-Legacy"]={guid="Player-Legacy",equipment={slots={},version=4},version=4,updatedAt=400} }
+assert(loadfile(root.."Core/PlayerDataStore.lua"))();HolyStorm.PlayerData:Initialize()
+assert(HS_Player_DB.schemaVersion==2 and HS_Player_DB.characters["Player-Legacy"])
+assert(loadfile(root.."Data/CharacterStore.lua"))();assert(loadfile(root.."Data/PlayerStore.lua"))();HolyStorm.Data.PlayerStore:Initialize();HolyStorm.Data.CharacterStore:Initialize();HolyStorm.Data.PlayerStore:LinkLocalCharacter("Player-Local")
+local ok,meta=HolyStorm.PlayerData:WriteOwnedBlock("Player-Local","equipment",{equipment={slots={}},itemLevel=700},"blizzard");assert(ok and meta.version==1)
+local raidSnapshot={raids={{id=100,name="Current Raid"}},lockouts={{name="Current Raid",difficultyId=14,killed=4,total=8,bosses={}}},lifetime={bosses={}}};assert(HolyStorm.Data.CharacterStore:SetRaidLockouts("Player-Local",raidSnapshot,nil,"blizzard"));local storedRaid,storedRaidMeta=HolyStorm.Data.CharacterStore:GetBlock("Player-Local","raid");assert(storedRaid.raids[1].id==100 and storedRaid.lockouts[1].killed==4 and storedRaidMeta.version==1,"single-field raid snapshot storage contract")
+clock=1010;ok,meta=HolyStorm.PlayerData:WriteOwnedBlock("Player-Local","equipment",{equipment={slots={[1]=true}},itemLevel=701},"blizzard");assert(ok and meta.version==2)
+local unchanged,unchangedReason=HolyStorm.PlayerData:WriteOwnedBlock("Player-Local","equipment",{equipment={slots={[1]=true}},itemLevel=701},"blizzard");assert(not unchanged and unchangedReason=="UNCHANGED");assert(HolyStorm.PlayerData:GetMetadata("Player-Local","equipment").version==2)
+local foreign="Player-Foreign";ok=HolyStorm.PlayerData:AcceptRemoteBlock(foreign,"equipment",{equipment={slots={[1]="item"}},itemLevel=710},{owner=foreign,version=17,updatedAt=900,source="blizzard"},"Player-Relay","Relay-Realm");assert(ok)
+assert(HolyStorm.PlayerData:GetMetadata(foreign,"equipment").version==17)
+local stale,reason=HolyStorm.PlayerData:AcceptRemoteBlock(foreign,"equipment",{equipment={slots={}},itemLevel=600},{owner=foreign,version=16,updatedAt=950},"Player-Relay","Relay-Realm");assert(not stale and reason=="STALE_VERSION")
+local direct=HolyStorm.PlayerData:AcceptRemoteBlock(foreign,"equipment",{equipment={slots={[1]="owner"}},itemLevel=711},{owner=foreign,version=17,updatedAt=901},foreign,"Foreign-Realm");assert(direct)
+local protected,protectedReason=HolyStorm.PlayerData:AcceptRemoteBlock("Player-Local","equipment",{equipment={slots={}},itemLevel=999},{owner="Player-Local",version=99,updatedAt=999},"Player-Relay","Relay-Realm");assert(not protected and protectedReason=="LOCAL_OWNER_PROTECTED")
+local example="Player-Example";assert(HolyStorm.PlayerData:AcceptRemoteBlock(example,"stats",{primary={v=15}},{owner=example,version=15,updatedAt=800},example,"Example-Realm"));assert(HolyStorm.PlayerData:AcceptRemoteBlock(example,"stats",{primary={v=17}},{owner=example,version=17,updatedAt=850},"Player-Relay","Relay-Realm"));assert(HolyStorm.PlayerData:GetMetadata(example,"stats").version==17)
+assert(HolyStorm.PlayerData:GetMetadata("Player-Local","equipment").version==2)
+assert(HolyStorm.PlayerData:GetForeignWatermark()==901)
+HolyStorm.Data.GuildStore={ResolveSenderGuid=function(_,sender)return sender=="Foreign-Realm"and foreign or sender=="Relay-Realm"and"Player-Relay"end,GetCurrent=function()return{roster={}}end}
+HolyStorm.Comms={available=true,Send=function(self,payload,channel,target,priority)self.lastPayload,self.lastChannel,self.lastTarget,self.lastPriority=payload,channel,target,priority;return true end};HolyStorm.Tasks={types={},queued={}}
+function HolyStorm.Tasks:RegisterTaskType(id,d)self.types[id]=d;return true end
+function HolyStorm.Tasks:Queue(id,o)self.queued[#self.queued+1]={id=id,options=o};return"task"end
+function HolyStorm.Tasks:ScheduleRecurring()return true end
+assert(loadfile(root.."Core/SyncManager.lua"))();HolyStorm.Sync:Initialize()
+assert(HolyStorm.Sync:Publish("character",foreign.."\031equipment","TEST"))
+local publish=HolyStorm.Tasks.queued[#HolyStorm.Tasks.queued];assert(publish.id=="Sync.Publish");HolyStorm.Sync:RunPublish({metadata=publish.options.metadata,priority=65})
+local announce=HolyStorm.Tasks.queued[#HolyStorm.Tasks.queued];assert(announce.id=="Sync.Send"and announce.options.metadata.envelope.kind=="ANNOUNCE");assert(announce.options.metadata.envelope.data.offers[1].data==nil)
+HolyStorm.Tasks.queued={};assert(HolyStorm.Sync:OnFetch("character",{objectId=foreign.."\031equipment",knownVersion=16},"Requester-Realm"),"fetch was not accepted");local payload=HolyStorm.Tasks.queued[#HolyStorm.Tasks.queued];assert(payload and payload.options.metadata.envelope.kind=="PAYLOAD","payload was not queued");assert(payload.options.metadata.target=="Requester-Realm"and payload.options.metadata.channel=="WHISPER","payload was not whispered")
+HolyStorm.Sync:RegisterDomain("revision-test",{freshness="revision-chain",getMetadata=function()return{objectId="guild-test",owner="Player-Local",version=5,updatedAt=clock,revisionID="revision-local"}end,listMetadata=function()return{}end,export=function()return{}end,import=function()return true end})
+local siblingOffers=HolyStorm.Sync:MetadataForRequest(HolyStorm.Sync:GetDomain("revision-test"),{objectId="guild-test",knownVersion=5,knownRevisionID="revision-remote"});assert(#siblingOffers==1 and siblingOffers[1].revisionID=="revision-local","same-version sibling was suppressed");HolyStorm.Tasks.queued={};assert(HolyStorm.Sync:OnFetch("revision-test",{objectId="guild-test",knownVersion=5,knownRevisionID="revision-remote"},"Requester-Realm"));assert(HolyStorm.Tasks.queued[#HolyStorm.Tasks.queued].options.metadata.envelope.kind=="PAYLOAD")
+local live={characterUUID="Player-Local",timestamp=clock,sequence=1};local imported
+HolyStorm.Sync:RegisterDomain("live-test",{live=true,catchUp=false,priority=110,getMetadata=function(id)if id=="Player-Local"then return{objectId=id,owner=id,version=live.sequence,updatedAt=live.timestamp}end end,listMetadata=function()return{}end,export=function(id)return id=="Player-Local"and live end,validate=function(payload)return type(payload)=="table"and payload.characterUUID~=nil end,authorize=function(_,meta,senderId,_,id)return meta.owner==id and senderId==id end,import=function(_,payload)imported=payload;return true end})
+HolyStorm.Tasks.queued={};HolyStorm.Comms.lastPayload=nil;assert(HolyStorm.Sync:Publish("live-test","Player-Local","LIVE_TEST"));local liveTask=HolyStorm.Tasks.queued[#HolyStorm.Tasks.queued];assert(liveTask.id=="Sync.LivePublish"and liveTask.options.priority==110,"live domain did not use low-priority coalescing task");assert(HolyStorm.Sync:RunLivePublish({metadata=liveTask.options.metadata}));local liveEnvelope=HolyStorm.Serializer:Deserialize(HolyStorm.Comms.lastPayload);assert(liveEnvelope.kind=="LIVE"and liveEnvelope.data.payload.sequence==1 and HolyStorm.Comms.lastPriority==110,"latest live payload was not sent centrally")
+local remoteLive={characterUUID=foreign,timestamp=clock,sequence=2};assert(HolyStorm.Sync:OnPayload("live-test",{objectId=foreign,metadata={objectId=foreign,owner=foreign,version=2,updatedAt=clock},payload=remoteLive},"Foreign-Realm")and imported and imported.characterUUID==foreign,"direct live owner payload was not validated/imported")
+print("PlayerData/sync tests passed")

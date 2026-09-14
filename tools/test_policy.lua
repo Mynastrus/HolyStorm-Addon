@@ -1,0 +1,76 @@
+-- Offline contracts for the guild-scoped permission revision engine (A-O).
+local root=(arg[0]:gsub("tools[/\\]test_policy.lua$","")).."LIVE/Holy_Storm/"
+local clock,currentGuid=100000,"Maristi"
+unpack=unpack or table.unpack
+function time()return clock end;function GetTime()return clock end;function UnitGUID()return currentGuid end;function IsInGuild()return true end;function GetGuildInfo()local m=_G.roster and _G.roster[currentGuid];return"Guild",m and m.rank,m and m.rankIndex,"Realm"end;function GetMaxLevelForPlayerExpansion()return 80 end
+local locale=setmetatable({}, {__index=function(_,key)return key end})
+local HolyStorm={db={global={localPlayerId="acct-maristi",localAccountUUID="acct-maristi",data={players={},characters={},characterOwners={},guilds={}},permissions={groups={},roles={}},permissionStates={},rules={global={}},filters={global={},templates={},demands={quests={},achievements={}}},policy={tombstones={groups={},rules={},filters={}}},news={entries={keep=true}}},profile={rules={localRules={}},filters={localFilters={},activeByContext={}}}}}
+function HolyStorm:GetAddon()return self end;function LibStub(name)if name=="AceLocale-3.0"then return{GetLocale=function()return locale end}end;return HolyStorm end
+assert(loadfile(root.."Core/Utils.lua"))();assert(loadfile(root.."Core/Serializer.lua"))()
+HolyStorm.Logger={Write=function()end};HolyStorm.Events={listeners={}}
+function HolyStorm.Events:Register(e,o,fn)self.listeners[e]=self.listeners[e]or{};self.listeners[e][o]=fn end;function HolyStorm.Events:Emit(e,...)for _,fn in pairs(self.listeners[e]or{})do fn(e,...)end end
+HolyStorm.Tasks={types={},queued={}};function HolyStorm.Tasks:RegisterTaskType(id,d)self.types[id]=d;return true end;function HolyStorm.Tasks:GetTaskType(id)return self.types[id]end;function HolyStorm.Tasks:Queue(id,o)self.queued[#self.queued+1]={id=id,options=o};return id end
+HolyStorm.Sync={domains={},published={}};function HolyStorm.Sync:RegisterDomain(id,d)d.id=id;self.domains[id]=d;return true end;function HolyStorm.Sync:GetDomain(id)return self.domains[id]end;function HolyStorm.Sync:Publish(...)self.published[#self.published+1]={...};return true end;function HolyStorm.Sync:Discover(...)self.discovered={...};return"request"end
+local characters={Maristi={guid="Maristi",level=80,classFile="PALADIN",itemLevel=710,demands={quests={[12345]=true}}},Anna={guid="Anna",level=80,classFile="PRIEST",itemLevel=700,demands={quests={}}},Daniel={guid="Daniel",level=80,classFile="WARRIOR",itemLevel=705,demands={quests={}}},Klaus={guid="Klaus",level=70,classFile="MAGE",itemLevel=250,demands={quests={}}}}
+local accounts={Maristi="acct-maristi",Anna="acct-anna",Daniel="acct-raid",Klaus="acct-klaus"}
+_G.roster={Maristi={guid="Maristi",name="Maristi-Realm",rank="Guild Master",rankIndex=0},Anna={guid="Anna",name="Anna-Realm",rank="Member",rankIndex=3},Daniel={guid="Daniel",name="Daniel-Realm",rank="Officer",rankIndex=1},Klaus={guid="Klaus",name="Klaus-Realm",rank="Member",rankIndex=4}}
+local guild={id="realm:guild",roster=_G.roster,ranks={[1]="Guild Master",[2]="Officer"}}
+HolyStorm.Data={PlayerStore={},CharacterStore={},GuildStore={}}
+function HolyStorm.Data.PlayerStore:GetLocalPlayerId()return"acct-maristi"end;function HolyStorm.Data.PlayerStore:Get(id)return{id=id,characters={}}end;function HolyStorm.Data.PlayerStore:GetCharacterOwner(guid)return accounts[guid]end
+function HolyStorm.Data.CharacterStore:Get(guid)return characters[guid]end;function HolyStorm.Data.CharacterStore:Upsert(guid,changes)characters[guid]=characters[guid]or{guid=guid};for k,v in pairs(changes)do characters[guid][k]=v end;return true end
+function HolyStorm.Data.GuildStore:GetCurrent()return guild end;function HolyStorm.Data.GuildStore:GetGuildId()return guild.id end;function HolyStorm.Data.GuildStore:ResolveSenderGuid(sender)return sender end
+HolyStorm.TwinkCore={GetLocalAccountUUID=function()return"acct-maristi"end,GetAccountUUIDForCharacter=function(_,guid)return accounts[guid]end,GetAccount=function(_,id)return id and{accountUUID=id}end,GetCharactersForAccount=function(_,id)local out={};for guid,account in pairs(accounts)do if account==id then out[guid]={characterUUID=guid}end end;return out end,GetAccountMain=function(_,id)for guid,account in pairs(accounts)do if account==id then return guid end end end}
+assert(loadfile(root.."Core/RuleEngine.lua"))();assert(loadfile(root.."Core/Permissions.lua"))();assert(loadfile(root.."Core/Policy.lua"))();HolyStorm.Rules:Initialize();HolyStorm.Permissions:Initialize();HolyStorm.Policy:Initialize()
+local P,R=HolyStorm.Policy,HolyStorm.Rules;local ids=HolyStorm.Permissions.systemIds;local state=P:GetState();assert(state and state.status==P.status.VALID and state.version==1);assert(HolyStorm.Sync:GetDomain("permissions").freshness=="revision-chain")
+
+-- A: guild membership is dynamic and disappears with Blizzard roster state.
+assert(P:GetEffectiveGroups("acct-klaus","Klaus")[ids.MEMBER]);guild.roster.Klaus=nil;P:Invalidate("TEST");assert(not P:GetEffectiveGroups("acct-klaus","Klaus")[ids.MEMBER]);guild.roster.Klaus=_G.roster.Klaus
+-- B: rank-1 membership is dynamic; an independent character source remains.
+assert(P:GetEffectiveGroups("acct-raid","Daniel")[ids.OFFICERS]);guild.roster.Daniel.rankIndex=3;P:Invalidate("TEST");assert(not P:GetEffectiveGroups("acct-raid","Daniel")[ids.OFFICERS]);assert(P:AddCharacterMembership(ids.OFFICERS,"Daniel"));assert(P:GetEffectiveGroups("acct-raid","Daniel")[ids.OFFICERS]);guild.roster.Daniel.rankIndex=1
+-- C: actual Blizzard leadership transfers dynamically.
+assert(P:GetEffectiveGroups("acct-maristi","Maristi")[ids.LEADERSHIP]);guild.roster.Maristi.rankIndex=2;guild.roster.Daniel.rankIndex=0;P:Invalidate("LEADER_CHANGE");assert(P:GetEffectiveGroups("acct-raid","Daniel")[ids.LEADERSHIP]);assert(not P:GetEffectiveGroups("acct-maristi","Maristi")[ids.LEADERSHIP]);guild.roster.Maristi.rankIndex=0;guild.roster.Daniel.rankIndex=1
+-- D: only actual leader can alter additional leadership members.
+assert(P:AddCharacterMembership(ids.LEADERSHIP,"Anna"));local leadership=P:GetGroup(ids.LEADERSHIP);leadership.characterMembers.Daniel=true;leadership.guildRanks[4]=true;local normalized=P:NormalizeGroup(leadership,P:GetGroup(ids.LEADERSHIP));assert(not P:CommitChange({action="GROUP_UPSERT",group=normalized},{accountUUID="acct-anna",characterUUID="Anna"}))
+-- E: positive grants from multiple groups are additive.
+local okE,errE=P:CreateGroup({id="news-team",name="News",permissions={["news-create"]=true}});assert(okE,tostring(errE))
+local memberE,memberErr=P:AddCharacterMembership("news-team","Klaus");assert(memberE,tostring(memberErr))
+okE,errE=P:CreateGroup({id="event-team",name="Events",permissions={["calendar-manage"]=true}});assert(okE,tostring(errE))
+memberE,memberErr=P:AddCharacterMembership("event-team","Klaus");assert(memberE,tostring(memberErr))
+local effective=P:GetEffectivePermissions("acct-klaus","Klaus");assert(effective["news-create"]and effective["calendar-manage"],"additive permissions")
+-- F: account membership automatically covers newly discovered twinks.
+assert(P:CreateGroup({id="raid-lead",name="Raid Lead",permissions={["raids-read"]=true}}));assert(P:AddAccountMembership("raid-lead","acct-raid"));assert(P:GetEffectiveGroups("acct-raid","Daniel")["raid-lead"]);accounts.Marithiel="acct-raid";characters.Marithiel={guid="Marithiel",level=80,itemLevel=700};guild.roster.Marithiel={guid="Marithiel",rankIndex=4};P:Invalidate("HS_TWINKS_UPDATED");assert(P:GetEffectiveGroups("acct-raid","Marithiel")["raid-lead"])
+-- G: reusable AND filter membership reacts to changed character data.
+local filter={id="raid-ready-filter",name="Raid ready",root={logic="AND",children={{field="equipment.itemLevel",operator=">=",value=300},{field="quest.completed",operator="true",value=12345}}}}
+local okG,errG=P:CreateFilter(filter);assert(okG,tostring(errG))
+okG,errG=P:CreateGroup({id="raid-ready",name="Raid Ready",permissions={["equipment-read"]=true}});assert(okG,tostring(errG))
+okG,errG=P:AttachFilter("raid-ready","raid-ready-filter");assert(okG,tostring(errG))
+assert(not P:GetEffectiveGroups("acct-anna","Anna")["raid-ready"],"filter should initially fail")
+characters.Anna.demands.quests[12345]=true;P:Invalidate("HS_CHARACTER_UPDATED");assert(P:GetEffectiveGroups("acct-anna","Anna")["raid-ready"],"filter should update")
+assert(P:SaveRule({id="max-level-rule",name="Max level",root={field="character.level",operator=">=",value=80}},"global"));local ruleGroup=P:GetGroup("raid-ready");ruleGroup.ruleIds={"max-level-rule"};assert(P:SaveGroup(ruleGroup));assert(P:GetEffectiveGroups("acct-raid","Daniel")["raid-ready"],"reusable rule membership should apply")
+-- H: manager-group membership grants management authority, not permissions.
+assert(P:SetGroupManagers("raid-ready",{"raid-lead"}));assert(P:CanManageGroup("acct-raid","Daniel","raid-ready"));assert(not P:CanManageGroup("acct-klaus","Klaus","raid-ready"))
+-- I: system groups remain undeletable despite full access.
+assert(not P:DeleteGroup(ids.MEMBER))
+-- J: a sequential revision with the exact predecessor is accepted.
+local baseVersion,baseRevision=state.version,state.revisionID;local group=P:NormalizeGroup({id="remote-sequential",name="Sequential",permissions={},characterMembers={},accountMembers={},guildRanks={},filterIds={},ruleIds={},managerGroupIds={} });local revJ={version=baseVersion+1,revisionID="remote-j",previousRevisionID=baseRevision,changedBy={accountUUID="acct-maristi",characterUUID="Maristi"},changedAt=clock+1,change={action="GROUP_UPSERT",group=group}};assert(P:ApplyRevision(state,revJ));assert(state.revisionID=="remote-j")
+-- K: a chain gap is not accepted and starts catch-up/recovery.
+local gap={guildId=guild.id,current={version=state.version+2,revisionID="gap-current",previousRevisionID="missing",changedBy={accountUUID="acct-anna",characterUUID="Anna"},changedAt=clock+2},history={{version=state.version+2,revisionID="gap-current",previousRevisionID="missing",changedBy={accountUUID="acct-anna",characterUUID="Anna"},changedAt=clock+2,change={action="GROUP_DELETE",groupId="remote-sequential"}}},snapshot=P:Snapshot(state)};local gapOk,gapErr=P:ImportPermissionState(guild.id,gap,nil,"Anna");assert(not gapOk,tostring(gapErr));assert(state.status==P.status.RECOVERY_REQUIRED and HolyStorm.Tasks.queued[#HolyStorm.Tasks.queued].id=="Policy.PermissionCatchup",tostring(state.status))
+state.status=P.status.VALID;state.missingRevisions={}
+-- L: authorization is evaluated after each direct predecessor, not against stale base.
+local stale=copy and copy(state)or HolyStorm.Utils.DeepCopy(state);local leaderGroup=HolyStorm.Utils.DeepCopy(stale.groups[ids.LEADERSHIP]);leaderGroup.characterMembers.Daniel=true;local r1={version=stale.version+1,revisionID="chain-l1",previousRevisionID=stale.revisionID,changedBy={accountUUID="acct-maristi",characterUUID="Maristi"},changedAt=clock+3,change={action="GROUP_UPSERT",group=leaderGroup}};assert(P:ApplyRevision(stale,r1));local created=P:NormalizeGroup({id="daniel-created",name="Daniel",permissions={},characterMembers={},accountMembers={},guildRanks={},filterIds={},ruleIds={},managerGroupIds={}});local r2={version=stale.version+1,revisionID="chain-l2",previousRevisionID=stale.revisionID,changedBy={accountUUID="acct-raid",characterUUID="Daniel"},changedAt=clock+4,change={action="GROUP_UPSERT",group=created}};assert(P:ApplyRevision(stale,r2))
+-- M: sibling revisions for the same predecessor are a fork.
+local sibling={version=state.version,revisionID="fork-m",previousRevisionID=state.previousRevisionID,changedBy={accountUUID="acct-maristi",characterUUID="Maristi"},changedAt=clock+5,change={action="GROUP_DELETE",groupId="remote-sequential"}};assert(not P:ApplyRevision(state,sibling));assert(state.status==P.status.CONFLICT);state.status=P.status.VALID;state.fork=nil
+-- N: reset is a new revision and leaves unrelated addon data intact.
+local beforeReset=state.version;assert(P:RestoreDefaults());assert(state.version==beforeReset+1 and not P:GetGroup("news-team")and P:GetFilters()["raid-ready-filter"]and P:GetRules()["max-level-rule"]and HolyStorm.db.global.news.entries.keep)
+-- O: an ordinary guild member cannot reset and no revision is created.
+local beforeDenied=state.version;assert(not P:CommitChange({action="RESET"},{accountUUID="acct-klaus",characterUUID="Klaus"}));assert(state.version==beforeDenied)
+-- P: partially migrated groups remain safe while startup/sync normalization catches up.
+local partial=state.groups[ids.MEMBER];partial.characterMembers=nil;partial.accountMembers=nil;partial.guildRanks=nil;partial.filterIds=nil;partial.ruleIds=nil;partial.permissions=nil
+P:Invalidate("PARTIAL_LEGACY_GROUP");assert(P:Recalculate());assert(P:GetEffectiveGroups("acct-anna","Anna")[ids.MEMBER]);assert(next(P:GetEffectivePermissions("acct-anna","Anna"))==nil);P:UpgradeState(state)
+
+-- Generic condition contracts are retained and IDs are hyphenated.
+assert(R:Evaluate({field="character.level",operator=">=",value=80},P:BuildContext("acct-maristi","Maristi")));for id in pairs(HolyStorm.Permissions:GetPermissionDefinitions())do assert(id:match("^[a-z][a-z0-9%-]*$"),id)end
+local nested={logic="AND",children={{field="character.level",operator=">=",value=80},{logic="NOT",children={{field="character.class",operator="=",value="MAGE"}}}}};assert(R:Evaluate(nested,P:BuildContext("acct-maristi","Maristi")));assert(not R:Validate({field="character.level",operator="contains",value="8"}))
+local otherGuild=P:CreateState("realm:other");assert(next(otherGuild.filters)==nil and next(otherGuild.rules)==nil and HolyStorm.Utils.TableCount(otherGuild.groups)==3,"guild state leaked across guilds")
+assert(P:Recalculate(),"effective membership recalculation failed")
+print("Permission engine scenarios A-P passed")

@@ -1,0 +1,21 @@
+{
+  "$schema": "https://raw.githubusercontent.com/LuaLS/vscode-lua/master/setting/schema.json",
+  "runtime.version": "Lua 5.1",
+  "workspace.ignoreDir": [
+    "LIVE/Holy_Storm/Libs",
+    "_ace3_source"
+  ],
+  "diagnostics.globals": [
+    "LibStub",
+    "HolyStormDB",
+    "hooksecurefunc",
+    "GameTooltip",
+    "NUM_CHAT_WINDOWS",
+    "UIParent",
+    "UISpecialFrames",
+    "CreateFrame",
+    "SlashCmdList",
+    "SLASH_HOLYSTORM1",
+    "ReloadUI"
+  ]
+}
