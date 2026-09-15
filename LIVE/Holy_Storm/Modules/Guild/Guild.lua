@@ -4,7 +4,7 @@ local L = LibStub("AceLocale-3.0"):GetLocale("Holy_Storm_GuildRoster")
 
 HolyStorm:RegisterModule({
     id = "GuildRoster", name = "GuildRoster", displayName = L["DISPLAY_NAME"], internalName = "guildRoster", version = addonVersion,
-    moduleType = "feature", category = "required", description = L["DESCRIPTION"], permissions = { "guild-roster-read" },
+    moduleType = "feature", category = "required", description = L["DESCRIPTION"], permissions = {{id="guild-roster-read",category="Roster",defaults={member=true}}, {id="roster-manage",category="Roster",defaults={officers=true}}},
     dependencies = { "core", "ui", "options" }, ui = { page = "guildRoster", navigation = true },
     data = { stores = { "GuildStore", "CharacterStore" } }, enabledByDefault = true,
 }, function(GuildRoster)

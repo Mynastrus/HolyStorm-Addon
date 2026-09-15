@@ -1,4 +1,4 @@
-local addonVersion = "2.0.0"
+local addonVersion = "2.1.0"
 local HolyStorm = LibStub("AceAddon-3.0"):GetAddon("Holy_Storm")
 local L = LibStub("AceLocale-3.0"):GetLocale("Holy_Storm")
 
@@ -30,6 +30,7 @@ function HolyStorm:NormalizeModuleMetadata(metadata, fallbackId, defaultCategory
     normalized.administration = type(normalized.administration) == "table" and normalized.administration or {}
     normalized.data = type(normalized.data) == "table" and normalized.data or {}
     normalized.sync = type(normalized.sync) == "table" and normalized.sync or {}
+    normalized.permissions = type(normalized.permissions) == "table" and normalized.permissions or {}
     assert(type(normalized.id) == "string" and normalized.id ~= "", L["ERROR_MODULE_INTERNAL_NAME"])
     assert(type(normalized.name) == "string" and normalized.name ~= "", L["ERROR_MODULE_INTERNAL_NAME"])
     assert(type(normalized.displayName) == "string", L["ERROR_MODULE_DISPLAY_NAME"])
@@ -38,6 +39,25 @@ function HolyStorm:NormalizeModuleMetadata(metadata, fallbackId, defaultCategory
     assert(type(normalized.moduleType) == "string" and normalized.moduleType ~= "", L["ERROR_MODULE_INTERNAL_NAME"])
     assert(type(normalized.category) == "string" and normalized.category ~= "", L["ERROR_MODULE_INTERNAL_NAME"])
     return normalized
+end
+
+function HolyStorm:RegisterModulePermissions(metadata)
+    local registry = HolyStorm.PermissionRegistry
+    if not registry then return end
+    for _, entry in ipairs(metadata.permissions or {}) do
+        local definition
+        if type(entry) == "table" then
+            definition = HolyStorm.Utils.DeepCopy(entry)
+        elseif type(entry) == "string" and not registry:GetPermission(entry) then
+            definition = { id = entry }
+        end
+        if definition then
+            definition.module = definition.module or metadata.id
+            definition.owner = definition.owner or definition.module
+            definition.category = definition.category or metadata.name or "Feature"
+            registry:RegisterPermission(definition)
+        end
+    end
 end
 
 function HolyStorm:ApplyModuleMetadata(module, metadata)
@@ -60,6 +80,7 @@ function HolyStorm:RegisterModule(metadata, factory)
         self.optionalModuleFactories[normalized.id] = { factory = factory, metadata = normalized }
         return normalized
     end
+    self:RegisterModulePermissions(normalized)
     local module = self:NewModule(normalized.id, "AceEvent-3.0")
     self.Modules[normalized.id] = module
     self:ApplyModuleMetadata(module, normalized)
@@ -119,6 +140,7 @@ function HolyStorm:CreateOptionalModule(moduleName)
     end
 
     module = self:NewModule(moduleName)
+    self:RegisterModulePermissions(registration.metadata)
     self:ApplyModuleMetadata(module, registration.metadata)
     local ok, err = HolyStorm.Utils.SafeCall("module:" .. moduleName, registration.factory, module)
     if not ok then HolyStorm.Logger:ERROR("ModuleRegistry", "Module %s failed to load: %s", moduleName, tostring(err)); return nil end

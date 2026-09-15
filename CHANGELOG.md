@@ -1,5 +1,9 @@
 # Changelog
 
+## 5.4.0 — 15.09.2026
+
+- Feature-Permissions wurden aus der zentralen Definitionsliste in die besitzenden Modulmetadaten verlagert. Die zentrale PermissionRegistry bleibt die einzige Registry; modulare Defaults werden für Systemgruppen angewendet, optionale Rechte erscheinen erst beim Laden des Moduls und unbekannte persistierte Permission-IDs bleiben für spätere Re-Registrierung erhalten.
+
 Hier halten wir ausschließlich Änderungen an den auslieferbaren Addon-Dateien
 im Ordner `LIVE` fest. Änderungen an Projektdokumentation, dem Release-Ordner
 oder anderen Dateien außerhalb von `LIVE` gehören nicht in dieses Changelog.

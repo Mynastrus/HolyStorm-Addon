@@ -1,7 +1,7 @@
 local addonVersion="1.0.0"
 local HolyStorm=LibStub("AceAddon-3.0"):GetAddon("Holy_Storm")
 local L=LibStub("AceLocale-3.0"):GetLocale("Holy_Storm_Professions")
-local metadata={id="professions",name="Professions",displayName=L["DISPLAY_NAME"],description=L["DESCRIPTION"],version=addonVersion,moduleType="feature",category="optional",permissions={"professions-read"},dependencies={"core","ui"},capabilities={"character.scan.additional"},ui={page="professions",navigation=true},data={block="professions",capability="character.scan.additional"},enabledByDefault=false}
+local metadata={id="professions",name="Professions",displayName=L["DISPLAY_NAME"],description=L["DESCRIPTION"],version=addonVersion,moduleType="feature",category="optional",permissions={{id="professions-read",category="Core"}},dependencies={"core","ui"},capabilities={"character.scan.additional"},ui={page="professions",navigation=true},data={block="professions",capability="character.scan.additional"},enabledByDefault=false}
 HolyStorm:RegisterModule(metadata,function(Module)
     HolyStorm:ApplyModuleMetadata(Module,metadata)
     function Module:Snapshot()

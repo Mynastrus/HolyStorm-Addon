@@ -50,14 +50,14 @@ Module können Seiten über `HolyStorm.UI:RegisterPage` und Navigation über `Ad
 
 - Die Metadatenfelder `ui`, `options`, `administration`, `data` und `sync` existieren, treiben aber noch nicht automatisch alle Registrierungen und Lifecycle-Schritte.
 - Die Administration-Registry akzeptiert externe Modul-Sections und blendet fehlende oder gildenweit deaktivierte Module sicher aus.
-- PermissionRegistry akzeptiert Modul-Permissions; bestehende Feature-Permissions werden dennoch größtenteils zentral vorregistriert.
+- Feature-Module deklarieren ihre Permissions als Metadaten. Die ModuleRegistry registriert sie über die zentrale PermissionRegistry und übernimmt dabei Owner, Kategorie und Systemgruppen-Defaults.
 - RuleEngine besitzt eine Feld-/Provider-Registry, aber mehrere Feature-Provider befinden sich weiterhin in Core.
 - Capabilities reduzieren Bootstrap-Kopplung, während einige Services noch direkt in Bootstrap initialisiert werden.
 - Sync-Domains sind generisch registrierbar, einzelne Features verwenden bei Autorisierung aber noch Compatibility-Fassaden.
 
 ## C – Target / Planned
 
-- Feature-Permissions und Rule-Feldprovider werden durch die besitzenden Module registriert.
+- Rule-Feldprovider werden schrittweise durch die besitzenden Module registriert.
 - Metadaten können Lifecycle, UI, Administration, Datenblöcke und Sync-Domains vollständiger deklarativ verbinden.
 - Externe Drittanbieter-Module verwenden nur öffentliche Core-Verträge und keine internen Tabellen.
 - Feature-Pakete können als separate WoW-Addons ausgeliefert werden, beispielsweise `Holy_Storm_Equipment`, `Holy_Storm_MythicPlus`, `Holy_Storm_Raid` oder `Holy_Storm_POI`.

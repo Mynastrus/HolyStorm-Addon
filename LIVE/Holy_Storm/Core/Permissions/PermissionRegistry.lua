@@ -1,4 +1,4 @@
-local addonVersion = "5.0.0"
+local addonVersion = "5.1.0"
 local HolyStorm = LibStub("AceAddon-3.0"):GetAddon("Holy_Storm")
 
 local Core = HolyStorm.PermissionCore or {}
@@ -46,8 +46,8 @@ end
 local Registry = { version = addonVersion, keys = {} }
 local definitions = {
     ["groups-create"]="Administration",["groups-edit"]="Administration",["groups-delete"]="Administration",["groups-manage-members"]="Administration",["permissions-manage"]="Administration",["permissions-reset"]="Administration",["filters-create"]="Administration",["filters-edit"]="Administration",["filters-delete"]="Administration",["rules-manage"]="Administration",["policy-inspect"]="Administration",["modules-manage"]="Administration",
-    ["core-settings-read"]="Core",["core-settings-write"]="Core",["settings-read"]="Core",["settings-write"]="Core",["ui-render"]="Core",["sync-send"]="Sync",["sync-receive"]="Sync",["player-read"]="Core",["savedvariables-read"]="Core",["savedvariables-write"]="Core",["professions-read"]="Core",["guild-roster-read"]="Roster",["roster-manage"]="Roster",
-    ["news-view"]="News",["news-create"]="News",["news-edit"]="News",["news-delete"]="News",["news-publish"]="News",["news-read-receipts"]="News",["guide-view"]="News",["guide-create"]="News",["guide-edit"]="News",["guide-delete"]="News",["guide-publish"]="News",["calendar-read"]="Calendar",["calendar-manage"]="Calendar",["raids-read"]="Raid",["mythicplus-read"]="Mythic+",["delves-read"]="Delves",["equipment-read"]="Equipment",["logs-view"]="Logs",["logs-clear"]="Logs",["taskmanager-view"]="Task Manager",["taskmanager-control"]="Task Manager",["tasks-view"]="Task Manager",["twinks-assign"]="Administration",["twinks-remove"]="Administration",["poi-view"]="POI",["poi-create-personal"]="POI",["poi-create-guild"]="POI",["poi-create-group"]="POI",["poi-create-raid"]="POI",["poi-edit-own"]="POI",["poi-edit-any"]="POI",["poi-delete-own"]="POI",["poi-delete-any"]="POI",["poi-create"]="POI",["poi-edit"]="POI",["poi-delete"]="POI",["position-view"]="Positions",["position-share"]="Positions",
+    ["core-settings-read"]="Core",["core-settings-write"]="Core",["settings-read"]="Core",["settings-write"]="Core",["ui-render"]="Core",["sync-send"]="Sync",["sync-receive"]="Sync",["player-read"]="Core",["savedvariables-read"]="Core",["savedvariables-write"]="Core",
+    ["logs-view"]="Logs",["logs-clear"]="Logs",["taskmanager-view"]="Task Manager",["taskmanager-control"]="Task Manager",["tasks-view"]="Task Manager",
 }
 Registry.legacyIds = {
     ["roles.manage"]="groups-edit",["permissions.manage"]="permissions-manage",["filters.manage_global"]="filters-edit",["rules.manage_global"]="rules-manage",["policy.inspect"]="policy-inspect",["core.settings.read"]="core-settings-read",["core.settings.write"]="core-settings-write",["ui.render"]="ui-render",["sync.send"]="sync-send",["guild.roster.read"]="guild-roster-read",["roster.manage"]="roster-manage",["news.create"]="news-create",["news.edit"]="news-edit",["news.delete"]="news-delete",["news.read_receipts"]="news-read-receipts",["calendar.read"]="calendar-read",["calendar.manage"]="calendar-manage",["raids.read"]="raids-read",["mythicplus.read"]="mythicplus-read",["delves.read"]="delves-read",["equipment.read"]="equipment-read",["logs.view"]="logs-view",["logs.clear"]="logs-clear",["taskmanager.view"]="taskmanager-view",["taskmanager.control"]="taskmanager-control",["tasks.view"]="tasks-view",["twinks.assign"]="twinks-assign",["twinks.remove"]="twinks-remove",["poi.create"]="poi-create",["poi.edit"]="poi-edit",["poi.delete"]="poi-delete",
@@ -58,10 +58,13 @@ function Registry:RegisterPermission(definition)
     if type(definition) ~= "table" or type(definition.id) ~= "string" or not definition.id:match("^[a-z][a-z0-9%-]*$") then return false, "INVALID_PERMISSION_ID" end
     local normalized = Core.Copy(definition)
     normalized.category = normalized.category or "Core"
-    normalized.module = normalized.module or "Core"
+    normalized.module = normalized.module or normalized.owner or "Core"
+    normalized.owner = normalized.owner or normalized.module
     normalized.labelKey = normalized.labelKey or keyFor("PERMISSION_", normalized.id)
     normalized.descriptionKey = normalized.descriptionKey or keyFor("PERMISSION_DESC_", normalized.id)
     self.keys[normalized.id] = normalized
+    local state = HolyStorm.PermissionComponents and HolyStorm.PermissionComponents.State
+    if state and state.ApplyPermissionDefault then state:ApplyPermissionDefault(normalized) end
     if HolyStorm.Events then HolyStorm.Events:Emit("HS_PERMISSION_REGISTERED", normalized.id) end
     return true
 end
@@ -78,10 +81,6 @@ Registry.GetPermissionDefinitions = Registry.GetPermissions
 function Registry:NormalizePermissionId(id) return self.legacyIds[id] or id end
 
 for id, category in pairs(definitions) do Registry:RegisterPermission({ id=id, module="Core", category=category }) end
-for _, id in ipairs({"achievement-view","achievement-create","achievement-edit","achievement-delete","achievement-publish","achievement-award","achievement-revoke","achievement-admin","achievement-test"}) do
-    Registry:RegisterPermission({ id=id, module="Achievements", category="Achievements" })
-end
-
 HolyStorm.PermissionRegistry = Registry
 HolyStorm.PermissionComponents = HolyStorm.PermissionComponents or {}
 HolyStorm.PermissionComponents.Registry = Registry

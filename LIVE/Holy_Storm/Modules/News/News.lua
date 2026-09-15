@@ -1,7 +1,7 @@
 local addonVersion="2.0.1"
 local HolyStorm=LibStub("AceAddon-3.0"):GetAddon("Holy_Storm")
 local L=LibStub("AceLocale-3.0"):GetLocale("Holy_Storm_News")
-local metadata={id="News",name="News",internalName="content",displayName=L["TITLE"],description=L["DESCRIPTION"],version=addonVersion,moduleType="feature",category="required",permissions={"news-view","guide-view"},dependencies={"core","ui","synchronization"},ui={page="news",navigation=true},data={store="ContentStore"},sync={domains={"content"}},enabledByDefault=true}
+local metadata={id="News",name="News",internalName="content",displayName=L["TITLE"],description=L["DESCRIPTION"],version=addonVersion,moduleType="feature",category="required",permissions={{id="news-view",category="News",defaults={officers=true,member=true}},{id="news-create",category="News",defaults={officers=true}},{id="news-edit",category="News",defaults={officers=true}},{id="news-delete",category="News",defaults={officers=true}},{id="news-publish",category="News",defaults={officers=true}},{id="news-read-receipts",category="News",defaults={officers=true}},{id="guide-view",category="News",defaults={officers=true,member=true}},{id="guide-create",category="News",defaults={officers=true}},{id="guide-edit",category="News",defaults={officers=true}},{id="guide-delete",category="News",defaults={officers=true}},{id="guide-publish",category="News",defaults={officers=true}}},dependencies={"core","ui","synchronization"},ui={page="news",navigation=true},data={store="ContentStore"},sync={domains={"content"}},enabledByDefault=true}
 HolyStorm:RegisterModule(metadata,function(News)
 
 local types={"ALL","NEWS","GUIDE","ANNOUNCEMENT"}

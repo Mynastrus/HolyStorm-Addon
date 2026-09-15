@@ -1,4 +1,4 @@
-local addonVersion = "5.0.1"
+local addonVersion = "5.1.0"
 local HolyStorm = LibStub("AceAddon-3.0"):GetAddon("Holy_Storm")
 local Core = HolyStorm.PermissionCore
 local State = {
@@ -37,6 +37,13 @@ function State:BindCompatibility(state)
     HolyStorm.db.global.filters.global=state.filters
     HolyStorm.db.global.rules.global=state.rules
 end
+function State:ApplyPermissionDefault(definition, targetState)
+    local state=targetState or self:GetState()
+    if state and HolyStorm.GroupManager and HolyStorm.GroupManager.ApplyRegisteredDefaults then
+        HolyStorm.GroupManager:ApplyRegisteredDefaults(state,definition)
+        if HolyStorm.PermissionEngine then HolyStorm.PermissionEngine:Invalidate("PERMISSION_REGISTERED") end
+    end
+end
 function State:Snapshot(state) return {groups=Core.Copy(state.groups),filters=Core.Copy(state.filters),rules=Core.Copy(state.rules),modules=Core.Copy(state.modules)} end
 
 function State:CreateState(guildId)
@@ -50,10 +57,7 @@ function State:UpgradeState(state)
     state.groups=type(state.groups)=="table" and state.groups or {}; state.filters=type(state.filters)=="table" and state.filters or {}; state.rules=type(state.rules)=="table" and state.rules or {}; state.modules=type(state.modules)=="table" and state.modules or {}; state.history=type(state.history)=="table" and state.history or {}
     for id,group in pairs(state.groups) do local normalized=self:NormalizeGroup(group,group); if normalized then state.groups[id]=normalized else state.groups[id]=nil end end
     self:EnsureSystemGroups(state)
-    local defaults=self:GetDefaultGroups(); local ids=self.systemIds
-    if previousSchema<3 then for _,id in ipairs({ids.OFFICERS,ids.MEMBER}) do for permission,enabled in pairs(defaults[id].permissions) do if enabled and (permission:match("^news%-") or permission:match("^guide%-")) then state.groups[id].permissions[permission]=true end end end end
-    if previousSchema<4 then for _,id in ipairs({ids.OFFICERS,ids.MEMBER}) do for permission,enabled in pairs(defaults[id].permissions) do if enabled and permission:match("^poi%-") then state.groups[id].permissions[permission]=true end end end end
-    if previousSchema<5 then for _,id in ipairs({ids.OFFICERS,ids.MEMBER}) do for permission,enabled in pairs(defaults[id].permissions) do if enabled and permission:match("^position%-") then state.groups[id].permissions[permission]=true end end end end
+    for _, definition in pairs(HolyStorm.PermissionRegistry.keys) do self:ApplyPermissionDefault(definition, state) end
     state.schemaVersion=5; return state
 end
 function State:ValidateSnapshot(snapshot)

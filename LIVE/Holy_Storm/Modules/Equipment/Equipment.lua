@@ -1,7 +1,7 @@
 local addonVersion="6.2.0"
 local HolyStorm=LibStub("AceAddon-3.0"):GetAddon("Holy_Storm")
 local L=LibStub("AceLocale-3.0"):GetLocale("Holy_Storm_Equipment")
-local metadata={id="equipment",name="Equipment",displayName=L["DISPLAY_NAME"],description=L["DESCRIPTION"],version=addonVersion,moduleType="feature",category="optional",permissions={"equipment-read","sync-send","sync-receive"},dependencies={"core","synchronization","ui"},capabilities={"character.scan.equipment"},ui={characterTab="equipment"},data={block="equipment",snapshotType="equipment",schemaVersion=4,capability="character.scan.equipment"},sync={domains={"character"}},enabledByDefault=true}
+local metadata={id="equipment",name="Equipment",displayName=L["DISPLAY_NAME"],description=L["DESCRIPTION"],version=addonVersion,moduleType="feature",category="optional",permissions={{id="equipment-read",category="Equipment",defaults={member=true}},"sync-send","sync-receive"},dependencies={"core","synchronization","ui"},capabilities={"character.scan.equipment"},ui={characterTab="equipment"},data={block="equipment",snapshotType="equipment",schemaVersion=4,capability="character.scan.equipment"},sync={domains={"character"}},enabledByDefault=true}
 local SLOTS={INVSLOT_HEAD,INVSLOT_NECK,INVSLOT_SHOULDER,INVSLOT_CHEST,INVSLOT_WAIST,INVSLOT_LEGS,INVSLOT_FEET,INVSLOT_WRIST,INVSLOT_HAND,INVSLOT_FINGER1,INVSLOT_FINGER2,INVSLOT_TRINKET1,INVSLOT_TRINKET2,INVSLOT_BACK,INVSLOT_MAINHAND,INVSLOT_OFFHAND}
 local WORKFLOW="EQUIPMENT_UPDATE"
 local function runtime(task)local w=HolyStorm.Workflows.workflows[task.workflowId];return w,w and w.context end

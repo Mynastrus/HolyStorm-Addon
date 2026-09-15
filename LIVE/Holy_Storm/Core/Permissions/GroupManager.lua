@@ -1,4 +1,4 @@
-local addonVersion = "5.0.0"
+local addonVersion = "5.1.0"
 local HolyStorm = LibStub("AceAddon-3.0"):GetAddon("Holy_Storm")
 local Core = HolyStorm.PermissionCore
 local Groups = { version=addonVersion, systemIds={LEADERSHIP="guild-leadership",OFFICERS="officers",MEMBER="guild-member"} }
@@ -15,13 +15,28 @@ end
 
 function Groups:GetDefaultGroups()
     local ids = self.systemIds
+    local function permissionsFor(groupId)
+        local permissions = {}
+        for id, definition in pairs(HolyStorm.PermissionRegistry.keys) do
+            if definition.defaults and definition.defaults[groupId] == true then permissions[id] = true end
+        end
+        return permissions
+    end
     local defaults = {
         [ids.LEADERSHIP]={id=ids.LEADERSHIP,nameKey="GROUP_GUILD_LEADERSHIP",descriptionKey="GROUP_DESC_GUILD_LEADERSHIP",creator="System",system=true,systemRule="GUILD_LEADER",permissions={},characterMembers={},accountMembers={},guildRanks={},filterIds={},ruleIds={},filterOperator="AND",managerGroupIds={}},
-        [ids.OFFICERS]={id=ids.OFFICERS,nameKey="GROUP_OFFICERS",descriptionKey="GROUP_DESC_OFFICERS",creator="System",system=true,systemRule="OFFICER",permissions={["news-view"]=true,["news-create"]=true,["news-edit"]=true,["news-delete"]=true,["news-publish"]=true,["news-read-receipts"]=true,["guide-view"]=true,["guide-create"]=true,["guide-edit"]=true,["guide-delete"]=true,["guide-publish"]=true,["poi-view"]=true,["poi-create-personal"]=true,["poi-create-guild"]=true,["poi-create-group"]=true,["poi-create-raid"]=true,["poi-edit-own"]=true,["poi-edit-any"]=true,["poi-delete-own"]=true,["poi-delete-any"]=true,["position-view"]=true,["position-share"]=true,["calendar-manage"]=true,["roster-manage"]=true,["filters-create"]=true,["filters-edit"]=true,["rules-manage"]=true},characterMembers={},accountMembers={},guildRanks={},filterIds={},ruleIds={},filterOperator="AND",managerGroupIds={ids.LEADERSHIP}},
-        [ids.MEMBER]={id=ids.MEMBER,nameKey="GROUP_GUILD_MEMBER",descriptionKey="GROUP_DESC_GUILD_MEMBER",creator="System",system=true,systemRule="GUILD_MEMBER",permissions={["guild-roster-read"]=true,["news-view"]=true,["guide-view"]=true,["poi-view"]=true,["poi-create-personal"]=true,["position-view"]=true,["position-share"]=true,["calendar-read"]=true,["raids-read"]=true,["mythicplus-read"]=true,["delves-read"]=true,["equipment-read"]=true,["logs-view"]=true,["tasks-view"]=true,["achievement-view"]=true},characterMembers={},accountMembers={},guildRanks={},filterIds={},ruleIds={},filterOperator="AND",managerGroupIds={ids.LEADERSHIP}},
+        [ids.OFFICERS]={id=ids.OFFICERS,nameKey="GROUP_OFFICERS",descriptionKey="GROUP_DESC_OFFICERS",creator="System",system=true,systemRule="OFFICER",permissions={},characterMembers={},accountMembers={},guildRanks={},filterIds={},ruleIds={},filterOperator="AND",managerGroupIds={ids.LEADERSHIP}},
+        [ids.MEMBER]={id=ids.MEMBER,nameKey="GROUP_GUILD_MEMBER",descriptionKey="GROUP_DESC_GUILD_MEMBER",creator="System",system=true,systemRule="GUILD_MEMBER",permissions={},characterMembers={},accountMembers={},guildRanks={},filterIds={},ruleIds={},filterOperator="AND",managerGroupIds={ids.LEADERSHIP}},
     }
-    for _, permission in ipairs({"achievement-view","achievement-create","achievement-edit","achievement-delete","achievement-publish","achievement-award","achievement-revoke","achievement-admin","achievement-test"}) do defaults[ids.OFFICERS].permissions[permission] = true end
+    for _, group in pairs(defaults) do group.permissions = permissionsFor(group.id == ids.OFFICERS and "officers" or group.id == ids.MEMBER and "member" or "leadership") end
     return defaults
+end
+
+function Groups:ApplyRegisteredDefaults(state, definition)
+    if not state or not definition or type(definition.defaults) ~= "table" then return end
+    for groupId, enabled in pairs(definition.defaults) do
+        local group = state.groups and state.groups[groupId]
+        if enabled == true and group and type(group.permissions) == "table" and group.permissions[definition.id] == nil then group.permissions[definition.id] = true end
+    end
 end
 
 function Groups:NormalizeGroup(group, current)
@@ -100,7 +115,7 @@ function Groups:ValidateGroup(group, snapshot)
     if not group.nameKey and (#group.name==0 or #group.name>128) then return false,"INVALID_GROUP_NAME" end
     if #(group.description or "")>1024 then return false,"INVALID_GROUP_DESCRIPTION" end
     if HolyStorm.Utils.TableCount(group.characterMembers)+HolyStorm.Utils.TableCount(group.accountMembers)+HolyStorm.Utils.TableCount(group.guildRanks)>500 then return false,"TOO_MANY_MEMBERSHIPS" end
-    for permission,value in pairs(group.permissions) do if value~=true or not HolyStorm.PermissionRegistry.keys[permission] then return false,"UNKNOWN_PERMISSION:"..tostring(permission) end end
+    for permission,value in pairs(group.permissions) do if value~=true or type(permission)~="string" or not Core.ValidId(permission) then return false,"INVALID_PERMISSION:"..tostring(permission) end end
     for subject,value in pairs(group.characterMembers) do if not Core.ValidId(subject) or value~=true then return false,"INVALID_CHARACTER_MEMBERSHIP" end end
     for subject,value in pairs(group.accountMembers) do if not Core.ValidId(subject) or value~=true then return false,"INVALID_ACCOUNT_MEMBERSHIP" end end
     for rank,value in pairs(group.guildRanks) do if tonumber(rank)==nil or value~=true then return false,"INVALID_GUILD_RANK" end end

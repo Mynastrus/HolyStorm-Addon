@@ -4,7 +4,7 @@ local L = LibStub("AceLocale-3.0"):GetLocale("Holy_Storm_Twinks")
 HolyStorm:RegisterModule({
  id="Twinks",name="Twinks",displayName=L["DISPLAY_NAME"],internalName="twinks",version=addonVersion,
  moduleType="feature",category="required",description=L["DESCRIPTION"],
- permissions={"player-read","guild-roster-read","savedvariables-write"},dependencies={"core","ui"},
+ permissions={"player-read","savedvariables-write",{id="twinks-assign",category="Characters"},{id="twinks-remove",category="Characters"}},dependencies={"core","ui"},
  ui={page="twinks",navigation=true},data={stores={"PlayerDataStore","CharacterStore","GuildStore"}},
  sync={domains={"twinks","twinkAdmin"}},enabledByDefault=true,
 },function(Twinks)

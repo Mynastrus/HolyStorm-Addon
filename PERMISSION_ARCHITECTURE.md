@@ -95,13 +95,6 @@ Die Administration greift direkt auf Registry, Engine, GroupManager, FilterManag
 
 ## Verbleibende Restschuld
 
-Feature-Permissions sind noch überwiegend zentral in PermissionRegistry registriert:
+Feature-Permissions werden von ihren Modulen über die ModuleRegistry in der zentralen PermissionRegistry registriert. Nicht geladene optionale Module hinterlassen ihre Feature-Permissions nicht im aktiven Registry-Bestand; persistierte unbekannte IDs bleiben jedoch erhalten und werden bei einer späteren Registrierung wieder wirksam.
 
-- Roster/Professions: `guild-roster-read`, `roster-manage`, `professions-read`
-- News/Guides: `news-view/create/edit/delete/publish/read-receipts` und `guide-view/create/edit/delete/publish`
-- Calendar/Raid/Mythic+/Delves/Equipment: `calendar-read/manage`, `raids-read`, `mythicplus-read`, `delves-read`, `equipment-read`
-- Logs/Tasks/Twinks: `logs-view/clear`, `taskmanager-view/control`, `tasks-view`, `twinks-assign/remove`
-- POI/Positions: sämtliche `poi-*`-Definitionen sowie `position-view/share`
-- Achievements: `achievement-view/create/edit/delete/publish/award/revoke/admin/test`
-
-Die Achievement-Definitionen tragen bereits `Achievements` als Modulmetadatum; viele andere Feature-Definitionen werden im zentralen Definitionsblock noch mit `Core` als Owner registriert. RuleEngine besitzt weiterhin Core-seitig Feature-Felder für Equipment, Mythic+, Raid und Delves sowie Quest-/Achievement-Demand-Provider. Beide Registries sind erweiterbar; die Verlagerung zu den Feature-Modulen ist ein separater Folgeschritt.
+RuleEngine besitzt weiterhin Core-seitig Feature-Felder für Equipment, Mythic+, Raid und Delves sowie Quest-/Achievement-Demand-Provider. Diese Provider-Verlagerung bleibt ein separater Folgeschritt.

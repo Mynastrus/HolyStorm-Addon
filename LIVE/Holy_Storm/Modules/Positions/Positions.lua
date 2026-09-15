@@ -1,7 +1,7 @@
 local addonVersion="1.0.0"
 local HolyStorm=LibStub("AceAddon-3.0"):GetAddon("Holy_Storm")
 local L=LibStub("AceLocale-3.0"):GetLocale("Holy_Storm_Positions")
-local metadata={id="Positions",name="Positions",internalName="positions",displayName=L["TITLE"],description=L["DESCRIPTION"],version=addonVersion,moduleType="feature",category="required",permissions={"position-view","position-share"},dependencies={"core","ui","synchronization"},ui={page="positions",navigation=true},sync={domains={"guild-position"}},enabledByDefault=true}
+local metadata={id="Positions",name="Positions",internalName="positions",displayName=L["TITLE"],description=L["DESCRIPTION"],version=addonVersion,moduleType="feature",category="required",permissions={{id="position-view",category="Positions",defaults={officers=true,member=true}},{id="position-share",category="Positions",defaults={officers=true,member=true}}},dependencies={"core","ui","synchronization"},ui={page="positions",navigation=true},sync={domains={"guild-position"}},enabledByDefault=true}
 HolyStorm:RegisterModule(metadata,function(Module)
 local function yes(value)return value and L["YES"]or L["NO"]end
 local function stamp(value)return value and date("%H:%M:%S",value)or"-"end

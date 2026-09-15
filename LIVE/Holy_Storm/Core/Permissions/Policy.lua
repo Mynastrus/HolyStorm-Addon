@@ -1,4 +1,4 @@
-local addonVersion = "5.0.0"
+local addonVersion = "5.1.0"
 local HolyStorm = LibStub("AceAddon-3.0"):GetAddon("Holy_Storm")
 local Components = HolyStorm.PermissionComponents
 

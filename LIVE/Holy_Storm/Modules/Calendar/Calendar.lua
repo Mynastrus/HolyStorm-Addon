@@ -1,7 +1,7 @@
 local addonVersion = "2.0.0"
 local HolyStorm = LibStub("AceAddon-3.0"):GetAddon("Holy_Storm")
 local L = LibStub("AceLocale-3.0"):GetLocale("Holy_Storm_GuildEvents")
-local metadata = { id = "GuildEvents", name = "Calendar", internalName = "guildEvents", displayName = L["DISPLAY_NAME"], description = L["DESCRIPTION"], version = addonVersion, moduleType = "feature", category = "optional", permissions = { "calendar-read" }, dependencies = { "core", "ui" }, ui = { page = "guildEvents", navigation = true }, enabledByDefault = false }
+local metadata = { id = "GuildEvents", name = "Calendar", internalName = "guildEvents", displayName = L["DISPLAY_NAME"], description = L["DESCRIPTION"], version = addonVersion, moduleType = "feature", category = "optional", permissions = {{id="calendar-read",category="Calendar",defaults={member=true}}}, dependencies = { "core", "ui" }, ui = { page = "guildEvents", navigation = true }, enabledByDefault = false }
 
 HolyStorm:RegisterModule(metadata, function(Events)
     HolyStorm:ApplyModuleMetadata(Events, metadata)
