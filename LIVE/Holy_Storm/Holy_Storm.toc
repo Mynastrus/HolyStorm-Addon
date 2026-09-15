@@ -70,9 +70,15 @@ Persistence\SnapshotManager.lua
 Persistence\ContentStore.lua
 Persistence\POIStore.lua
 Persistence\AchievementStore.lua
+Core\Permissions\PermissionRegistry.lua
+Core\Permissions\GroupManager.lua
+Core\Permissions\FilterManager.lua
+Core\Permissions\PolicyState.lua
+Core\Permissions\PermissionEngine.lua
+Core\Permissions\PermissionSync.lua
+Core\Permissions\Policy.lua
 Core\Permissions\Permissions.lua
 Modules\Characters\TwinkCore.lua
-Core\Permissions\Policy.lua
 Sync\Comms.lua
 Sync\SyncManager.lua
 Core\Content\MapLinks.lua

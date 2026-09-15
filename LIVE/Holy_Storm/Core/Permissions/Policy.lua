@@ -1,265 +1,43 @@
-local addonVersion="4.3.0"
-local HolyStorm=LibStub("AceAddon-3.0"):GetAddon("Holy_Storm")
-local L=LibStub("AceLocale-3.0"):GetLocale("Holy_Storm")
-local Policy={version=addonVersion,status={VALID="VALID",CATCHING_UP="CATCHING_UP",RECOVERY_REQUIRED="RECOVERY_REQUIRED",CONFLICT="CONFLICT",UNINITIALIZED="UNINITIALIZED"},permissionCache={},membershipCache={},generation=0,maxHistory=100,maxRejected=100,maxObjects=500,maxMembers=500,maxIdLength=96,sequence=0}
-local function copy(v)return HolyStorm.Utils.DeepCopy(v)end
-local function now()return HolyStorm.Utils.Now()end
-local function validId(id)return type(id)=="string"and#id>0 and#id<=Policy.maxIdLength and id:match("^[%w_%.%-:]+$")~=nil end
-local function same(a,b)local sa=HolyStorm.Serializer:Serialize(a);local sb=HolyStorm.Serializer:Serialize(b);return sa~=nil and sa==sb end
-local function log(level,category,message,context)HolyStorm.Logger:Write(level,"Policy",category,message,context)end
-local function tableKeys(t)local out={};for k in pairs(t or{})do out[#out+1]=k end;table.sort(out);return out end
-local function arrayContains(t,value)for _,v in ipairs(t or{})do if v==value then return true end end;return false end
-local function normalizeSet(value)local out={};for key,enabled in pairs(type(value)=="table"and value or{})do if enabled==true and type(key)=="string"then out[key]=true end end;return out end
-local function normalizeArray(value)local seen,out={},{};for _,id in ipairs(type(value)=="table"and value or{})do if validId(id)and not seen[id]then seen[id]=true;out[#out+1]=id end end;table.sort(out);return out end
+local addonVersion = "5.0.0"
+local HolyStorm = LibStub("AceAddon-3.0"):GetAddon("Holy_Storm")
+local Components = HolyStorm.PermissionComponents
 
-function Policy:GetGuildId()local guild=HolyStorm.Data.GuildStore:GetCurrent();return guild and guild.id or(HolyStorm.Data.GuildStore.GetGuildId and HolyStorm.Data.GuildStore:GetGuildId())end
-function Policy:GetStates()local global=HolyStorm.db.global;global.permissionStates=type(global.permissionStates)=="table"and global.permissionStates or{};return global.permissionStates end
-function Policy:GetState(guildId)return self:GetStates()[guildId or self:GetGuildId()]end
-function Policy:GetStateStore()local state=self:GetState();return state and{groups=state.groups,roles=state.groups,version=state.version}or{groups={},roles={},version=0}end
-function Policy:GetStore(kind,scope)
- if scope=="local"then if kind=="rules"then return HolyStorm.db.profile.rules.localRules elseif kind=="filters"then return HolyStorm.db.profile.filters.localFilters end end
- local state=self:GetState();if state and state[kind]then return state[kind]end
- if kind=="groups"then return{}elseif kind=="rules"then return HolyStorm.db.global.rules.global elseif kind=="filters"then return HolyStorm.db.global.filters.global end
-end
-function Policy:NewRevisionId(guildId,version)local actor=UnitGUID("player")or"unknown";self.sequence=self.sequence+1;return string.format("rev-%s-%d-%x-%x",tostring(guildId):gsub("[^%w]","_"),version,now()%0x7fffffff,(self.sequence+math.random(0,0x7fffffff))%0x7fffffff).."-"..actor end
-function Policy:BuildContext(accountUUID,characterUUID,target)
- accountUUID=accountUUID or(HolyStorm.TwinkCore and HolyStorm.TwinkCore:GetLocalAccountUUID())or HolyStorm.Data.PlayerStore:GetLocalPlayerId();characterUUID=characterUUID or(accountUUID==((HolyStorm.TwinkCore and HolyStorm.TwinkCore:GetLocalAccountUUID())or HolyStorm.Data.PlayerStore:GetLocalPlayerId())and UnitGUID("player"));local character=characterUUID and HolyStorm.Data.CharacterStore:Get(characterUUID);local guild=HolyStorm.Data.GuildStore:GetCurrent();local member=characterUUID and guild and guild.roster and guild.roster[characterUUID]
- return{accountUUID=accountUUID,playerId=accountUUID,characterUUID=characterUUID,guid=characterUUID,player=accountUUID and HolyStorm.Data.PlayerStore:Get(accountUUID),character=character,guild=guild,member=member,target=target}
-end
-function Policy:Actor(accountUUID,characterUUID)return{accountUUID=accountUUID or(HolyStorm.TwinkCore and HolyStorm.TwinkCore:GetLocalAccountUUID())or HolyStorm.Data.PlayerStore:GetLocalPlayerId(),characterUUID=characterUUID or UnitGUID("player")}end
-function Policy:IsActualGuildLeader(accountUUID,characterUUID)return HolyStorm.Permissions:IsActualGuildLeader(accountUUID,characterUUID)end
+local Policy = {
+    version=addonVersion,
+    status=Components.State.status,
+    systemIds=Components.Groups.systemIds,
+    maxHistory=Components.State.maxHistory,
+    maxRejected=Components.State.maxRejected,
+    maxObjects=Components.State.maxObjects,
+    sequence=0,
+    permissionCache={},
+    membershipCache={},
+    generation=0,
+}
 
-function Policy:NormalizeGroup(group,current)
- if type(group)~="table"or not validId(group.id)then return nil,"INVALID_GROUP"end;local result=copy(group);result.name=type(result.name)=="string"and result.name or result.id;result.description=type(result.description)=="string"and result.description or"";result.permissions=normalizeSet(result.permissions);for old,new in pairs(HolyStorm.Permissions.legacyIds or{})do if result.permissions[old]then result.permissions[old]=nil;result.permissions[new]=true end end
- result.characterMembers=normalizeSet(result.characterMembers);result.accountMembers=normalizeSet(result.accountMembers);result.guildRanks=normalizeSet(result.guildRanks or result.rankRules);result.filterIds=normalizeArray(result.filterIds);result.ruleIds=normalizeArray(result.ruleIds);result.managerGroupIds=normalizeArray(result.managerGroupIds);result.filterOperator=result.filterOperator=="OR"and"OR"or"AND";result.createdAt=current and current.createdAt or tonumber(result.createdAt)or now();result.creator=current and current.creator or result.creator or(UnitGUID("player")or"System");result.modifiedAt=current and current.modifiedAt or tonumber(result.modifiedAt)or now();result.modifiedBy=current and current.modifiedBy or result.modifiedBy or UnitGUID("player");result.manual=nil;result.rankRules=nil;return result
-end
-function Policy:MigrateLegacyGroups(groups)
- local defaults=HolyStorm.Permissions:GetDefaultGroups();local aliases={SYSTEM_GUILD_MASTER="guild-leadership",guild_leader="guild-leadership",SYSTEM_OFFICERS="officers",SYSTEM_USERS="guild-member",users="guild-member"};local migrated=copy(defaults)
- for oldId,group in pairs(type(groups)=="table"and groups or{})do local id=aliases[oldId]or oldId;if type(group)=="table"then local candidate;if defaults[id]then candidate=copy(migrated[id]);if id~=HolyStorm.Permissions.systemIds.LEADERSHIP then candidate.permissions={};for permission,enabled in pairs(group.permissions or{})do if enabled and permission~="*"then candidate.permissions[HolyStorm.Permissions:NormalizePermissionId(permission)]=true end end end else candidate=copy(group);candidate.id=id;candidate.system=false;candidate.systemRule=nil;candidate.nameKey=nil;candidate.creator=candidate.createdBy or candidate.creator or"Legacy"end;candidate.characterMembers=candidate.characterMembers or{};candidate.accountMembers=candidate.accountMembers or{};for subject,enabled in pairs(group.manual or{})do if enabled then local account=HolyStorm.TwinkCore and HolyStorm.TwinkCore:GetAccount(subject);if account then candidate.accountMembers[subject]=true else candidate.characterMembers[subject]=true end end end;candidate.guildRanks=candidate.guildRanks or group.rankRules or{};local normalized=self:NormalizeGroup(candidate,defaults[id]);if normalized then if defaults[id]then normalized.system=true;normalized.systemRule=defaults[id].systemRule;normalized.nameKey=defaults[id].nameKey;normalized.descriptionKey=defaults[id].descriptionKey;normalized.creator="System"end;migrated[id]=normalized end end end
- return migrated
-end
-function Policy:EnsureSystemGroups(state)
- local defaults=HolyStorm.Permissions:GetDefaultGroups();for id,definition in pairs(defaults)do local existing=state.groups[id];if not existing then state.groups[id]=copy(definition)else existing.id=id;existing.system=true;existing.systemRule=definition.systemRule;existing.nameKey=definition.nameKey;existing.descriptionKey=definition.descriptionKey;existing.creator="System";existing.permissions=type(existing.permissions)=="table"and existing.permissions or copy(definition.permissions);existing.characterMembers=type(existing.characterMembers)=="table"and existing.characterMembers or{};existing.accountMembers=type(existing.accountMembers)=="table"and existing.accountMembers or{};existing.guildRanks=type(existing.guildRanks)=="table"and existing.guildRanks or{};existing.filterIds=type(existing.filterIds)=="table"and existing.filterIds or{};existing.ruleIds=type(existing.ruleIds)=="table"and existing.ruleIds or{};existing.managerGroupIds=type(existing.managerGroupIds)=="table"and existing.managerGroupIds or copy(definition.managerGroupIds)end end
- for id,group in pairs(state.groups)do if group.system and not defaults[id]then group.system=false;group.systemRule=nil;group.nameKey=nil end end
-end
-function Policy:CreateState(guildId)
- local firstGuild=next(self:GetStates())==nil;local legacy=firstGuild and HolyStorm.db.global.permissions and(HolyStorm.db.global.permissions.groups or HolyStorm.db.global.permissions.roles);local state={guildId=guildId,groups=self:MigrateLegacyGroups(legacy),filters=firstGuild and copy(HolyStorm.db.global.filters.global or{})or{},rules=firstGuild and copy(HolyStorm.db.global.rules.global or{})or{},modules={},version=0,revisionID=nil,previousRevisionID=nil,history={},status=self.status.UNINITIALIZED,lastSync=0,missingRevisions={}}
- self:EnsureSystemGroups(state);self:GetStates()[guildId]=state;return state
-end
-function Policy:UpgradeState(state)
- local previousSchema=tonumber(state.schemaVersion)or 0;state.groups=type(state.groups)=="table"and state.groups or{};state.filters=type(state.filters)=="table"and state.filters or{};state.rules=type(state.rules)=="table"and state.rules or{};state.modules=type(state.modules)=="table"and state.modules or{};state.history=type(state.history)=="table"and state.history or{};for id,group in pairs(state.groups)do local normalized=self:NormalizeGroup(group,group);if normalized then state.groups[id]=normalized else state.groups[id]=nil end end;self:EnsureSystemGroups(state)
- if previousSchema<3 then local defaults=HolyStorm.Permissions:GetDefaultGroups();for _,id in ipairs({HolyStorm.Permissions.systemIds.OFFICERS,HolyStorm.Permissions.systemIds.MEMBER})do local group=state.groups[id];for permission,enabled in pairs(defaults[id].permissions)do if enabled and(permission:match("^news%-")or permission:match("^guide%-"))then group.permissions[permission]=true end end end end
- if previousSchema<4 then local defaults=HolyStorm.Permissions:GetDefaultGroups();for _,id in ipairs({HolyStorm.Permissions.systemIds.OFFICERS,HolyStorm.Permissions.systemIds.MEMBER})do local group=state.groups[id];for permission,enabled in pairs(defaults[id].permissions)do if enabled and permission:match("^poi%-")then group.permissions[permission]=true end end end end
- if previousSchema<5 then local defaults=HolyStorm.Permissions:GetDefaultGroups();for _,id in ipairs({HolyStorm.Permissions.systemIds.OFFICERS,HolyStorm.Permissions.systemIds.MEMBER})do local group=state.groups[id];for permission,enabled in pairs(defaults[id].permissions)do if enabled and permission:match("^position%-")then group.permissions[permission]=true end end end end
- state.schemaVersion=5;return state
-end
-function Policy:BindCompatibility(state)
- HolyStorm.db.global.permissions.groups=state.groups;HolyStorm.db.global.permissions.roles=state.groups;HolyStorm.db.global.permissions.version=state.version;HolyStorm.db.global.filters.global=state.filters;HolyStorm.db.global.rules.global=state.rules
-end
-function Policy:Snapshot(state)return{groups=copy(state.groups),filters=copy(state.filters),rules=copy(state.rules),modules=copy(state.modules)}end
-function Policy:ValidateGroup(group,snapshot)
- if type(group)~="table"or not validId(group.id)or type(group.name or group.nameKey)~="string"or(group.description~=nil and type(group.description)~="string")or type(group.permissions)~="table"or type(group.characterMembers)~="table"or type(group.accountMembers)~="table"or type(group.guildRanks)~="table"or type(group.filterIds)~="table"or type(group.ruleIds)~="table"or type(group.managerGroupIds)~="table"then return false,"INVALID_GROUP"end
- if not group.nameKey and(#group.name==0 or#group.name>128)then return false,"INVALID_GROUP_NAME"end;if#(group.description or"")>1024 then return false,"INVALID_GROUP_DESCRIPTION"end;if HolyStorm.Utils.TableCount(group.characterMembers)+HolyStorm.Utils.TableCount(group.accountMembers)+HolyStorm.Utils.TableCount(group.guildRanks)>self.maxMembers then return false,"TOO_MANY_MEMBERSHIPS"end
- for permission,value in pairs(group.permissions)do if value~=true or not HolyStorm.Permissions.keys[permission]then return false,"UNKNOWN_PERMISSION:"..tostring(permission)end end
- for subject,value in pairs(group.characterMembers)do if not validId(subject)or value~=true then return false,"INVALID_CHARACTER_MEMBERSHIP"end end;for subject,value in pairs(group.accountMembers)do if not validId(subject)or value~=true then return false,"INVALID_ACCOUNT_MEMBERSHIP"end end
- for rank,value in pairs(group.guildRanks)do if tonumber(rank)==nil or value~=true then return false,"INVALID_GUILD_RANK"end end
- for _,id in ipairs(group.filterIds)do if not snapshot.filters[id]then return false,"MISSING_FILTER:"..id end end
- for _,id in ipairs(group.ruleIds)do if not snapshot.rules[id]then return false,"MISSING_RULE:"..id end end
- for _,id in ipairs(group.managerGroupIds)do if id==group.id or not snapshot.groups[id]then return false,"INVALID_MANAGER:"..id end end
- return true
-end
-function Policy:HasManagerCycle(groups)
- local visiting,done={},{};local function visit(id)if visiting[id]then return true end;if done[id]then return false end;visiting[id]=true;for _,manager in ipairs(groups[id]and groups[id].managerGroupIds or{})do if visit(manager)then return true end end;visiting[id]=nil;done[id]=true;return false end;for id in pairs(groups)do if visit(id)then return true end end;return false
-end
-function Policy:ValidateSnapshot(snapshot)
- if type(snapshot)~="table"or type(snapshot.groups)~="table"or type(snapshot.filters)~="table"or type(snapshot.rules)~="table"or type(snapshot.modules)~="table"then return false,"INVALID_SNAPSHOT"end;local count=0;for id,group in pairs(snapshot.groups)do count=count+1;if count>self.maxObjects or id~=group.id then return false,"INVALID_GROUP_INDEX"end;local ok,err=self:ValidateGroup(group,snapshot);if not ok then return false,err end end
- for id,definition in pairs(HolyStorm.Permissions:GetDefaultGroups())do local group=snapshot.groups[id];if not group or group.system~=true then return false,"MISSING_SYSTEM_GROUP"end;if group.systemRule~=definition.systemRule or group.nameKey~=definition.nameKey or group.creator~="System"then return false,"SYSTEM_INVARIANT"end end;for id,group in pairs(snapshot.groups)do if group.system and not HolyStorm.Permissions:GetDefaultGroups()[id]then return false,"UNKNOWN_SYSTEM_GROUP"end end;if self:HasManagerCycle(snapshot.groups)then return false,"MANAGER_CYCLE"end
- for id,filter in pairs(snapshot.filters)do if id~=filter.id or not validId(id)then return false,"INVALID_FILTER"end;local ok,err=HolyStorm.Rules:Validate(filter.root or filter.rules);if not ok then return false,err end end;for id,rule in pairs(snapshot.rules)do if id~=rule.id or not validId(id)then return false,"INVALID_RULE"end;local ok,err=HolyStorm.Rules:Validate(rule.root or rule.rules);if not ok then return false,err end end;return true
+local ordered = { Components.State, Components.Groups, Components.Filters, Components.Engine, Components.Sync }
+for _, component in ipairs(ordered) do
+    for name, implementation in pairs(component) do
+        if type(implementation) == "function" then Policy[name] = implementation end
+    end
 end
 
-function Policy:GetMembershipReasonsForState(state,group,accountUUID,characterUUID,context,stack)
- local reasons={};if type(group)~="table"then return reasons end;context=context or self:BuildContext(accountUUID,characterUUID);local member=context.member
- local characterMembers=type(group.characterMembers)=="table"and group.characterMembers or{}
- local accountMembers=type(group.accountMembers)=="table"and group.accountMembers or{}
- local guildRanks=type(group.guildRanks)=="table"and group.guildRanks or{}
- local filterIds=type(group.filterIds)=="table"and group.filterIds or{}
- local ruleIds=type(group.ruleIds)=="table"and group.ruleIds or{}
- if group.id==HolyStorm.Permissions.systemIds.MEMBER and member then reasons[#reasons+1]={type="SYSTEM",id="GUILD_MEMBER"}end;if group.id==HolyStorm.Permissions.systemIds.OFFICERS and member and member.rankIndex==1 then reasons[#reasons+1]={type="SYSTEM",id="OFFICER_RANK"}end;if group.id==HolyStorm.Permissions.systemIds.LEADERSHIP and member and member.rankIndex==0 then reasons[#reasons+1]={type="SYSTEM",id="GUILD_LEADER"}end
- if characterUUID and characterMembers[characterUUID]then reasons[#reasons+1]={type="CHARACTER",id=characterUUID}end;if accountUUID and accountMembers[accountUUID]then reasons[#reasons+1]={type="ACCOUNT",id=accountUUID}end;if member and guildRanks[member.rankIndex]then reasons[#reasons+1]={type="GUILD_RANK",id=member.rankIndex,name=member.rank}end
- if#filterIds>0 then local matched=group.filterOperator~="OR";local traces={};for _,filterId in ipairs(filterIds)do local filter=state.filters[filterId];local ok,trace=filter and HolyStorm.Rules:Evaluate(filter.root or filter.rules,context)or false;traces[#traces+1]={id=filterId,name=filter and filter.name,result=ok,trace=trace};if group.filterOperator=="OR"then matched=matched or ok elseif not ok then matched=false end end;if matched then for _,entry in ipairs(traces)do if entry.result then reasons[#reasons+1]={type="FILTER",id=entry.id,name=entry.name,trace=entry.trace}end end end end
- for _,ruleId in ipairs(ruleIds)do local rule=state.rules[ruleId];local matched,trace=rule and HolyStorm.Rules:Evaluate(rule.root or rule.rules,context)or false;if matched then reasons[#reasons+1]={type="RULE",id=ruleId,name=rule.name,trace=trace}end end;return reasons
-end
-function Policy:GetMembershipReasons(group,accountUUID,characterUUID,context)local state=self:GetState();return state and self:GetMembershipReasonsForState(state,group,accountUUID,characterUUID,context)or{}end
-function Policy:GetEffectiveGroupsForState(state,accountUUID,characterUUID)
- local groups={};local context=self:BuildContext(accountUUID,characterUUID);for id,group in pairs(state and state.groups or{})do local reasons=self:GetMembershipReasonsForState(state,group,context.accountUUID,context.characterUUID,context);if#reasons>0 then groups[id]={id=id,name=group.name,nameKey=group.nameKey,reasons=reasons,permissions=copy(type(group.permissions)=="table"and group.permissions or{})}end end;return groups
-end
-function Policy:GetEffectiveGroups(accountUUID,characterUUID,force)
- local state=self:GetState();if not state then return{}end;local context=self:BuildContext(accountUUID,characterUUID);local key=tostring(context.accountUUID).."\031"..tostring(context.characterUUID);if not force and self.membershipCache[key]then return copy(self.membershipCache[key])end;local groups=self:GetEffectiveGroupsForState(state,context.accountUUID,context.characterUUID);self.membershipCache[key]=groups;return copy(groups)
-end
-function Policy:HasPermissionInState(state,accountUUID,characterUUID,permission)
- if self:IsActualGuildLeader(accountUUID,characterUUID)then return true end;local groups=self:GetEffectiveGroupsForState(state,accountUUID,characterUUID);if groups[HolyStorm.Permissions.systemIds.LEADERSHIP]then return true end;for _,group in pairs(groups)do if group.permissions[permission]then return true end end;return false
-end
-function Policy:GetEffectivePermissions(accountUUID,characterUUID)
- local state=self:GetState();if not state then return{}end;local context=self:BuildContext(accountUUID,characterUUID);local key=tostring(context.accountUUID).."\031"..tostring(context.characterUUID);if self.permissionCache[key]then return copy(self.permissionCache[key])end;local result={};local groups=self:GetEffectiveGroupsForState(state,context.accountUUID,context.characterUUID);if self:IsActualGuildLeader(context.accountUUID,context.characterUUID)or groups[HolyStorm.Permissions.systemIds.LEADERSHIP]then result["*"]=true else for _,group in pairs(groups)do for permission in pairs(group.permissions)do result[permission]=true end end end;self.permissionCache[key]=result;return copy(result)
-end
-function Policy:HasPermission(accountUUID,characterUUID,permission)
- if permission==nil then permission=characterUUID;if type(accountUUID)=="table"then characterUUID=accountUUID.characterUUID or accountUUID.guid;accountUUID=accountUUID.accountUUID or accountUUID.playerId else characterUUID=nil end end
- permission=HolyStorm.Permissions:NormalizePermissionId(permission);local state=self:GetState();if not state or state.status~=self.status.VALID then return self:IsActualGuildLeader(accountUUID,characterUUID)and permission~="permissions-reset"end;return self:HasPermissionInState(state,accountUUID,characterUUID,permission)
-end
-function Policy:Can(permission,accountUUID,characterUUID,target)return self:HasPermission(accountUUID,characterUUID,permission)end
-function Policy:Explain(permission,accountUUID,characterUUID,target)local groups=self:GetEffectiveGroups(accountUUID,characterUUID);local grants={};for id,group in pairs(groups)do if id==HolyStorm.Permissions.systemIds.LEADERSHIP or group.permissions[HolyStorm.Permissions:NormalizePermissionId(permission)]then grants[#grants+1]={groupId=id,name=group.name,nameKey=group.nameKey,reasons=group.reasons}end end;local allowed=self:Can(permission,accountUUID,characterUUID,target);return{permission=permission,allowed=allowed,groups=groups,grants=grants,reason=allowed and"GRANTED_BY_GROUP"or"NO_GROUP_GRANTS_PERMISSION",target=target,state=self:GetPermissionStateStatus()}end
-
-function Policy:IsManagedBy(state,actor,groupId)
- local group=state.groups[groupId];if not group then return false end;for _,managerId in ipairs(group.managerGroupIds or{})do if#self:GetMembershipReasonsForState(state,state.groups[managerId],actor.accountUUID,actor.characterUUID)>0 then return true end end;return false
-end
-function Policy:CanManageGroup(actorAccount,actorCharacter,groupId,state)
- state=state or self:GetState();if not state or not state.groups[groupId]then return false end;if self:IsActualGuildLeader(actorAccount,actorCharacter)then return true end;local actor={accountUUID=actorAccount,characterUUID=actorCharacter};return self:IsManagedBy(state,actor,groupId)or self:HasPermissionInState(state,actorAccount,actorCharacter,"groups-edit")
-end
-function Policy:ApplyChange(snapshot,change)
- local nextState=copy(snapshot);local action=change.action
- if action=="BASELINE"then nextState=copy(change.snapshot)
- elseif action=="GROUP_UPSERT"then nextState.groups[change.group.id]=copy(change.group)
- elseif action=="GROUP_DELETE"then nextState.groups[change.groupId]=nil
- elseif action=="FILTER_UPSERT"then nextState.filters[change.filter.id]=copy(change.filter)
- elseif action=="FILTER_DELETE"then nextState.filters[change.filterId]=nil
- elseif action=="RULE_UPSERT"then nextState.rules[change.rule.id]=copy(change.rule)
- elseif action=="RULE_DELETE"then nextState.rules[change.ruleId]=nil
- elseif action=="MODULE_SET"then nextState.modules[change.moduleId]=change.enabled==true
- -- A permission reset removes permission-context references and custom groups.
- -- Reusable filter/rule objects belong to their own registry and remain intact.
- elseif action=="RESET"then nextState.groups=HolyStorm.Permissions:GetDefaultGroups();nextState.modules={}
- else return nil,"UNKNOWN_ACTION"end;return nextState
-end
-function Policy:AuthorizeChange(state,change,actor)
- if not actor or not validId(actor.characterUUID)then return false,"INVALID_ACTOR"end;local action=change.action;local groups=state.groups
- if action=="BASELINE"then return self:IsActualGuildLeader(actor.accountUUID,actor.characterUUID),"GUILD_LEADER_REQUIRED"end
- if action=="RESET"then return self:HasPermissionInState(state,actor.accountUUID,actor.characterUUID,"permissions-reset")and true or false,"PERMISSION_DENIED"end
- if action=="GROUP_DELETE"then local group=groups[change.groupId];if not group then return false,"NOT_FOUND"end;if group.system then return false,"SYSTEM_GROUP"end;return self:HasPermissionInState(state,actor.accountUUID,actor.characterUUID,"groups-delete"),"PERMISSION_DENIED"end
- if action=="GROUP_UPSERT"then local incoming,current=change.group,groups[change.group.id];if current and current.system then if incoming.id~=current.id or incoming.system~=true or incoming.nameKey~=current.nameKey or incoming.systemRule~=current.systemRule then return false,"SYSTEM_INVARIANT"end end;local leadershipMembershipChanged=current and incoming.id==HolyStorm.Permissions.systemIds.LEADERSHIP and(not same(incoming.characterMembers,current.characterMembers)or not same(incoming.accountMembers,current.accountMembers)or not same(incoming.guildRanks,current.guildRanks)or not same(incoming.filterIds,current.filterIds)or not same(incoming.ruleIds,current.ruleIds)or incoming.filterOperator~=current.filterOperator);if leadershipMembershipChanged and not self:IsActualGuildLeader(actor.accountUUID,actor.characterUUID)then return false,"GUILD_LEADER_REQUIRED"end
-  if not current then return self:HasPermissionInState(state,actor.accountUUID,actor.characterUUID,"groups-create"),"PERMISSION_DENIED"end
-  if not same(incoming.permissions,current.permissions)and not self:HasPermissionInState(state,actor.accountUUID,actor.characterUUID,"permissions-manage")then return false,"PERMISSION_DENIED"end
-  if(not same(incoming.characterMembers,current.characterMembers)or not same(incoming.accountMembers,current.accountMembers)or not same(incoming.guildRanks,current.guildRanks))and not(self:IsManagedBy(state,actor,incoming.id)or self:HasPermissionInState(state,actor.accountUUID,actor.characterUUID,"groups-manage-members"))then return false,"PERMISSION_DENIED"end
-  return self:CanManageGroup(actor.accountUUID,actor.characterUUID,incoming.id,state),"PERMISSION_DENIED"
- end
- if action=="FILTER_UPSERT"then local permission=state.filters[change.filter.id]and"filters-edit"or"filters-create";return self:HasPermissionInState(state,actor.accountUUID,actor.characterUUID,permission),"PERMISSION_DENIED"end
- if action=="FILTER_DELETE"then return self:HasPermissionInState(state,actor.accountUUID,actor.characterUUID,"filters-delete"),"PERMISSION_DENIED"end
- if action=="RULE_UPSERT"or action=="RULE_DELETE"then return self:HasPermissionInState(state,actor.accountUUID,actor.characterUUID,"rules-manage"),"PERMISSION_DENIED"end
- if action=="MODULE_SET"then return self:HasPermissionInState(state,actor.accountUUID,actor.characterUUID,"modules-manage"),"PERMISSION_DENIED"end;return false,"UNKNOWN_ACTION"
-end
-function Policy:ValidateRevision(revision)
- return type(revision)=="table"and tonumber(revision.version)and validId(revision.revisionID)and(revision.previousRevisionID==nil or validId(revision.previousRevisionID))and type(revision.changedBy)=="table"and validId(revision.changedBy.characterUUID)and validId(revision.changedBy.accountUUID)and tonumber(revision.changedAt)and type(revision.change)=="table"and type(revision.change.action)=="string"
-end
-function Policy:EmitChangeEvents(change)
- local action=change.action;if action=="GROUP_UPSERT"then HolyStorm.Events:Emit("HS_GROUP_UPDATED",change.group.id)elseif action=="GROUP_DELETE"then HolyStorm.Events:Emit("HS_GROUP_DELETED",change.groupId)elseif action=="FILTER_UPSERT"then HolyStorm.Events:Emit("HS_FILTER_UPDATED",change.filter.id)elseif action=="FILTER_DELETE"then HolyStorm.Events:Emit("HS_FILTER_DELETED",change.filterId)elseif action=="RULE_UPSERT"then HolyStorm.Events:Emit("HS_RULE_UPDATED",change.rule.id)elseif action=="RULE_DELETE"then HolyStorm.Events:Emit("HS_RULE_DELETED",change.ruleId)end
-end
-function Policy:Invalidate(reason)
- self.generation=self.generation+1;self.permissionCache={};self.membershipCache={};HolyStorm.Events:Emit("HS_POLICY_UPDATED",reason,self.generation);HolyStorm.Events:Emit("HS_EFFECTIVE_PERMISSIONS_CHANGED",reason)
- if HolyStorm.Tasks and HolyStorm.Tasks.GetTaskType and HolyStorm.Tasks:GetTaskType("Policy.RecalculateEffectiveMemberships")then HolyStorm.Tasks:Queue("Policy.RecalculateEffectiveMemberships",{triggerSource=reason or"POLICY_INVALIDATE",debounce=.2})end
-end
-function Policy:RecordRejected(revision,sender,reason)
- local state=self:GetState();if not state then return end;state.rejectedRevisions=state.rejectedRevisions or{};state.rejectedRevisions[#state.rejectedRevisions+1]={revisionID=revision and revision.revisionID,sender=sender or(revision and revision.changedBy and revision.changedBy.characterUUID),reason=reason,timestamp=now()};while#state.rejectedRevisions>self.maxRejected do table.remove(state.rejectedRevisions,1)end;HolyStorm.Events:Emit("HS_PERMISSIONS_REVISION_REJECTED",reason)
-end
-function Policy:CommitSnapshot(state,snapshot,revision)
- state.groups,state.filters,state.rules,state.modules=snapshot.groups,snapshot.filters,snapshot.rules,snapshot.modules;state.previousRevisionID=revision.previousRevisionID;state.revisionID=revision.revisionID;state.version=revision.version;state.changedBy=copy(revision.changedBy);state.changedAt=revision.changedAt;state.status=self.status.VALID;state.lastSync=now();state.history[#state.history+1]=copy(revision);while#state.history>self.maxHistory do table.remove(state.history,1)end;self:EnsureSystemGroups(state)
- -- Detached states are used for predecessor-by-predecessor validation. They must
- -- never rebind the live compatibility views or emit live-state UI events.
- if self:GetState(state.guildId)==state then self:BindCompatibility(state);if revision.change.action=="FILTER_UPSERT"or revision.change.action=="FILTER_DELETE"or revision.change.action=="RULE_UPSERT"or revision.change.action=="RULE_DELETE"then HolyStorm.Rules:RebuildDemands()end;self:Invalidate(revision.change.action);self:EmitChangeEvents(revision.change);HolyStorm.Events:Emit("HS_PERMISSIONS_REVISION_APPLIED",copy(revision));HolyStorm.Events:Emit("HS_PERMISSIONS_STATE_UPDATED",state.guildId,state.version,state.revisionID)end;return true
-end
-function Policy:ApplyRevision(state,revision)
- if not self:ValidateRevision(revision)then self:RecordRejected(revision,nil,"INVALID_REVISION");return false,"INVALID_REVISION"end;if revision.revisionID==state.revisionID then return true,"DUPLICATE"end
- if revision.version==state.version and revision.previousRevisionID==state.previousRevisionID and revision.revisionID~=state.revisionID then state.status=self.status.CONFLICT;state.fork={localRevision=state.revisionID,remoteRevision=revision.revisionID,version=revision.version};self:RecordRejected(revision,nil,"FORK");HolyStorm.Events:Emit("HS_PERMISSIONS_CONFLICT_DETECTED",copy(state.fork));log("ERROR","revision","Permission revision fork detected",state.fork);return false,"FORK"end
- if revision.version~=state.version+1 or revision.previousRevisionID~=state.revisionID then return false,"MISSING_PREDECESSOR"end;local allowed,reason=self:AuthorizeChange(state,revision.change,revision.changedBy);if not allowed then self:RecordRejected(revision,nil,reason);log("WARN","authority","Permission revision actor unauthorized",{revisionID=revision.revisionID,reason=reason});return false,reason end
- local snapshot,err=self:ApplyChange(self:Snapshot(state),revision.change);if not snapshot then self:RecordRejected(revision,nil,err);return false,err end;local valid,validationError=self:ValidateSnapshot(snapshot);if not valid then self:RecordRejected(revision,nil,validationError);return false,validationError end;return self:CommitSnapshot(state,snapshot,revision)
-end
-function Policy:CommitChange(change,actor)
- local state=self:GetState();if not state or state.status~=self.status.VALID then return false,"STATE_NOT_VALID"end;actor=actor or self:Actor();local allowed,reason=self:AuthorizeChange(state,change,actor);if not allowed then log("WARN","authority","Permission change rejected",{action=change.action,reason=reason});return false,reason end;local snapshot,err=self:ApplyChange(self:Snapshot(state),change);if not snapshot then return false,err end;local valid,validationError=self:ValidateSnapshot(snapshot);if not valid then return false,validationError end;if same(snapshot,self:Snapshot(state))then return false,"UNCHANGED"end
- local revision={version=state.version+1,revisionID=self:NewRevisionId(state.guildId,state.version+1),previousRevisionID=state.revisionID,changedBy=copy(actor),changedAt=now(),action=change.action,change=copy(change)};self:CommitSnapshot(state,snapshot,revision);HolyStorm.Sync:Publish("permissions",state.guildId,"PERMISSION_REVISION_CREATED");log("INFO","revision","Permission revision created",{version=revision.version,revisionID=revision.revisionID,action=change.action});return true,copy(revision)
+local function publicView(component)
+    local view = { version=component.version }
+    for name, implementation in pairs(component) do
+        if type(implementation) == "function" then
+            local method = implementation
+            view[name] = function(_, ...) return method(Policy, ...) end
+        else
+            view[name] = implementation
+        end
+    end
+    return view
 end
 
-function Policy:GetGroups()return copy(self:GetStore("groups")or{})end
-function Policy:GetGroup(id)local group=(self:GetStore("groups")or{})[id];return group and copy(group)end
-function Policy:GetFilters(scope)return copy(self:GetStore("filters",scope)or{})end
-function Policy:GetRules(scope)return copy(self:GetStore("rules",scope)or{})end
-function Policy:GetFilterTemplates()return copy(HolyStorm.db.global.filters.templates or{})end
-function Policy:GetActiveFilters(contextId)local root=HolyStorm.db.profile.filters.activeByContext;root[contextId]=root[contextId]or{};return copy(root[contextId])end
-function Policy:SetActiveFilters(contextId,filters)HolyStorm.db.profile.filters.activeByContext[contextId]=copy(filters or{});HolyStorm.Events:Emit("HS_ACTIVE_FILTERS_UPDATED",contextId);return true end
-function Policy:GetEffectiveMembers(groupId)
- local group=self:GetGroup(groupId);local out={};if not group then return out end;local guild=HolyStorm.Data.GuildStore:GetCurrent();for guid,member in pairs(guild and guild.roster or{})do local accountUUID=HolyStorm.TwinkCore and HolyStorm.TwinkCore:GetAccountUUIDForCharacter(guid)or HolyStorm.Data.PlayerStore:GetCharacterOwner(guid);local membership=self:GetMembershipReasons(group,accountUUID,guid);if#membership>0 then local character=HolyStorm.Data.CharacterStore:Get(guid)or{};out[#out+1]={characterUUID=guid,accountUUID=accountUUID,name=member.name or character.name or guid,classFile=character.classFile or member.classFile,rank=member.rank,rankIndex=member.rankIndex,isMain=accountUUID and HolyStorm.TwinkCore and HolyStorm.TwinkCore:GetAccountMain(accountUUID)==guid,reasons=membership}end end;table.sort(out,function(a,b)return tostring(a.name)<tostring(b.name)end);return out
-end
-function Policy:GetGroupSummaries()
- local groups=self:GetGroups();local out={};for id,group in pairs(groups)do out[id]={id=id,name=group.name,nameKey=group.nameKey,system=group.system==true,creator=group.creator,description=group.description,effectiveMembers=0,explicitMembers=HolyStorm.Utils.TableCount(group.characterMembers)+HolyStorm.Utils.TableCount(group.accountMembers)+HolyStorm.Utils.TableCount(group.guildRanks),filters=#group.filterIds,permissions=HolyStorm.Utils.TableCount(group.permissions)}end;local guild=HolyStorm.Data.GuildStore:GetCurrent();for guid in pairs(guild and guild.roster or{})do local accountUUID=HolyStorm.TwinkCore and HolyStorm.TwinkCore:GetAccountUUIDForCharacter(guid)or HolyStorm.Data.PlayerStore:GetCharacterOwner(guid);for id in pairs(self:GetEffectiveGroups(accountUUID,guid))do if out[id]then out[id].effectiveMembers=out[id].effectiveMembers+1 end end end;return out
-end
-function Policy:GetGroupSummary(groupId)return self:GetGroupSummaries()[groupId]end
-function Policy:GetPermissionMatrix()local groups=self:GetGroups();local groupIds=tableKeys(groups);local rows={};for permissionId,definition in pairs(HolyStorm.Permissions:GetPermissionDefinitions())do local grants={};for _,groupId in ipairs(groupIds)do grants[groupId]=groupId==HolyStorm.Permissions.systemIds.LEADERSHIP or groups[groupId].permissions[permissionId]==true end;rows[#rows+1]={permissionId=permissionId,definition=definition,grants=grants}end;table.sort(rows,function(a,b)return a.permissionId<b.permissionId end);return{groups=groups,groupIds=groupIds,rows=rows}end
-function Policy:CreateGroup(definition)local id=definition and definition.id or string.format("group-%x-%x",now(),math.random(0,0x7fffffff));local group,err=self:NormalizeGroup({id=id,name=definition and definition.name or id,description=definition and definition.description or"",permissions=definition and definition.permissions or{},characterMembers={},accountMembers={},guildRanks={},filterIds={},ruleIds={},managerGroupIds={},filterOperator="AND",creator=UnitGUID("player")});if not group then return false,err end;return self:CommitChange({action="GROUP_UPSERT",group=group})end
-function Policy:SaveGroup(group)local current=self:GetGroup(group and group.id);local normalized,err=self:NormalizeGroup(group,current);if not normalized then return false,err end;if current and same(normalized,current)then return false,"UNCHANGED"end;normalized.modifiedAt=now();normalized.modifiedBy=UnitGUID("player");local ok,result=self:CommitChange({action="GROUP_UPSERT",group=normalized});return ok,ok and self:GetGroup(normalized.id)or result end
-function Policy:UpdateGroup(id,changes)local group=self:GetGroup(id);if not group then return false,"NOT_FOUND"end;for key,value in pairs(changes or{})do if key~="id"and key~="system"and key~="systemRule"then group[key]=copy(value)end end;return self:SaveGroup(group)end
-function Policy:GetGroupUsage(id)local usage={};for groupId,group in pairs(self:GetStore("groups")or{})do for _,managerId in ipairs(group.managerGroupIds or{})do if managerId==id then usage[#usage+1]={kind="manager",id=groupId}end end end;return usage end
-function Policy:DeleteGroup(id)if#self:GetGroupUsage(id)>0 then return false,"GROUP_IN_USE"end;return self:CommitChange({action="GROUP_DELETE",groupId=id})end
-function Policy:AddCharacterMembership(groupId,characterUUID)local group=self:GetGroup(groupId);if not group then return false,"NOT_FOUND"end;if group.characterMembers[characterUUID]then return false,"UNCHANGED"end;group.characterMembers[characterUUID]=true;return self:SaveGroup(group)end
-function Policy:AddAccountMembership(groupId,accountUUID)local group=self:GetGroup(groupId);if not group then return false,"NOT_FOUND"end;if group.accountMembers[accountUUID]then return false,"UNCHANGED"end;group.accountMembers[accountUUID]=true;return self:SaveGroup(group)end
-function Policy:AddGuildRankMembership(groupId,rankIndex)local group=self:GetGroup(groupId);if not group then return false,"NOT_FOUND"end;if group.guildRanks[rankIndex]then return false,"UNCHANGED"end;group.guildRanks[rankIndex]=true;return self:SaveGroup(group)end
-function Policy:RemoveMembership(groupId,source,id)local group=self:GetGroup(groupId);if not group then return false,"NOT_FOUND"end;local map=source=="character"and group.characterMembers or source=="account"and group.accountMembers or source=="guild-rank"and group.guildRanks;if not map or not map[id]then return false,"UNCHANGED"end;map[id]=nil;return self:SaveGroup(group)end
-function Policy:SetGroupPermissions(groupId,permissions)local group=self:GetGroup(groupId);if not group then return false,"NOT_FOUND"end;group.permissions=normalizeSet(permissions);return self:SaveGroup(group)end
-function Policy:SetGroupManagers(groupId,managerIds)local group=self:GetGroup(groupId);if not group then return false,"NOT_FOUND"end;group.managerGroupIds=normalizeArray(managerIds);return self:SaveGroup(group)end
-function Policy:AttachFilter(groupId,filterId)local group=self:GetGroup(groupId);if not group then return false,"NOT_FOUND"end;if not(self:GetStore("filters")or{})[filterId]then return false,"FILTER_NOT_FOUND"end;if arrayContains(group.filterIds,filterId)then return false,"UNCHANGED"end;group.filterIds[#group.filterIds+1]=filterId;table.sort(group.filterIds);return self:SaveGroup(group)end
-function Policy:DetachFilter(groupId,filterId)local group=self:GetGroup(groupId);if not group then return false,"NOT_FOUND"end;local out={};for _,id in ipairs(group.filterIds)do if id~=filterId then out[#out+1]=id end end;if#out==#group.filterIds then return false,"UNCHANGED"end;group.filterIds=out;return self:SaveGroup(group)end
-function Policy:SaveObject(kind,object,scope)
- if scope=="local"then local valid,err=self:ValidateObject(kind,object);if not valid then return false,err end;local store=self:GetStore(kind,"local");local saved=copy(object);saved.version=((store[saved.id]and store[saved.id].version)or 0)+1;saved.updatedAt=now();store[saved.id]=saved;HolyStorm.Rules:RebuildDemands();HolyStorm.Events:Emit(kind=="filters"and"HS_FILTER_UPDATED"or"HS_RULE_UPDATED",saved.id);return true,copy(saved)end
- local change;if kind=="filters"then change={action="FILTER_UPSERT",filter=copy(object)}elseif kind=="rules"then change={action="RULE_UPSERT",rule=copy(object)}else return false,"INVALID_KIND"end;local current=(self:GetStore(kind)or{})[object.id];local saved=copy(object);saved.id=object.id;saved.name=object.name;saved.creator=current and current.creator or object.creator or UnitGUID("player");saved.createdAt=current and current.createdAt or object.createdAt or now();if current then local comparable=copy(saved);comparable.modifiedAt=current.modifiedAt;comparable.modifiedBy=current.modifiedBy;if same(comparable,current)then return false,"UNCHANGED"end end;saved.modifiedAt=now();saved.modifiedBy=UnitGUID("player");change[kind=="filters"and"filter"or"rule"]=saved;local ok,result=self:CommitChange(change);return ok,ok and copy(saved)or result
-end
-function Policy:ValidateObject(kind,object)if type(object)~="table"or not validId(object.id)or type(object.name)~="string"then return false,"INVALID_OBJECT"end;return HolyStorm.Rules:Validate(object.root or object.rules)end
-function Policy:DeleteObject(kind,id,scope)if scope=="local"then local store=self:GetStore(kind,"local");if not store[id]then return false,"NOT_FOUND"end;store[id]=nil;HolyStorm.Rules:RebuildDemands();return true end;if kind=="filters"then for _,group in pairs(self:GetStore("groups"))do if arrayContains(group.filterIds,id)then return false,"FILTER_IN_USE"end end;return self:CommitChange({action="FILTER_DELETE",filterId=id})elseif kind=="rules"then for _,group in pairs(self:GetStore("groups"))do if arrayContains(group.ruleIds,id)then return false,"RULE_IN_USE"end end;return self:CommitChange({action="RULE_DELETE",ruleId=id})end;return false,"INVALID_KIND"end
-function Policy:Save(kind,object,scope)if kind=="groups"then return self:SaveGroup(object)end;return self:SaveObject(kind,object,scope)end
-function Policy:Delete(kind,id,scope)if kind=="groups"then return self:DeleteGroup(id)end;return self:DeleteObject(kind,id,scope)end
-function Policy:SaveRule(rule,scope)return self:SaveObject("rules",rule,scope)end;function Policy:DeleteRule(id,scope)return self:DeleteObject("rules",id,scope)end
-function Policy:SaveFilter(filter,scope)return self:SaveObject("filters",filter,scope)end;function Policy:DeleteFilter(id,scope)return self:DeleteObject("filters",id,scope)end
-function Policy:CreateFilter(filter)return self:SaveFilter(filter,"global")end;function Policy:UpdateFilter(id,changes)local f=copy((self:GetStore("filters")or{})[id]);if not f then return false,"NOT_FOUND"end;for k,v in pairs(changes or{})do if k~="id"then f[k]=copy(v)end end;return self:SaveFilter(f,"global")end
-function Policy:EvaluateRule(ruleOrId,context,scope)local rule=type(ruleOrId)=="string"and HolyStorm.Rules:GetRule(ruleOrId,scope)or ruleOrId;if not rule then return false,{{kind="error",error="RULE_NOT_FOUND"}}end;return HolyStorm.Rules:Evaluate(rule.root or rule.rules or rule,context)end
-function Policy:ApplyFilter(filterOrId,value,scope)local filter=type(filterOrId)=="string"and HolyStorm.Rules:GetFilter(filterOrId,scope)or filterOrId;if not filter then return false,{{kind="error",error="FILTER_NOT_FOUND"}}end;local context=value and value.character and value or self:BuildContext(value and(value.accountUUID or value.playerId),value and(value.guid or value.characterGuid));if value and not value.character then context.character=value.characterRecord or HolyStorm.Data.CharacterStore:Get(value.guid);context.member=value.member or context.member;context.target=value end;return HolyStorm.Rules:Evaluate(filter.root or filter.rules,context)end
-function Policy:ApplyFilters(active,value,combine)local mode=string.upper(combine or"AND");local result=mode~="OR";local trace={};for _,entry in ipairs(active or{})do local id,scope=type(entry)=="table"and entry.id or entry,type(entry)=="table"and entry.scope or nil;local ok,detail=self:ApplyFilter(id,value,scope);trace[#trace+1]={id=id,result=ok,trace=detail};if mode=="OR"then result=result or ok elseif not ok then result=false end end;return result,trace end
-function Policy:GetUsage(kind,id)local usage={};for groupId,group in pairs(self:GetStore("groups")or{})do for _,candidate in ipairs(group.filterIds or{})do if kind=="filters"and candidate==id then usage[#usage+1]={kind="group",id=groupId}end end;for _,candidate in ipairs(group.ruleIds or{})do if kind=="rules"and candidate==id then usage[#usage+1]={kind="group",id=groupId}end end end;return usage end
-function Policy:GetObjectSummary(kind,id,scope)local store=scope=="template"and kind=="filters"and HolyStorm.db.global.filters.templates or self:GetStore(kind,scope);local object=(store or{})[id];if not object then return nil end;local conditions=0;local function walk(node)if type(node)~="table"then return end;if node.field then conditions=conditions+1 end;for _,child in ipairs(node.children or{})do walk(child)end end;walk(object.root or object.rules);return{id=id,name=object.name,description=object.description,creator=object.creator,createdAt=object.createdAt,modifiedAt=object.modifiedAt or object.updatedAt,conditions=conditions,references=#self:GetUsage(kind,id)}end
-
-function Policy:SetGuildModuleEnabled(moduleId,enabled)if not validId(moduleId)then return false,"INVALID_MODULE"end;return self:CommitChange({action="MODULE_SET",moduleId=moduleId,enabled=enabled==true})end
-function Policy:IsGuildModuleEnabled(moduleId)local state=self:GetState();return not state or state.modules[moduleId]~=false end
-function Policy:RestoreDefaults()return self:CommitChange({action="RESET"})end
-function Policy:GetPermissionStateStatus()local state=self:GetState();if not state then return{status=self.status.UNINITIALIZED,version=0}end;return{guildId=state.guildId,status=state.status,version=state.version,revisionID=state.revisionID,previousRevisionID=state.previousRevisionID,historyLength=#state.history,oldestRevisionID=state.history[1]and state.history[1].revisionID,missingRevisions=copy(state.missingRevisions),fork=copy(state.fork),lastSync=state.lastSync,recovery=copy(state.recovery),catchup=copy(state.catchup),catchupReason=state.catchupReason}end
-function Policy:GetRevisionHistory()local state=self:GetState();return copy(state and state.history or{})end
-function Policy:GetRejectedRevisions()local state=self:GetState();return copy(state and state.rejectedRevisions or{})end
-function Policy:ExportPermissionState(guildId)local state=self:GetState(guildId);if not state or state.version==0 then return nil end;return{guildId=guildId,current={version=state.version,revisionID=state.revisionID,previousRevisionID=state.previousRevisionID,changedBy=copy(state.changedBy),changedAt=state.changedAt},history=copy(state.history),snapshot=self:Snapshot(state)}end
-function Policy:GetPermissionMetadata(guildId)local state=self:GetState(guildId);if not state or state.version==0 then return nil end;return{objectId=guildId,owner=state.changedBy and state.changedBy.characterUUID,version=state.version,updatedAt=state.changedAt or 0,source="permission-revision-chain",revisionID=state.revisionID,oldestRevisionID=state.history[1]and state.history[1].revisionID}end
-function Policy:RequestPermissionCatchup(reason)
- local state=self:GetState();if not state then return false end;if state.status==self.status.VALID or state.status==self.status.UNINITIALIZED then state.status=self.status.CATCHING_UP end;state.catchupReason=reason;state.catchup={requestedAfter=state.revisionID,startedAt=now(),receivedCount=0,validatedCount=0};HolyStorm.Events:Emit("HS_PERMISSIONS_CATCHUP_STARTED",state.guildId,reason);HolyStorm.Tasks:Queue("Policy.PermissionCatchup",{mergeKey=state.guildId,priority=10,triggerSource=reason or"CHAIN_GAP"});log("INFO","recovery","Permission catch-up requested",{guildId=state.guildId,reason=reason});return true
-end
-function Policy:RunPermissionCatchup()local state=self:GetState();if not state then return false end;return HolyStorm.Sync:Discover("permissions",state.guildId,{reason="PERMISSION_CHAIN_CATCHUP",priority=10})~=nil end
-function Policy:RecoverFromSnapshot(state,payload,senderId)
- if not self:IsActualGuildLeader(nil,senderId)then state.status=self.status.RECOVERY_REQUIRED;state.recovery={reason="TRUSTED_SNAPSHOT_REQUIRED",requestedAt=now()};HolyStorm.Events:Emit("HS_PERMISSIONS_RECOVERY_REQUIRED",state.guildId,"TRUSTED_SNAPSHOT_REQUIRED");return false,"RECOVERY_TRUST_REQUIRED"end
- local valid,err=self:ValidateSnapshot(payload.snapshot);if not valid then return false,err end;state.groups=copy(payload.snapshot.groups);state.filters=copy(payload.snapshot.filters);state.rules=copy(payload.snapshot.rules);state.modules=copy(payload.snapshot.modules);state.version=payload.current.version;state.revisionID=payload.current.revisionID;state.previousRevisionID=payload.current.previousRevisionID;state.changedBy=copy(payload.current.changedBy);state.changedAt=payload.current.changedAt;state.history=copy(payload.history or{});while#state.history>self.maxHistory do table.remove(state.history,1)end;state.status=self.status.VALID;state.recovery={completedAt=now(),source=senderId,trustAnchor="VISIBLE_BLIZZARD_RANK_0"};state.lastSync=now();self:EnsureSystemGroups(state);self:BindCompatibility(state);self:Invalidate("SNAPSHOT_RECOVERY");HolyStorm.Events:Emit("HS_PERMISSIONS_CATCHUP_COMPLETED",state.guildId,state.version);HolyStorm.Events:Emit("HS_PERMISSIONS_STATE_UPDATED",state.guildId,state.version,state.revisionID);log("INFO","recovery","Permission recovery completed",{guildId=state.guildId,version=state.version,source=senderId});return true
-end
-function Policy:ImportPermissionState(guildId,payload,meta,senderId)
- local state=self:GetState(guildId);if not state or type(payload)~="table"or payload.guildId~=guildId or type(payload.current)~="table"or type(payload.history)~="table"or type(payload.snapshot)~="table"then return false,"INVALID_PAYLOAD"end
- if payload.current.version==state.version and payload.current.revisionID==state.revisionID then return true,"DUPLICATE"end
- if payload.current.version==state.version and payload.current.previousRevisionID==state.previousRevisionID and payload.current.revisionID~=state.revisionID then state.status=self.status.CONFLICT;state.fork={localRevision=state.revisionID,remoteRevision=payload.current.revisionID,version=state.version};self:RecordRejected(payload.current,senderId,"FORK");HolyStorm.Events:Emit("HS_PERMISSIONS_CONFLICT_DETECTED",copy(state.fork));return false,"FORK"end
- local revisions=copy(payload.history);table.sort(revisions,function(a,b)return(a.version or 0)<(b.version or 0)end);local progressed=false;if state.catchup then state.catchup.receivedCount=#revisions;state.catchup.respondingPeer=senderId end
- for _,revision in ipairs(revisions)do if revision.version>state.version then local ok,reason=self:ApplyRevision(state,revision);if not ok then if reason=="MISSING_PREDECESSOR"then break else return false,reason end end;progressed=true;if state.catchup then state.catchup.validatedCount=state.catchup.validatedCount+1 end end end
- if state.version==payload.current.version and state.revisionID==payload.current.revisionID then if not same(self:Snapshot(state),payload.snapshot)then state.status=self.status.CONFLICT;state.fork={localRevision=state.revisionID,remoteRevision=payload.current.revisionID,reason="SNAPSHOT_MISMATCH"};HolyStorm.Events:Emit("HS_PERMISSIONS_CONFLICT_DETECTED",copy(state.fork));return false,"SNAPSHOT_MISMATCH"end;state.status=self.status.VALID;state.lastSync=now();HolyStorm.Events:Emit("HS_PERMISSIONS_CATCHUP_COMPLETED",guildId,state.version);log("INFO","recovery","Permission catch-up successful",{guildId=guildId,version=state.version});return true end
- if not progressed then state.status=self.status.RECOVERY_REQUIRED;state.missingRevisions={after=state.revisionID,target=payload.current.revisionID};HolyStorm.Events:Emit("HS_PERMISSIONS_RECOVERY_REQUIRED",guildId,"MISSING_PREDECESSOR");if senderId and self:IsActualGuildLeader(nil,senderId)then return self:RecoverFromSnapshot(state,payload,senderId)end;self:RequestPermissionCatchup("MISSING_PREDECESSOR");return false,"MISSING_PREDECESSOR"end
- self:RequestPermissionCatchup("INCOMPLETE_CHAIN");return false,"INCOMPLETE_CHAIN"
-end
-function Policy:ValidatePermissionPayload(payload,meta,guildId)return type(payload)=="table"and payload.guildId==guildId and type(payload.current)=="table"and tonumber(payload.current.version)==tonumber(meta.version)and payload.current.revisionID==meta.revisionID and type(payload.history)=="table"and type(payload.snapshot)=="table"end
-function Policy:Recalculate()local guild=HolyStorm.Data.GuildStore:GetCurrent();for guid in pairs(guild and guild.roster or{})do local account=HolyStorm.TwinkCore and HolyStorm.TwinkCore:GetAccountUUIDForCharacter(guid)or HolyStorm.Data.PlayerStore:GetCharacterOwner(guid)or guid;self:GetEffectiveGroups(account,guid,true)end;HolyStorm.Events:Emit("HS_EFFECTIVE_MEMBERSHIP_CHANGED");return true end
-function Policy:RestoreTemplates()local templates=HolyStorm.db.global.filters.templates;local defs={{id="template-max-level",name=L["FILTER_TEMPLATE_MAX_LEVEL"],description=L["FILTER_TEMPLATE_MAX_LEVEL_DESC"],scope="template",rules={field="character.maxLevel",operator="true"}},{id="template-main",name=L["FILTER_TEMPLATE_MAIN"],description=L["FILTER_TEMPLATE_MAIN_DESC"],scope="template",rules={field="character.mainTwinkStatus",operator="=",value="MAIN"}},{id="template-online",name=L["FILTER_TEMPLATE_ONLINE"],description=L["FILTER_TEMPLATE_ONLINE_DESC"],scope="template",rules={field="player.online",operator="true"}}};for _,template in ipairs(defs)do if not templates[template.id]then templates[template.id]=template end end end
-function Policy:BootstrapState()
- local guildId=self:GetGuildId();if not guildId then return false end;local state=self:GetState(guildId)or self:CreateState(guildId);self:UpgradeState(state);self:BindCompatibility(state);if state.version==0 then if self:IsActualGuildLeader(nil,UnitGUID("player"))then local actor=self:Actor();local snapshot={groups=HolyStorm.Permissions:GetDefaultGroups(),filters=copy(state.filters),rules=copy(state.rules),modules={}};local revision={version=1,revisionID=self:NewRevisionId(guildId,1),previousRevisionID=nil,changedBy=actor,changedAt=now(),action="BASELINE",change={action="BASELINE",snapshot=copy(snapshot)}};self:CommitSnapshot(state,snapshot,revision);HolyStorm.Sync:Publish("permissions",guildId,"PERMISSION_BASELINE")else state.status=self.status.UNINITIALIZED;self:RequestPermissionCatchup("UNINITIALIZED")end end;return true
-end
-function Policy:Initialize()
- HolyStorm.db.profile.rules=HolyStorm.db.profile.rules or{localRules={}};HolyStorm.db.profile.rules.localRules=HolyStorm.db.profile.rules.localRules or{};HolyStorm.db.profile.filters.localFilters=HolyStorm.db.profile.filters.localFilters or{};HolyStorm.db.profile.filters.activeByContext=HolyStorm.db.profile.filters.activeByContext or{};self:RestoreTemplates()
- HolyStorm.Tasks:RegisterTaskType("Policy.RecalculateEffectiveMemberships",{name=L["TASK_POLICY_RECALCULATE"],localizedNameKey="TASK_POLICY_RECALCULATE",module="Policy",priority=20,executionMode="UNIQUE",execute=function()return Policy:Recalculate()end});HolyStorm.Tasks:RegisterTaskType("Policy.CaptureOnDemand",{name=L["TASK_POLICY_CAPTURE"],localizedNameKey="TASK_POLICY_CAPTURE",module="Policy",priority=25,executionMode="UNIQUE",execute=function()return HolyStorm.Rules:CaptureDemands()end});HolyStorm.Tasks:RegisterTaskType("Policy.PermissionCatchup",{name=L["TASK_PERMISSION_CATCHUP"],localizedNameKey="TASK_PERMISSION_CATCHUP",module="Policy",priority=10,executionMode="MERGE_BY_KEY",execute=function()return Policy:RunPermissionCatchup()end});HolyStorm.Tasks:RegisterTaskType("Policy.PermissionRecovery",{name=L["TASK_PERMISSION_RECOVERY"],localizedNameKey="TASK_PERMISSION_RECOVERY",module="Policy",priority=5,executionMode="MERGE_BY_KEY",execute=function(task)local m=task.metadata;return Policy:RecoverFromSnapshot(Policy:GetState(m.guildId),m.payload,m.senderId)end})
- -- Transport authorization deliberately admits structurally valid candidates.
- -- ImportPermissionState is the business authority boundary: it validates each
- -- revision against its direct predecessor and restricts recovery to rank 0.
- HolyStorm.Sync:RegisterDomain("permissions",{freshness="revision-chain",getMetadata=function(id)return Policy:GetPermissionMetadata(id)end,listMetadata=function(since)local out={};for id,state in pairs(Policy:GetStates())do local meta=Policy:GetPermissionMetadata(id);if meta and(meta.updatedAt or 0)>since then out[#out+1]=meta end end;return out end,export=function(id)return Policy:ExportPermissionState(id)end,validate=function(payload,meta,id)return Policy:ValidatePermissionPayload(payload,meta,id)end,authorize=function()return true end,import=function(id,payload,meta,senderId)return Policy:ImportPermissionState(id,payload,meta,senderId)end,updateEvent="HS_PERMISSIONS_SYNC_UPDATED"})
- for _,event in ipairs({"HS_CHARACTER_UPDATED","HS_PLAYER_UPDATED","HS_ROSTER_UPDATED","HS_CHARACTER_RELATIONSHIP_UPDATED","HS_TWINKS_UPDATED","HS_FILTER_UPDATED"})do local eventName=event;HolyStorm.Events:Register(eventName,"policy-cache",function()Policy:Invalidate(eventName);if eventName=="HS_ROSTER_UPDATED"then Policy:BootstrapState()end end)end;HolyStorm.Events:Register("HS_RULE_DEMANDS_CHANGED","policy-demands",function()HolyStorm.Tasks:Queue("Policy.CaptureOnDemand",{triggerSource="HS_RULE_DEMANDS_CHANGED",debounce=.5})end);self:BootstrapState();self:Invalidate("INITIALIZE")
-end
-HolyStorm.Policy,HolyStorm.PermissionEngine=Policy,Policy
+HolyStorm.Policy = Policy
+HolyStorm.PolicyState = publicView(Components.State)
+HolyStorm.GroupManager = publicView(Components.Groups)
+HolyStorm.FilterManager = publicView(Components.Filters)
+HolyStorm.PermissionEngine = publicView(Components.Engine)
+HolyStorm.PermissionSync = publicView(Components.Sync)

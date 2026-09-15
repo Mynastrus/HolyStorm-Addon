@@ -20,7 +20,7 @@ function HolyStorm.Data.PlayerStore:GetLocalPlayerId()return"acct-maristi"end;fu
 function HolyStorm.Data.CharacterStore:Get(guid)return characters[guid]end;function HolyStorm.Data.CharacterStore:Upsert(guid,changes)characters[guid]=characters[guid]or{guid=guid};for k,v in pairs(changes)do characters[guid][k]=v end;return true end
 function HolyStorm.Data.GuildStore:GetCurrent()return guild end;function HolyStorm.Data.GuildStore:GetGuildId()return guild.id end;function HolyStorm.Data.GuildStore:ResolveSenderGuid(sender)return sender end
 HolyStorm.TwinkCore={GetLocalAccountUUID=function()return"acct-maristi"end,GetAccountUUIDForCharacter=function(_,guid)return accounts[guid]end,GetAccount=function(_,id)return id and{accountUUID=id}end,GetCharactersForAccount=function(_,id)local out={};for guid,account in pairs(accounts)do if account==id then out[guid]={characterUUID=guid}end end;return out end,GetAccountMain=function(_,id)for guid,account in pairs(accounts)do if account==id then return guid end end end}
-assert(loadfile(root.."Core/Permissions/RuleEngine.lua"))();assert(loadfile(root.."Core/Permissions/Permissions.lua"))();assert(loadfile(root.."Core/Permissions/Policy.lua"))();HolyStorm.Rules:Initialize();HolyStorm.Permissions:Initialize();HolyStorm.Policy:Initialize()
+assert(loadfile(root.."Core/Permissions/RuleEngine.lua"))();assert(loadfile(root.."Core/Permissions/PermissionRegistry.lua"))();assert(loadfile(root.."Core/Permissions/GroupManager.lua"))();assert(loadfile(root.."Core/Permissions/FilterManager.lua"))();assert(loadfile(root.."Core/Permissions/PolicyState.lua"))();assert(loadfile(root.."Core/Permissions/PermissionEngine.lua"))();assert(loadfile(root.."Core/Permissions/PermissionSync.lua"))();assert(loadfile(root.."Core/Permissions/Policy.lua"))();assert(loadfile(root.."Core/Permissions/Permissions.lua"))();HolyStorm.Rules:Initialize();HolyStorm.Permissions:Initialize();HolyStorm.Policy:Initialize()
 local P,R=HolyStorm.Policy,HolyStorm.Rules;local ids=HolyStorm.Permissions.systemIds;local state=P:GetState();assert(state and state.status==P.status.VALID and state.version==1);assert(HolyStorm.Sync:GetDomain("permissions").freshness=="revision-chain")
 
 -- A: guild membership is dynamic and disappears with Blizzard roster state.
@@ -68,9 +68,29 @@ local beforeDenied=state.version;assert(not P:CommitChange({action="RESET"},{acc
 local partial=state.groups[ids.MEMBER];partial.characterMembers=nil;partial.accountMembers=nil;partial.guildRanks=nil;partial.filterIds=nil;partial.ruleIds=nil;partial.permissions=nil
 P:Invalidate("PARTIAL_LEGACY_GROUP");assert(P:Recalculate());assert(P:GetEffectiveGroups("acct-anna","Anna")[ids.MEMBER]);assert(next(P:GetEffectivePermissions("acct-anna","Anna"))==nil);P:UpgradeState(state)
 
+-- Q: exactly three protected system groups survive reset; system membership is not mutable.
+assert(HolyStorm.Utils.TableCount(P:GetGroups())==3,"reset must restore exactly three system groups")
+assert(not P:DeleteGroup(ids.LEADERSHIP) and not P:DeleteGroup(ids.OFFICERS) and not P:DeleteGroup(ids.MEMBER))
+local removedSystem,removedSystemReason=P:RemoveMembership(ids.MEMBER,"system","GUILD_MEMBER");assert(not removedSystem and removedSystemReason=="SYSTEM_MEMBERSHIP")
+
+-- R: character and guild-rank memberships remain distinct dynamic sources.
+assert(P:CreateGroup({id="character-only",name="Character Only",permissions={}}));assert(P:AddCharacterMembership("character-only","Anna"));assert(P:IsMemberOfGroup("character-only","acct-anna","Anna"));assert(not P:IsMemberOfGroup("character-only","acct-klaus","Klaus"))
+guild.roster.Klaus={guid="Klaus",name="Klaus-Realm",rank="Member",rankIndex=4};assert(P:CreateGroup({id="rank-four",name="Rank Four",permissions={}}));assert(P:AddGuildRankMembership("rank-four",4));assert(P:IsMemberOfGroup("rank-four","acct-klaus","Klaus"));guild.roster.Klaus.rankIndex=3;P:Invalidate("RANK_CHANGED");assert(not P:IsMemberOfGroup("rank-four","acct-klaus","Klaus"));guild.roster.Klaus.rankIndex=4;P:Invalidate("RANK_RESTORED")
+
+-- S: leadership receives newly registered permissions; manager groups only grant management authority.
+assert(HolyStorm.Permissions:RegisterPermission({id="future-permission",module="Test",category="Test"}));assert(P:HasPermission("acct-maristi","Maristi","future-permission"));assert(P:AddCharacterMembership(ids.LEADERSHIP,"Anna"));assert(P:HasPermission("acct-anna","Anna","future-permission"))
+assert(P:CreateGroup({id="managed-target",name="Managed Target",permissions={["future-permission"]=true}}));assert(P:CreateGroup({id="target-managers",name="Target Managers",permissions={}}));assert(P:AddCharacterMembership("target-managers","Daniel"));assert(P:SetGroupManagers("managed-target",{"target-managers"}));assert(P:CanManageGroup("acct-raid","Daniel","managed-target"));assert(not P:HasPermission("acct-raid","Daniel","future-permission"))
+
+-- T: filters reuse the rule engine for AND/OR and preserve UNKNOWN.
+assert(P:CreateFilter({id="filter-level",name="Level",root={field="character.level",operator=">=",value=80}}));assert(P:CreateFilter({id="filter-mage",name="Mage",root={field="character.class",operator="=",value="MAGE"}}));assert(P:CreateGroup({id="filter-combine",name="Filter Combine",permissions={}}));local combine=P:GetGroup("filter-combine");combine.filterIds={"filter-level","filter-mage"};combine.filterOperator="OR";assert(P:SaveGroup(combine));assert(P:IsMemberOfGroup("filter-combine","acct-anna","Anna"));combine=P:GetGroup("filter-combine");combine.filterOperator="AND";assert(P:SaveGroup(combine));assert(not P:IsMemberOfGroup("filter-combine","acct-anna","Anna"));local unknownStatus=R:EvaluateDetailed({field="equipment.itemLevel",operator=">=",value=1},{});assert(unknownStatus==R.Result.UNKNOWN)
+
+-- U: legacy role calls delegate to the single group state and old IDs normalize.
+assert(HolyStorm.Permissions:CreateRole("legacy-role","Legacy",{["news-view"]=true}));assert(HolyStorm.Permissions:AssignRole("acct-klaus","legacy-role",true));assert(P:IsMemberOfGroup("legacy-role","acct-klaus","Klaus"));assert(HolyStorm.Permissions:NormalizePermissionId("permissions.manage")=="permissions-manage")
+assert(HolyStorm.PermissionRegistry:GetPermission("future-permission").module=="Test");assert(HolyStorm.GroupManager:GetGroup("legacy-role"));assert(HolyStorm.PermissionEngine:IsMemberOfGroup("legacy-role","acct-klaus","Klaus"));assert(HolyStorm.FilterManager:GetFilter("filter-level"));assert(HolyStorm.PolicyState:GetState().revisionID==P:GetState().revisionID)
+
 -- Generic condition contracts are retained and IDs are hyphenated.
 assert(R:Evaluate({field="character.level",operator=">=",value=80},P:BuildContext("acct-maristi","Maristi")));for id in pairs(HolyStorm.Permissions:GetPermissionDefinitions())do assert(id:match("^[a-z][a-z0-9%-]*$"),id)end
 local nested={logic="AND",children={{field="character.level",operator=">=",value=80},{logic="NOT",children={{field="character.class",operator="=",value="MAGE"}}}}};assert(R:Evaluate(nested,P:BuildContext("acct-maristi","Maristi")));assert(not R:Validate({field="character.level",operator="contains",value="8"}))
 local otherGuild=P:CreateState("realm:other");assert(next(otherGuild.filters)==nil and next(otherGuild.rules)==nil and HolyStorm.Utils.TableCount(otherGuild.groups)==3,"guild state leaked across guilds")
 assert(P:Recalculate(),"effective membership recalculation failed")
-print("Permission engine scenarios A-P passed")
+print("Permission engine scenarios A-U passed")
