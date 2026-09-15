@@ -1,4 +1,4 @@
-local addonVersion="6.2.0"
+local addonVersion="6.3.0"
 local HolyStorm=LibStub("AceAddon-3.0"):GetAddon("Holy_Storm")
 local L=LibStub("AceLocale-3.0"):GetLocale("Holy_Storm_Equipment")
 local metadata={id="equipment",name="Equipment",displayName=L["DISPLAY_NAME"],description=L["DESCRIPTION"],version=addonVersion,moduleType="feature",category="optional",permissions={{id="equipment-read",category="Equipment",defaults={member=true}},"sync-send","sync-receive"},dependencies={"core","synchronization","ui"},capabilities={"character.scan.equipment"},ui={characterTab="equipment"},data={block="equipment",snapshotType="equipment",schemaVersion=4,capability="character.scan.equipment"},sync={domains={"character"}},enabledByDefault=true}
@@ -43,6 +43,7 @@ end
 
 HolyStorm:RegisterModule(metadata,function(Module)
  HolyStorm:ApplyModuleMetadata(Module,metadata)
+ if HolyStorm.Rules then HolyStorm.Rules:RegisterField("equipment.itemLevel",{type="number",dependencies={"equipment"},get=function(context)local block=HolyStorm.Data.CharacterStore:GetBlock(context.characterUUID,"equipment");return block and tonumber(block.itemLevel)or nil end})end
  function Module:GetCharacterSnapshot(guid)return HolyStorm.Data.CharacterStore:GetEquipment(guid),HolyStorm.Data.CharacterStore:GetBlockMetadata(guid,"equipment")end
  function Module:Collect()
   local snapshot={slots={},updatedAt=HolyStorm.Utils.Now(),snapshotVersion=4};local count=0

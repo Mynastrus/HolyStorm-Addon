@@ -26,7 +26,7 @@ function HolyStorm.Tasks:Queue(id,options)queued[#queued+1]={id=id,options=optio
 function HolyStorm.RichLinks:RegisterType(definition)links[definition.type]=definition;return true end
 function HolyStorm.Database:RegisterArea()return true end
 function HolyStorm.Database:Get()return false end
-assert(loadfile(root.."Core/Permissions/RuleEngine.lua"))();HolyStorm.Rules:Initialize();assert(loadfile(root.."Persistence/AchievementStore.lua"))();assert(loadfile(root.."Modules/Achievements/AchievementService.lua"))();HolyStorm.Achievements:Initialize()
+assert(loadfile(root.."Core/Permissions/RuleEngine.lua"))();HolyStorm.Rules:Initialize();assert(loadfile(root.."Persistence/AchievementStore.lua"))();assert(loadfile(root.."Modules/Achievements/AchievementService.lua"))();HolyStorm.Achievements:Initialize();HolyStorm.Rules:RegisterField("equipment.itemLevel",{type="number",dependencies={"equipment"},get=function(c)return c.character and c.character.itemLevel end})
 local A=HolyStorm.Achievements
 records["Player-Local"]={guid="Player-Local",level=90,itemLevel=705};HolyStorm.Data.GuildStore:GetCurrent().roster["Player-Local"]={name="Local"}
 local complex={logic="AND",children={{field="equipment.itemLevel",operator=">=",value=700},{logic="OR",children={{field="character.level",operator=">=",value=90},{field="character.spec",operator="=",value="Restoration"}}}}};local status=HolyStorm.Rules:EvaluateDetailed(complex,HolyStorm.Policy:BuildContext(nil,"Player-Local"));assert(status=="PASS","complex AND/OR rule: "..tostring(status))

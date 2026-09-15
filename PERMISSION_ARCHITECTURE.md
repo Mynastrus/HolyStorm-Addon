@@ -97,4 +97,4 @@ Die Administration greift direkt auf Registry, Engine, GroupManager, FilterManag
 
 Feature-Permissions werden von ihren Modulen über die ModuleRegistry in der zentralen PermissionRegistry registriert. Nicht geladene optionale Module hinterlassen ihre Feature-Permissions nicht im aktiven Registry-Bestand; persistierte unbekannte IDs bleiben jedoch erhalten und werden bei einer späteren Registrierung wieder wirksam.
 
-RuleEngine besitzt weiterhin Core-seitig Feature-Felder für Equipment, Mythic+, Raid und Delves sowie Quest-/Achievement-Demand-Provider. Diese Provider-Verlagerung bleibt ein separater Folgeschritt.
+RuleEngine bleibt generisch. Equipment, Mythic+, Raid und Delves registrieren ihre bestehenden Rule-Field-IDs über `HolyStorm.Rules:RegisterField`; Quest-/Achievement-Demand-Provider verbleiben vorerst als technische Restschuld.

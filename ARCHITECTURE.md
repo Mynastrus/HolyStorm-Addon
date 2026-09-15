@@ -73,7 +73,7 @@ Target / Planned: Feature-Pakete wie Equipment, MythicPlus, Raid, Delves oder PO
 
 ## Bekannte technische Restschulden
 
-- Feature-Permissions werden durch die besitzenden Module registriert. `PermissionRegistry` bleibt die einzige zentrale Registry; Leadership erhält dynamisch alle aktuell registrierten Rechte, optionale Module registrieren ihre Rechte erst beim Laden.
+- Feature-Permissions und Feature-Rule-Felder werden durch die besitzenden Module registriert. `PermissionRegistry` und `HolyStorm.Rules` bleiben jeweils die einzigen zentralen Verträge; optionale Module registrieren ihre Definitionen erst beim Laden.
 - `RuleEngine.lua` besitzt noch Feature-Felder für Equipment, Mythic+, Raid, Delves und Demand-Provider für Quests/Achievements.
 - Einzelne Feature-Sync-Domains autorisieren noch über `HolyStorm.Policy`.
 - Der Bootstrap initialisiert einige konkrete Services statt ausschließlich deklarative Lifecycle-Hooks zu nutzen.

@@ -1,8 +1,9 @@
 # Changelog
 
-## 5.4.0 — 15.09.2026
+## 5.5.0 — 15.09.2026
 
 - Feature-Permissions wurden aus der zentralen Definitionsliste in die besitzenden Modulmetadaten verlagert. Die zentrale PermissionRegistry bleibt die einzige Registry; modulare Defaults werden für Systemgruppen angewendet, optionale Rechte erscheinen erst beim Laden des Moduls und unbekannte persistierte Permission-IDs bleiben für spätere Re-Registrierung erhalten.
+- Die Rule-Felder `equipment.itemLevel`, `mythicplus.rating`, `raid.progress` und `delves.status` werden nun von ihren Modulen über die zentrale RuleEngine registriert. Nicht geladene optionale Module lassen gespeicherte Regeln unverändert; fehlende Felder liefern weiterhin `UNKNOWN`.
 
 Hier halten wir ausschließlich Änderungen an den auslieferbaren Addon-Dateien
 im Ordner `LIVE` fest. Änderungen an Projektdokumentation, dem Release-Ordner

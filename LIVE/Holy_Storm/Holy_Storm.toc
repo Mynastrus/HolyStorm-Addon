@@ -7,7 +7,7 @@
 ## Author: Mynastrus - Norgannon - EU
 ## Category: Utility
 ## DefaultState: enabled
-## Version: 5.4.0
+## Version: 5.5.0
 ## SavedVariables: HolyStormDB, HS_Player_DB, HS_GuildLog_DB
 
 Libs\LibStub\LibStub.lua

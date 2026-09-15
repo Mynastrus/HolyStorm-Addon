@@ -1,4 +1,4 @@
-local addonVersion="2.1.2"
+local addonVersion="2.2.0"
 local HolyStorm=LibStub("AceAddon-3.0"):GetAddon("Holy_Storm");local L=LibStub("AceLocale-3.0"):GetLocale("Holy_Storm_Dungeons")
 local metadata={id="mythicPlus",name="MythicPlus",displayName=L["DISPLAY_NAME"],description=L["DESCRIPTION"],version=addonVersion,moduleType="feature",category="optional",permissions={{id="mythicplus-read",category="Mythic+",defaults={member=true}},"sync-send","sync-receive"},dependencies={"core","ui"},capabilities={"character.scan.mythicplus"},ui={},options={},administration={},data={block="mythicPlus",snapshotType="mythicplus",schemaVersion=3,capability="character.scan.mythicplus"},sync={domains={"character"}},enabledByDefault=true}
 local function plain(v,depth) if type(v)~="table"then return (type(v)=="string"or type(v)=="number"or type(v)=="boolean")and v or nil end;if depth>5 then return nil end;local r={};for k,x in pairs(v)do if type(k)=="string"or type(k)=="number"then r[k]=plain(x,depth+1)end end;return r end
@@ -8,6 +8,7 @@ local function bestRun(intime,overtime,affixScores)
 end
 HolyStorm:RegisterModule(metadata,function(Module)
  HolyStorm:ApplyModuleMetadata(Module,metadata)
+ if HolyStorm.Rules then HolyStorm.Rules:RegisterField("mythicplus.rating",{type="number",dependencies={"mythicPlus"},get=function(context)local block=HolyStorm.Data.CharacterStore:GetBlock(context.characterUUID,"mythicPlus");return block and tonumber(block.overallScore)or nil end})end
  function Module:GetCharacterSnapshot(guid)return HolyStorm.Data.CharacterStore:GetBlock(guid,"mythicPlus")end
  function Module:RequestData(force)
   if self.initialDataRequested and not force then return false end;self.initialDataRequested=true;local mp=C_MythicPlus;if not mp then return false end;local requested=false;if mp.RequestCurrentAffixes then mp.RequestCurrentAffixes();requested=true end;if mp.RequestMapInfo then mp.RequestMapInfo();requested=true end;if mp.RequestRewards then mp.RequestRewards();requested=true end;return requested

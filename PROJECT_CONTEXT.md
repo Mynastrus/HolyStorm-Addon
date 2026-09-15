@@ -49,6 +49,7 @@ Module registrieren Metadaten über `RegisterModule`, `RegisterRequiredModule` o
 ## Aktuelle Restschulden
 
 - Feature-Permissions gehören den Modulen: Sie werden über die `permissions`-Metadaten und die zentrale `PermissionRegistry` registriert. Systemgruppen-Defaults kommen aus den registrierten Definitionen; unbekannte persistierte IDs bleiben defensiv erhalten.
+- Feature-Rule-Felder gehören ebenfalls den Modulen und werden über die zentrale `HolyStorm.Rules:RegisterField`-API registriert. Nicht geladene optionale Module stellen ihre Felder nicht bereit; gespeicherte Regeln bleiben erhalten und werden bei späterer Registrierung wieder auswertbar.
 - `RuleEngine.lua` enthält noch Feature-Felder und Provider für Equipment, Mythic+, Raid, Delves sowie Quest-/Achievement-Demands. Die Feldregistry ist erweiterbar, die Eigentümerschaft ist aber noch nicht vollständig in die Module verschoben.
 - Einige Feature-Sync-Autorisierungen verwenden weiterhin die `HolyStorm.Policy`-Compatibility-Fassade.
 - Der Bootstrap initialisiert mehrere konkrete Services direkt. Weitere Entkopplung ist ein geplantes Ziel und kein bereits abgeschlossener Zustand.
