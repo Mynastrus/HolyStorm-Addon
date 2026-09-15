@@ -5,7 +5,7 @@ function time()return clock end;function UnitGUID(unit)if unit==nil or unit=="pl
 local guild={id="realm:guild",roster={}}
 local HolyStorm={db={global={achievements={guilds={},schemaVersion=1},rules={global={}},filters={global={},demands={}},permissions={groups={}}},profile={filters={localFilters={}},rules={localRules={}}}},Data={GuildStore={},CharacterStore={},PlayerStore={}},Logger={},Events={},Policy={},Sync={},Tasks={},RichLinks={},Database={},TwinkCore={}}
 function LibStub(name)if name=="AceAddon-3.0"then return{GetAddon=function()return HolyStorm end}elseif name=="AceLocale-3.0"then return{GetLocale=function()return setmetatable({CATEGORY_GENERAL="General",EARNED_NOTIFICATION="Earned %s",TASK_EVALUATE="Evaluate",ACHIEVEMENT="Achievement",NOT_VISIBLE="Hidden"},{__index=function(_,key)return key end})end}end end
-assert(loadfile(root.."Core/Utils.lua"))();assert(loadfile(root.."Core/Serializer.lua"))()
+assert(loadfile(root.."Core/Utils/Utils.lua"))();assert(loadfile(root.."Core/Serialization/Serializer.lua"))()
 function HolyStorm.Logger:Write()end
 function HolyStorm.Events:Emit(event,...)for _,handler in pairs(listeners[event]or{})do handler(event,...)end end
 function HolyStorm.Events:Register(event,owner,handler)listeners[event]=listeners[event]or{};listeners[event][owner]=handler end
@@ -26,7 +26,7 @@ function HolyStorm.Tasks:Queue(id,options)queued[#queued+1]={id=id,options=optio
 function HolyStorm.RichLinks:RegisterType(definition)links[definition.type]=definition;return true end
 function HolyStorm.Database:RegisterArea()return true end
 function HolyStorm.Database:Get()return false end
-assert(loadfile(root.."Core/RuleEngine.lua"))();HolyStorm.Rules:Initialize();assert(loadfile(root.."Data/AchievementStore.lua"))();assert(loadfile(root.."Core/Achievements.lua"))();HolyStorm.Achievements:Initialize()
+assert(loadfile(root.."Core/Permissions/RuleEngine.lua"))();HolyStorm.Rules:Initialize();assert(loadfile(root.."Persistence/AchievementStore.lua"))();assert(loadfile(root.."Modules/Achievements/AchievementService.lua"))();HolyStorm.Achievements:Initialize()
 local A=HolyStorm.Achievements
 records["Player-Local"]={guid="Player-Local",level=90,itemLevel=705};HolyStorm.Data.GuildStore:GetCurrent().roster["Player-Local"]={name="Local"}
 local complex={logic="AND",children={{field="equipment.itemLevel",operator=">=",value=700},{logic="OR",children={{field="character.level",operator=">=",value=90},{field="character.spec",operator="=",value="Restoration"}}}}};local status=HolyStorm.Rules:EvaluateDetailed(complex,HolyStorm.Policy:BuildContext(nil,"Player-Local"));assert(status=="PASS","complex AND/OR rule: "..tostring(status))

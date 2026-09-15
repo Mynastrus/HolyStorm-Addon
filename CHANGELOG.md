@@ -6,6 +6,12 @@ oder anderen Dateien außerhalb von `LIVE` gehören nicht in dieses Changelog.
 
 ## Noch nicht veröffentlicht
 
+### 14. September 2026
+
+- Die zentrale Logansicht verwendet nun eine virtualisierte, zeilenbasierte Scrolltabelle mit Level- und Kategoriefarben, kombinierten und dauerhaft gespeicherten Filtern, Schnellfiltern, pausierbarer Darstellung, optionalem Auto-Scroll sowie einer scrollbareren strukturierten Detailansicht. Comms-, Sync-, Task-, Workflow- und Event-Diagnosen enthalten kompakte Richtungs-, Absender-, Ziel-, Paket-, Domain-, Objekt-, Versions-, Übertragungs- und Korrelationsdaten, ohne Payloads oder interne Objektstrukturen zu protokollieren; Text-, CSV-, JSON- und Discord-Export bleiben verfügbar. Logger wurde auf `2.1.0`, EventBus auf `1.1.0`, TaskManager auf `3.1.0`, Comms auf `2.1.0`, SyncManager auf `3.3.0`, Schema auf `2.4.0` und die Logseite auf `1.1.0` erhöht; die sichtbaren Texte der Logseite besitzen neue deutsche und englische Locale-Dateien.
+- Der Mythic+-Charakterreiter verwendet nun dieselbe Anzahl Tabellenzellen und Spaltendefinitionen und verarbeitet fehlende, alte oder teilweise beschädigte Snapshot- und Dungeon-Daten defensiv. Rendererfehler werden mit Reiter, Charakter, Datenblock und Snapshot-Version protokolliert, während die UI weiterhin den freundlichen Fallback zeigt. Die zentrale PlayerData-Validierung weist neue leere oder strukturell ungültige Mythic+-Blöcke ab; fehlgeschlagene Snapshot-Retries erreichen unverändert keinen Commit und erhalten damit den letzten gültigen Stand. CharacterOverview wurde auf `1.4.1`, Mythic+ auf `2.1.2`, PlayerDataStore auf `1.0.1` und die Release-Version auf `5.3.2` erhöht.
+- Mythic+-Snapshots lesen Blizzard-Daten nun ohne bei jedem Scan erneut Affix-, Karten- und Belohnungsanfragen auszulösen. Die Anfragen erfolgen einmalig beim initialen Welteintritt beziehungsweise bei einem expliziten Refresh; ihre Update-Events sowie kurz aufeinanderfolgende Abschluss-, Karten- und Wochenrekord-Events werden weiterhin durch den vorhandenen Snapshot-Workflow zusammengeführt. Dadurch kann `MYTHIC_PLUS_CURRENT_AFFIX_UPDATE` keinen selbstverstärkenden `SNAPSHOT_MYTHICPLUS`-Kreislauf mehr erzeugen. Das Mythic+-Modul wurde auf `2.1.1` und die Release-Version auf `5.3.1` erhöht.
+
 ### 13. September 2026
 
 - Blizzards `MapCanvas` wird nun als erforderliche Ladeabhängigkeit vor Holy Storm initialisiert. Dadurch können die POI- und Gildenpositions-Pins ihr `MapCanvasPinTemplate` sicher erben; die XML-Warnungen und anschließenden nil-Aufrufe beim Karten-Refresh entfallen.

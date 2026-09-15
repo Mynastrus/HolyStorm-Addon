@@ -1,8 +1,13 @@
 local addonVersion = "2.2.0"
 local HolyStorm = LibStub("AceAddon-3.0"):GetAddon("Holy_Storm")
 local L = LibStub("AceLocale-3.0"):GetLocale("Holy_Storm_Twinks")
-local Twinks = HolyStorm:RegisterRequiredModule("Twinks")
-HolyStorm:ApplyModuleMetadata(Twinks, { displayName=L["DISPLAY_NAME"],internalName="twinks",version=addonVersion,category="required",description=L["DESCRIPTION"],permissions={"player-read","guild-roster-read","savedvariables-write"},dependencies={"core","ui"},enabledByDefault=true })
+HolyStorm:RegisterModule({
+ id="Twinks",name="Twinks",displayName=L["DISPLAY_NAME"],internalName="twinks",version=addonVersion,
+ moduleType="feature",category="required",description=L["DESCRIPTION"],
+ permissions={"player-read","guild-roster-read","savedvariables-write"},dependencies={"core","ui"},
+ ui={page="twinks",navigation=true},data={stores={"PlayerDataStore","CharacterStore","GuildStore"}},
+ sync={domains={"twinks","twinkAdmin"}},enabledByDefault=true,
+},function(Twinks)
 
 function Twinks:StoreCurrentCharacter()
  local character=HolyStorm.Data.CharacterStore:CaptureCurrent();if character then HolyStorm.TwinkCore:ConfirmLocalCharacter(character.guid)end;return character
@@ -40,3 +45,4 @@ function Twinks:Refresh()
   row.name:SetText(prefix..(character.fullName or character.name or L["UNKNOWN_VALUE"]));row.name:SetTextColor(classColor.r,classColor.g,classColor.b);row.class:SetText((LOCALIZED_CLASS_NAMES_MALE and LOCALIZED_CLASS_NAMES_MALE[character.classFile])or character.classFile or L["UNKNOWN_VALUE"]);row.level:SetText(character.level or L["UNKNOWN_VALUE"]);local inGuild=guild and guild.roster and guild.roster[character.characterUUID];row.guild:SetText(inGuild and L["IN_GUILD"]or L["NOT_IN_GUILD"]);row.guild:SetTextColor(inGuild and.25 or.7,inGuild and.9 or.7,inGuild and.25 or.7);row.source:SetText(character.relationship and character.relationship.source==core.sources.OWNER and L["OWNER_CONFIRMED"]or L["ADMINISTRATIVE"]);row:Show()
  end;self.content:SetHeight(math.max(1,#characters*22));self.mainButton:SetEnabled(self.selectedCharacterUUID and core:IsOwnerConfirmed(self.selectedCharacterUUID)or false)
 end
+end)

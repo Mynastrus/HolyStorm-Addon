@@ -1,8 +1,8 @@
 local addonVersion="1.0.4"
 local HolyStorm=LibStub("AceAddon-3.0"):GetAddon("Holy_Storm")
 local L=LibStub("AceLocale-3.0"):GetLocale("Holy_Storm_POI")
-local Module=HolyStorm:RegisterRequiredModule("POI")
-HolyStorm:ApplyModuleMetadata(Module,{displayName=L["TITLE"],internalName="poi",version=addonVersion,category="required",description=L["DESCRIPTION"],permissions={"poi-view"},dependencies={"core","ui","synchronization"},enabledByDefault=true})
+local metadata={id="POI",name="POI",internalName="poi",displayName=L["TITLE"],description=L["DESCRIPTION"],version=addonVersion,moduleType="feature",category="required",permissions={"poi-view"},dependencies={"core","ui","synchronization"},capabilities={"poi.open","poi.edit","poi.create"},ui={page="poi",navigation=true},data={store="POIStore"},sync={domains={"poi"}},enabledByDefault=true}
+HolyStorm:RegisterModule(metadata,function(Module)
 local modes={"ALL","OWN","SYNCED","HIDDEN"};local targets={"PERSONAL","GUILD","GROUP","RAID"};local categories={"quest","achievement","raid-entrance","note","custom"};local lifetimes={0,300,1800,3600,-1}
 local function button(parent,text,width,callback)local b=CreateFrame("Button",nil,parent,"UIPanelButtonTemplate");b:SetSize(width or 100,24);b:SetText(text);b:SetScript("OnClick",callback);return b end
 local function label(parent,text,x,y)local value=parent:CreateFontString(nil,"OVERLAY","GameFontNormalSmall");value:SetPoint("TOPLEFT",x,y);value:SetText(text);return value end
@@ -63,3 +63,4 @@ function Module:OnInitialize()
 end
 function Module:OnEnable()for _,event in ipairs({"HS_POI_CREATED","HS_POI_UPDATED","HS_POI_DELETED","HS_POI_EXPIRED","HS_POI_SYNCED","HS_POI_VISIBILITY_CHANGED","HS_POI_FILTER_CHANGED"})do HolyStorm.Events:Register(event,"poi-ui",function()if Module.page:IsShown()and Module.mode=="list"then Module:RenderList()end end)end end
 function Module:OnDisable()HolyStorm.Events:UnregisterOwner("poi-ui")end
+end)

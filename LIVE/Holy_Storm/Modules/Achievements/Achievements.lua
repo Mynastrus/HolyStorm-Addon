@@ -1,7 +1,7 @@
 local HolyStorm=LibStub("AceAddon-3.0"):GetAddon("Holy_Storm")
 local L=LibStub("AceLocale-3.0"):GetLocale("Holy_Storm_Achievements")
-local Page=HolyStorm:RegisterRequiredModule("AchievementsUI")
-HolyStorm:ApplyModuleMetadata(Page,{displayName=L["DISPLAY_NAME"],internalName="achievements",version="1.0.0",category="required",description=L["DESCRIPTION"],permissions={"achievement-view"},dependencies={"core","ui"},enabledByDefault=true})
+local metadata={id="AchievementsUI",name="Achievements",internalName="achievements",displayName=L["DISPLAY_NAME"],description=L["DESCRIPTION"],version="1.0.0",moduleType="feature",category="required",permissions={"achievement-view"},dependencies={"core","ui","synchronization"},ui={page="achievements",characterTab="achievements",navigation=true},data={store="AchievementStore"},sync={domains={"achievements"}},enabledByDefault=true}
+HolyStorm:RegisterModule(metadata,function(Page)
 local function setStatus(text)HolyStorm.Events:Emit("HS_UI_STATUS_REQUESTED",text)end
 local function when(value)return value and(date and date("%d.%m.%Y %H:%M",value)or tostring(value))or"-"end
 local function characterName(guid)local record=HolyStorm.Data.CharacterStore:Get(guid);return record and(record.name or record.fullName)or guid end
@@ -48,3 +48,4 @@ function Page:OnInitialize()
  HolyStorm.Events:Register("HS_ACHIEVEMENT_PREVIEW_READY","achievements-ui-preview",function(_,requestID,ok,result)Page:ShowPreviewResult(requestID,ok,result)end);HolyStorm.Events:Register("HS_ACHIEVEMENT_AWARD_FINISHED","achievements-ui-award",function(_,ok,result)setStatus(ok and L["AWARD_SAVED"]or tostring(result));Page:Select(Page.selected);Page:Render()end);HolyStorm.Events:Register("HS_ACHIEVEMENT_REVOKE_FINISHED","achievements-ui-revoke",function(_,ok,result)setStatus(ok and L["REVOKED"]or tostring(result));Page.selectedAward=nil;Page:Select(Page.selected);Page:Render()end)
 end
 function Page:OnDisable()for _,owner in ipairs({"achievements-ui","achievements-ui-open","achievements-ui-preview","achievements-ui-award","achievements-ui-revoke"})do HolyStorm.Events:UnregisterOwner(owner)end end
+end)

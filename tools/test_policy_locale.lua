@@ -17,8 +17,8 @@ end
 
 dofile(addonRoot .. "Libs/LibStub/LibStub.lua")
 dofile(addonRoot .. "Libs/AceLocale-3.0/AceLocale-3.0.lua")
-dofile(addonRoot .. "UI/Pages/PolicyLocales/enUS.lua")
-dofile(addonRoot .. "UI/Pages/PolicyLocales/deDE.lua")
+dofile(addonRoot .. "UI/Administration/Locales/enUS.lua")
+dofile(addonRoot .. "UI/Administration/Locales/deDE.lua")
 
 assert(#reportedErrors == 0, table.concat(reportedErrors, "\n"))
 

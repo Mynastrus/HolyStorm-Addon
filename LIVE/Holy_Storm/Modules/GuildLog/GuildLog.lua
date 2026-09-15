@@ -1,9 +1,9 @@
 local addonVersion = "2.0.0"
 local HolyStorm = LibStub("AceAddon-3.0"):GetAddon("Holy_Storm")
 local L = LibStub("AceLocale-3.0"):GetLocale("Holy_Storm_GuildLog")
-local metadata = { displayName = L["DISPLAY_NAME"], internalName = "guildLog", version = addonVersion, category = "optional", description = L["DESCRIPTION"], permissions = { "guild-roster-read" }, dependencies = { "core", "ui" }, enabledByDefault = true }
+local metadata = { id = "guildLog", name = "GuildLog", displayName = L["DISPLAY_NAME"], description = L["DESCRIPTION"], version = addonVersion, moduleType = "feature", category = "optional", permissions = { "guild-roster-read" }, dependencies = { "core", "ui" }, ui = { page = "guildLog", navigation = true }, enabledByDefault = true }
 
-HolyStorm:RegisterOptionalModule("GuildLog", metadata, function(GuildLog)
+HolyStorm:RegisterModule(metadata, function(GuildLog)
     HolyStorm:ApplyModuleMetadata(GuildLog, metadata)
     function GuildLog:GetDatabase()
         return HolyStorm.Data.GuildStore:GetLogDatabase()

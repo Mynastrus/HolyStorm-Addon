@@ -6,18 +6,64 @@ HolyStorm.moduleRegistryVersion = addonVersion
 HolyStorm.optionalModuleFactories = {}
 HolyStorm.moduleCapabilities = {}
 
-function HolyStorm:ApplyModuleMetadata(module, metadata)
-    assert(type(metadata.displayName) == "string", L["ERROR_MODULE_DISPLAY_NAME"])
-    assert(type(metadata.internalName) == "string", L["ERROR_MODULE_INTERNAL_NAME"])
-    assert(type(metadata.version) == "string", L["ERROR_MODULE_VERSION"])
+local function copyMetadata(metadata)
+    local copy = {}
+    for key, value in pairs(metadata or {}) do copy[key] = value end
+    return copy
+end
 
-    module.metadata = metadata
-    module.version = metadata.version
+function HolyStorm:NormalizeModuleMetadata(metadata, fallbackId, defaultCategory)
+    assert(type(metadata) == "table", L["ERROR_OPTIONAL_MODULE_METADATA"] or "Invalid module metadata")
+    local normalized = copyMetadata(metadata)
+    normalized.id = normalized.id or fallbackId or normalized.internalName
+    normalized.internalName = normalized.internalName or normalized.id
+    normalized.name = normalized.name or normalized.internalName
+    normalized.displayName = normalized.displayName or normalized.name
+    normalized.description = normalized.description or normalized.displayName
+    normalized.version = normalized.version or "0.0.0"
+    normalized.moduleType = normalized.moduleType or (normalized.category == "core" and "core" or "feature")
+    normalized.category = normalized.category or defaultCategory or "required"
+    normalized.dependencies = type(normalized.dependencies) == "table" and normalized.dependencies or {}
+    normalized.capabilities = type(normalized.capabilities) == "table" and normalized.capabilities or {}
+    normalized.ui = type(normalized.ui) == "table" and normalized.ui or {}
+    normalized.options = type(normalized.options) == "table" and normalized.options or {}
+    normalized.administration = type(normalized.administration) == "table" and normalized.administration or {}
+    normalized.data = type(normalized.data) == "table" and normalized.data or {}
+    normalized.sync = type(normalized.sync) == "table" and normalized.sync or {}
+    assert(type(normalized.id) == "string" and normalized.id ~= "", L["ERROR_MODULE_INTERNAL_NAME"])
+    assert(type(normalized.name) == "string" and normalized.name ~= "", L["ERROR_MODULE_INTERNAL_NAME"])
+    assert(type(normalized.displayName) == "string", L["ERROR_MODULE_DISPLAY_NAME"])
+    assert(type(normalized.description) == "string", L["ERROR_MODULE_DISPLAY_NAME"])
+    assert(type(normalized.version) == "string", L["ERROR_MODULE_VERSION"])
+    assert(type(normalized.moduleType) == "string" and normalized.moduleType ~= "", L["ERROR_MODULE_INTERNAL_NAME"])
+    assert(type(normalized.category) == "string" and normalized.category ~= "", L["ERROR_MODULE_INTERNAL_NAME"])
+    return normalized
+end
+
+function HolyStorm:ApplyModuleMetadata(module, metadata)
+    local normalized = self:NormalizeModuleMetadata(metadata, module and module:GetName(), "required")
+    module.metadata = normalized
+    module.version = normalized.version
+    return normalized
 end
 
 function HolyStorm:RegisterRequiredModule(moduleName)
     local module = self:NewModule(moduleName, "AceEvent-3.0")
     self.Modules[moduleName] = module
+    return module
+end
+
+function HolyStorm:RegisterModule(metadata, factory)
+    local normalized = self:NormalizeModuleMetadata(metadata, nil, metadata and metadata.category or "optional")
+    assert(type(factory) == "function", L["ERROR_OPTIONAL_MODULE_FACTORY"])
+    if normalized.category == "optional" then
+        self.optionalModuleFactories[normalized.id] = { factory = factory, metadata = normalized }
+        return normalized
+    end
+    local module = self:NewModule(normalized.id, "AceEvent-3.0")
+    self.Modules[normalized.id] = module
+    self:ApplyModuleMetadata(module, normalized)
+    factory(module)
     return module
 end
 
@@ -44,9 +90,10 @@ function HolyStorm:RegisterOptionalModule(moduleName, metadata, factory)
     assert(type(metadata) == "table", L["ERROR_OPTIONAL_MODULE_METADATA"])
     assert(type(factory) == "function", L["ERROR_OPTIONAL_MODULE_FACTORY"])
 
+    local normalized = self:NormalizeModuleMetadata(metadata, moduleName, "optional")
     self.optionalModuleFactories[moduleName] = {
         factory = factory,
-        metadata = metadata,
+        metadata = normalized,
     }
 end
 
@@ -72,6 +119,7 @@ function HolyStorm:CreateOptionalModule(moduleName)
     end
 
     module = self:NewModule(moduleName)
+    self:ApplyModuleMetadata(module, registration.metadata)
     local ok, err = HolyStorm.Utils.SafeCall("module:" .. moduleName, registration.factory, module)
     if not ok then HolyStorm.Logger:ERROR("ModuleRegistry", "Module %s failed to load: %s", moduleName, tostring(err)); return nil end
     self.Modules[moduleName] = module
@@ -110,7 +158,7 @@ end
 
 function HolyStorm:GetModuleEntries()
     local entries = {
-        self.metadata,
+        self:NormalizeModuleMetadata(self.metadata, self.metadata and self.metadata.internalName or "core", "core"),
     }
 
     for _, module in self:IterateModules() do
@@ -128,4 +176,12 @@ function HolyStorm:GetModuleEntries()
     end)
 
     return entries
+end
+
+function HolyStorm:GetModuleEntry(id)
+    if type(id) ~= "string" then return nil end
+    for _, metadata in ipairs(self:GetModuleEntries()) do
+        if metadata.id == id or metadata.internalName == id then return metadata end
+    end
+    return nil
 end

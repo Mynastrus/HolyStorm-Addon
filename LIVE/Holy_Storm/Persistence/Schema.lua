@@ -1,4 +1,4 @@
-local addonVersion = "2.3.0"
+local addonVersion = "2.4.0"
 local HolyStorm = LibStub("AceAddon-3.0"):GetAddon("Holy_Storm")
 HolyStorm.Data.Schema = {
     fileVersion = addonVersion,
@@ -9,7 +9,7 @@ HolyStorm.Data.Schema = {
             optionalModules = { GuildLog = true, GuildEvents = false, Equipment = true, Raids = true, MythicPlus = true, CharacterStats = true, Delves = true, Professions = false },
             window = { savePosition = false, saveSize = false },
             guildRoster = { showOffline = true, groupTwinks = true },
-            logs = { autoScroll = true, level = "DEBUG", maxEntries = 2000, columns = {} },
+            logs = { autoScroll = true, level = "ALL", module = "ALL", category = "ALL", direction = "ALL", event = "ALL", search = "", maxEntries = 2000, columns = {} },
             taskManager = { historyLimit = 250, workflowHistoryLimit = 100, eventHistoryLimit = 300, triggerHistoryLimit = 20, columns = {}, filters = {} },
             filters = { localFilters = {}, active = {}, activeByContext = {}, combine = "AND" },
             rules = { localRules = {} },

@@ -12,7 +12,7 @@ function ChatFrame_SendTell(name)whispered=name end
 function ChatEdit_GetActiveWindow()return true end
 function ChatEdit_InsertLink(name)inserted=name end
 MenuUtil={CreateContextMenu=function(_,builder)buttons={};local rootMenu={CreateTitle=function()end,CreateButton=function(_,text,callback)local item={text=text,callback=callback};function item:SetEnabled(value)self.enabled=value end;buttons[#buttons+1]=item;return item end};builder(nil,rootMenu)end}
-assert(loadfile(root.."Core/CharacterActions.lua"))();local Actions=HolyStorm.CharacterActions;Actions:Initialize()
+assert(loadfile(root.."Modules/Characters/CharacterActions.lua"))();local Actions=HolyStorm.CharacterActions;Actions:Initialize()
 assert(Actions:Open("Player-A")and opened.guid=="Player-A");assert(Actions:OpenMain("Player-A")and opened.guid=="Player-Main");assert(Actions:Invite("Player-A")and invited=="Alpha-Realm");assert(Actions:Whisper("Player-A")and whispered=="Alpha-Realm");assert(Actions:CopyName("Player-A")and inserted=="Alpha-Realm")
 assert(Actions:CreateContextMenu({},"Player-A",{{text="POI",enabled=true,callback=function()end}}));assert(#buttons==6 and buttons[1].enabled and buttons[2].enabled and buttons[5].enabled and buttons[6].enabled,"central context actions and main action are enabled for an online known character")
 print("Central character context action tests passed")

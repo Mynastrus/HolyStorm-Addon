@@ -7,12 +7,12 @@ local HolyStorm={db={global={localPlayerId="account-local",localAccountUUID="acc
 function HolyStorm:GetAddon()return self end
 local locale=setmetatable({}, {__index=function(_,key)return key end})
 function LibStub(name)if name=="AceLocale-3.0"then return{GetLocale=function()return locale end}end;return HolyStorm end
-assert(loadfile(root.."Core/Utils.lua"))();assert(loadfile(root.."Core/Serializer.lua"))()
+assert(loadfile(root.."Core/Utils/Utils.lua"))();assert(loadfile(root.."Core/Serialization/Serializer.lua"))()
 HolyStorm.Logger={Write=function()end};HolyStorm.Events={listeners={},emitted={}}
 function HolyStorm.Events:Register(event,owner,fn)self.listeners[event]=self.listeners[event]or{};self.listeners[event][owner]=fn end
 function HolyStorm.Events:Emit(event,...)self.emitted[#self.emitted+1]=event;for _,fn in pairs(self.listeners[event]or{})do fn(event,...)end end
 HS_Player_DB={characters={},players={},characterOwners={},sync={foreignWatermark=0,foreignWatermarks={}}}
-assert(loadfile(root.."Core/PlayerDataStore.lua"))();HolyStorm.PlayerData:Initialize()
+assert(loadfile(root.."Persistence/PlayerDataStore.lua"))();HolyStorm.PlayerData:Initialize()
 local characterData={
  Maristi={guid="Maristi",name="Maristi",realm="Realm",classFile="PALADIN",level=80},
  Marithiel={guid="Marithiel",name="Marithiel",realm="Realm",classFile="PRIEST",level=80},
@@ -27,8 +27,8 @@ function HolyStorm.Tasks:RegisterTaskType(id,d)self.types[id]=d;return true end
 function HolyStorm.Tasks:Queue(id,o)self.queued[#self.queued+1]={id=id,options=o};return"task"end
 function HolyStorm.Tasks:ScheduleRecurring()return true end
 HolyStorm.Comms={available=true,Send=function()return true end};HolyStorm.Policy={Can=function()return true end}
-assert(loadfile(root.."Core/SyncManager.lua"))();HolyStorm.Sync:Initialize()
-assert(loadfile(root.."Core/TwinkCore.lua"))();HolyStorm.TwinkCore:Initialize()
+assert(loadfile(root.."Sync/SyncManager.lua"))();HolyStorm.Sync:Initialize()
+assert(loadfile(root.."Modules/Characters/TwinkCore.lua"))();HolyStorm.TwinkCore:Initialize()
 local core=HolyStorm.TwinkCore;local accountUUID=core:GetLocalAccountUUID()
 
 -- A: a later login learns a second character without changing AccountUUID.

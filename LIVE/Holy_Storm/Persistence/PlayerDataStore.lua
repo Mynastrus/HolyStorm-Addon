@@ -1,4 +1,4 @@
-local addonVersion = "1.0.0"
+local addonVersion = "1.0.1"
 local HolyStorm = LibStub("AceAddon-3.0"):GetAddon("Holy_Storm")
 
 -- HS_Player_DB is the canonical persistent owner-controlled data store.  The
@@ -15,6 +15,15 @@ local PlayerData = {
 local function copy(value) return HolyStorm.Utils.DeepCopy(value) end
 local function now() return HolyStorm.Utils.Now() end
 local function validId(value) return type(value)=="string" and #value>0 and #value<=128 end
+local function validateMythicPlus(data)
+    if type(data)~="table"then return false,"INVALID_MYTHICPLUS_DATA"end
+    if data.dungeons~=nil and type(data.dungeons)~="table"then return false,"INVALID_MYTHICPLUS_DUNGEONS"end
+    local dungeonCount=0;for _,dungeon in pairs(type(data.dungeons)=="table"and data.dungeons or{})do if type(dungeon)~="table"then return false,"INVALID_MYTHICPLUS_DUNGEON"end;dungeonCount=dungeonCount+1 end
+    if data.seasonId==nil and data.overallScore==nil and data.ownedKey==nil and dungeonCount==0 then return false,"EMPTY_MYTHICPLUS_DATA"end
+    if data.ownedKey~=nil and type(data.ownedKey)~="table"then return false,"INVALID_MYTHICPLUS_KEY"end
+    if(tonumber(data.snapshotVersion)or 0)>=3 then if not tonumber(data.seasonId)or tonumber(data.seasonId)<=0 or dungeonCount==0 then return false,"INCOMPLETE_MYTHICPLUS_DATA"end;for _,dungeon in pairs(data.dungeons)do if not dungeon.name or not dungeon.challengeMapId or not dungeon.timeLimit then return false,"INCOMPLETE_MYTHICPLUS_DUNGEON"end end;if(tonumber(data.overallScore)or 0)>0 and data.scoreDataReady~=true then return false,"INCOMPLETE_MYTHICPLUS_SCORES"end end
+    return true
+end
 local function same(left,right)
     local function comparable(value)local result=copy(value);if type(result)=="table"then result.version=nil;result.updatedAt=nil;for _,child in pairs(result)do if type(child)=="table"then child.version=nil;child.updatedAt=nil end end end;return result end
     local a=HolyStorm.Serializer and HolyStorm.Serializer:Serialize(comparable(left))
@@ -45,8 +54,18 @@ function PlayerData:Initialize()
         if not validId(guid)or type(record)~="table"then root.characters[guid]=nil else
             record.guid=guid;record.blockMeta=type(record.blockMeta)=="table"and record.blockMeta or{}
             for blockId,definition in pairs(self.blocks)do
-                local hasData=false;for _,field in ipairs(definition.fields)do if record[field]~=nil then hasData=true;break end end
-                if hasData and type(record.blockMeta[blockId])~="table"then local version=0;for _,field in ipairs(definition.fields)do local value=record[field];if type(value)=="table"then version=math.max(version,tonumber(value.version)or 0)end end;version=math.max(version,tonumber(record.version)or 0);record.blockMeta[blockId]={owner=guid,version=version,updatedAt=tonumber(record.updatedAt)or 0,source=record.fieldSources and record.fieldSources[definition.fields[1]]or"migration",receivedFrom=nil,direct=false}end
+                local hasData=false;local blockUpdatedAt=0;local blockSource
+                for _,field in ipairs(definition.fields)do
+                    local value=record[field];if value~=nil then hasData=true end
+                    if type(value)=="table"then
+                        blockUpdatedAt=math.max(blockUpdatedAt,tonumber(value.updatedAt)or 0)
+                        blockSource=blockSource or value.source
+                    end
+                end
+                if hasData and type(record.blockMeta[blockId])~="table"then
+                    local version=0;for _,field in ipairs(definition.fields)do local value=record[field];if type(value)=="table"then version=math.max(version,tonumber(value.version)or 0)end end;version=math.max(version,tonumber(record.version)or 0)
+                    record.blockMeta[blockId]={owner=guid,version=version,updatedAt=math.max(blockUpdatedAt,tonumber(record.updatedAt)or 0),source=blockSource or(record.fieldSources and record.fieldSources[definition.fields[1]])or"migration",receivedFrom=nil,direct=false}
+                end
             end
         end
     end
@@ -135,7 +154,7 @@ end
 local identity={"name","realm","class","classFile","race","raceFile","sex","level","faction","guild","guildRank","guildRankIndex","lastSeen"}
 PlayerData:RegisterBlock("identity",{fields=identity,event="HS_CHARACTER_UPDATED",staleAfter=3600})
 PlayerData:RegisterBlock("equipment",{fields={"equipment","itemLevel"},event="HS_EQUIPMENT_UPDATED",staleAfter=21600})
-PlayerData:RegisterBlock("mythicPlus",{fields={"mythicPlus"},event="HS_MYTHICPLUS_UPDATED",staleAfter=21600})
+PlayerData:RegisterBlock("mythicPlus",{fields={"mythicPlus"},event="HS_MYTHICPLUS_UPDATED",staleAfter=21600,validate=validateMythicPlus})
 PlayerData:RegisterBlock("raid",{fields={"raidLockouts"},event="HS_RAIDLOCKS_UPDATED",staleAfter=21600})
 PlayerData:RegisterBlock("delves",{fields={"delves"},event="HS_DELVES_UPDATED",staleAfter=21600})
 PlayerData:RegisterBlock("stats",{fields={"stats"},event="HS_STATS_UPDATED",staleAfter=21600})

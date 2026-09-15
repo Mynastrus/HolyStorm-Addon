@@ -14,7 +14,7 @@ function HolyStorm.MapLinks:GetPlayerPosition()return pos.map,pos.x,pos.y end;fu
 function HolyStorm.POI:IsMapValid(map)return tonumber(map)and map>0 end
 function UnitGUID()return localGuid end;function IsInGuild()return guild~=nil end;function GetTime()return mono end;function GetUnitSpeed()return speed end
 
-assert(loadfile(root.."Core/GuildPositions.lua"))();local P=HolyStorm.GuildPositions;P:Initialize();local domain=HolyStorm.Sync.domains["guild-position"]
+assert(loadfile(root.."Modules/Positions/GuildPositions.lua"))();local P=HolyStorm.GuildPositions;P:Initialize();local domain=HolyStorm.Sync.domains["guild-position"]
 assert(P:GetSettings().share==false and not P:CanShare(),"position sharing must default to privacy opt-out");assert(not P:SampleMovement("PRIVACY_OFF",true)and#HolyStorm.Sync.published==0,"privacy off captured or published a position")
 P:SetSetting("share",true);P.captureForce,P.captureReason=true,"TEST_INITIAL";assert(P:RunCapture());assert(P.pendingSnapshot and P.pendingSnapshot.characterUUID==localGuid);local keys=0;for _ in pairs(P.pendingSnapshot)do keys=keys+1 end;assert(keys==7 and P.pendingSnapshot.name==nil and P.pendingSnapshot.class==nil,"position payload is not compact");assert(P:RunPublish()and HolyStorm.Sync.published[#HolyStorm.Sync.published].domain=="guild-position","privacy-on initial state was not published")
 P.movement.active=false;local queued=#HolyStorm.Tasks.queued;mono=mono+600;assert(not P:SampleMovement("STATIONARY",false)and#HolyStorm.Tasks.queued==queued,"stationary player generated a network update")

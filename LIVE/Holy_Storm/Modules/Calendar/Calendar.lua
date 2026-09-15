@@ -1,9 +1,9 @@
 local addonVersion = "2.0.0"
 local HolyStorm = LibStub("AceAddon-3.0"):GetAddon("Holy_Storm")
 local L = LibStub("AceLocale-3.0"):GetLocale("Holy_Storm_GuildEvents")
-local metadata = { displayName = L["DISPLAY_NAME"], internalName = "guildEvents", version = addonVersion, category = "optional", description = L["DESCRIPTION"], permissions = { "calendar-read" }, dependencies = { "core", "ui" }, enabledByDefault = false }
+local metadata = { id = "GuildEvents", name = "Calendar", internalName = "guildEvents", displayName = L["DISPLAY_NAME"], description = L["DESCRIPTION"], version = addonVersion, moduleType = "feature", category = "optional", permissions = { "calendar-read" }, dependencies = { "core", "ui" }, ui = { page = "guildEvents", navigation = true }, enabledByDefault = false }
 
-HolyStorm:RegisterOptionalModule("GuildEvents", metadata, function(Events)
+HolyStorm:RegisterModule(metadata, function(Events)
     HolyStorm:ApplyModuleMetadata(Events, metadata)
 
     function Events:GetDatabase()
@@ -74,7 +74,7 @@ HolyStorm:RegisterOptionalModule("GuildEvents", metadata, function(Events)
         if not event.raidInfo or not invite.guid then return L["NO_RAID_PROGRESS"] end
         local raids = HolyStorm:GetModule("Raids", true)
         if not raids or not raids:IsEnabled() then return L["NO_RAID_PROGRESS"] end
-        local data = raids:GetData(invite.guid); local best
+        local data = raids:GetCharacterSnapshot(invite.guid); local best
         for _, lockout in ipairs(data and data.lockouts or {}) do
             if lockout.name == event.raidInfo.name then
                 local killed = 0; for _, boss in ipairs(lockout.bosses or {}) do if boss.killed then killed = killed + 1 end end

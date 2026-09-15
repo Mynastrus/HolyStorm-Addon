@@ -31,20 +31,20 @@ Die fachlich verbindlichen Details sind außerdem durch die implementierte Struk
 - Kommunikation verwendet ein versioniertes Protokoll, Chunking, Queue, Prioritäten, Throttling, Reassembly und defensive Eingangsvalidierung.
 - UI-Seiten werden zentral registriert; unsichtbare Seiten werden nur als `dirty` markiert und erst beim Anzeigen aktualisiert.
 - Fachmodule Guild, Characters, Equipment, Raids, MythicPlus, Calendar, Professions, Delves und GuildLog wurden migriert beziehungsweise funktional umgesetzt.
-- Slash-Commands und Chat-Link-Hooks liegen zentral in `Core/Commands.lua`.
+- Slash-Commands und Chat-Link-Hooks liegen zentral in `Core/Commands/Commands.lua`.
 - Lokalisierungen liegen bei den jeweiligen Domänen; jede eigene Lua-Datei deklariert lokal ihre Addon-Version.
 
 ## Wichtige Einstiegspunkte
 
 - `LIVE/Holy_Storm/Holy_Storm.toc` – vollständige Ladefolge
-- `LIVE/Holy_Storm/Core/Bootstrap.lua` – kontrollierter Start
-- `LIVE/Holy_Storm/Core/EventBus.lua` – WoW- und interne Events
-- `LIVE/Holy_Storm/Core/TaskManager.lua` – priorisierte Aufgabensteuerung
-- `LIVE/Holy_Storm/Core/Comms.lua` – technische Übertragung
-- `LIVE/Holy_Storm/Core/SyncManager.lua` – fachliche Synchronisation
-- `LIVE/Holy_Storm/Core/Permissions.lua` – Rollen und Rechte
-- `LIVE/Holy_Storm/Data/Schema.lua` – aktuelles Datenmodell
-- `LIVE/Holy_Storm/Data/Migrations.lua` – Datenmigrationen
+- `LIVE/Holy_Storm/Core/Bootstrap/Bootstrap.lua` – kontrollierter Start
+- `LIVE/Holy_Storm/Core/Events/EventBus.lua` – WoW- und interne Events
+- `LIVE/Holy_Storm/Core/Tasks/TaskManager.lua` – priorisierte Aufgabensteuerung
+- `LIVE/Holy_Storm/Sync/Comms.lua` – technische Übertragung
+- `LIVE/Holy_Storm/Sync/SyncManager.lua` – fachliche Synchronisation
+- `LIVE/Holy_Storm/Core/Permissions/Permissions.lua` – Rollen und Rechte
+- `LIVE/Holy_Storm/Persistence/Schema.lua` – aktuelles Datenmodell
+- `LIVE/Holy_Storm/Persistence/Migrations.lua` – Datenmigrationen
 - `PROJECT_CONTEXT.md` – Projekt- und Architekturkontext
 - `CHANGELOG.md` – nachvollziehbare Änderungshistorie
 

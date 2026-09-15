@@ -15,7 +15,7 @@ function HolyStorm:CallCapability(_,target)self.openedCharacter=target end
 function UnitGUID()return currentGuid end;function GetUnitName()return"Alpha-Realm"end
 C_Map={SetUserWaypoint=function(point)HolyStorm.waypoint=point end};C_SuperTrack={SetSuperTrackedUserWaypoint=function()end};UiMapPoint={CreateFromCoordinates=function(map,x,y)return{mapID=map,x=x,y=y}end};function OpenWorldMap(map)HolyStorm.openedMap=map end
 
-assert(loadfile(root.."Data/ContentStore.lua"))();assert(loadfile(root.."Core/MapLinks.lua"))();assert(loadfile(root.."Core/RichContent.lua"))();assert(loadfile(root.."Core/Content.lua"))()
+assert(loadfile(root.."Persistence/ContentStore.lua"))();assert(loadfile(root.."Core/Content/MapLinks.lua"))();assert(loadfile(root.."Core/Content/RichContent.lua"))();assert(loadfile(root.."Modules/News/Content.lua"))()
 HolyStorm.RichContent:Initialize();HolyStorm.Content:Initialize();local Content=HolyStorm.Content
 local migrated,count=HolyStorm.Data.ContentStore:MigrateLegacy();assert(migrated and count==1 and Content:Get("old-news").body=="Preserved"and HolyStorm.Data.ContentStore:GetRead("old-news","A").revision==4,"legacy news and personal read state migrate once");assert(not HolyStorm.Data.ContentStore:MigrateLegacy(),"legacy migration is idempotent")
 

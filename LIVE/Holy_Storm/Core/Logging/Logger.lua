@@ -1,4 +1,4 @@
-local addonVersion = "2.0.0"
+local addonVersion = "2.1.0"
 local HolyStorm = LibStub("AceAddon-3.0"):GetAddon("Holy_Storm")
 local Logger = { version=addonVersion, levels = { DEBUG = 1, INFO = 2, WARN = 3, ERROR = 4 }, threshold = 2, history = {}, paused=false }
 function Logger:Initialize(debugEnabled)
@@ -10,7 +10,7 @@ function Logger:SetLevel(level) if self.levels[level] then self.threshold = self
 function Logger:Log(level, source, category, message, context, correlationId, ...)
     local numeric = self.levels[level]; if not numeric then return false end
     if message==nil then message,category=category,"general" end
-    local entry = { level=level, source=tostring(source or "Core"), category=tostring(category or "general"), message=tostring(message), context=HolyStorm.Utils.DeepCopy(context), correlationId=correlationId, timestamp=HolyStorm.Utils.Now() }
+    context=type(context)=="table"and context or nil;correlationId=correlationId or(context and(context.correlationId or context.transmissionId));local entry = { level=level, source=tostring(source or "Core"), category=tostring(category or "general"), message=tostring(message), context=HolyStorm.Utils.DeepCopy(context), correlationId=correlationId, timestamp=HolyStorm.Utils.Now(),direction=context and context.direction,eventName=context and(context.eventName or context.event),transmissionId=context and context.transmissionId }
     table.insert(self.history, entry); if #self.history > 2000 then table.remove(self.history, 1) end
     if numeric >= self.threshold then print(string.format("|cff3fc7ebHoly Storm|r [%s/%s] %s", level, entry.source, entry.message)) end
     if HolyStorm.Events then HolyStorm.Events:Emit("HS_LOG_ADDED",entry) end

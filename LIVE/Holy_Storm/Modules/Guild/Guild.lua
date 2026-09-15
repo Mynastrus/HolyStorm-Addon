@@ -2,12 +2,12 @@ local addonVersion = "2.2.0"
 local HolyStorm = LibStub("AceAddon-3.0"):GetAddon("Holy_Storm")
 local L = LibStub("AceLocale-3.0"):GetLocale("Holy_Storm_GuildRoster")
 
-local GuildRoster = HolyStorm:RegisterRequiredModule("GuildRoster")
-HolyStorm:ApplyModuleMetadata(GuildRoster, {
-    displayName = L["DISPLAY_NAME"], internalName = "guildRoster", version = addonVersion,
-    category = "required", description = L["DESCRIPTION"], permissions = { "guild-roster-read" },
-    dependencies = { "core", "ui", "options" }, enabledByDefault = true,
-})
+HolyStorm:RegisterModule({
+    id = "GuildRoster", name = "GuildRoster", displayName = L["DISPLAY_NAME"], internalName = "guildRoster", version = addonVersion,
+    moduleType = "feature", category = "required", description = L["DESCRIPTION"], permissions = { "guild-roster-read" },
+    dependencies = { "core", "ui", "options" }, ui = { page = "guildRoster", navigation = true },
+    data = { stores = { "GuildStore", "CharacterStore" } }, enabledByDefault = true,
+}, function(GuildRoster)
 
 local function setColumnText(fontString, text, color)
     fontString:SetText(text or L["UNKNOWN_VALUE"])
@@ -335,3 +335,4 @@ function GuildRoster:RenderRows(members)
     end
     self.scrollContent:SetHeight(math.max(1, #members * 22))
 end
+end)

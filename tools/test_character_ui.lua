@@ -22,7 +22,7 @@ function HolyStorm.Policy:Can()return true end
 function HolyStorm.Policy:IsGuildModuleEnabled()return true end
 RAID_CLASS_COLORS={PALADIN={r=1,g=.5,b=.8,WrapTextInColorCode=function(_,text)return"|cffff80cc"..text.."|r"end},MAGE={r=.2,g=.8,b=1}};LEVEL="Level";GameTooltip={lines={},wraps={}};function GameTooltip:SetOwner()end;function GameTooltip:SetText(text,r,g,b)self.title,self.titleColor=text,{r=r,g=g,b=b}end;function GameTooltip:AddLine(text,r,g,b,wrap)self.lines[#self.lines+1]=text;self.wraps[#self.lines]=wrap end;function GameTooltip:Show()self.shown=true end
 
-assert(loadfile(root.."Core/CharacterUI.lua"))()
+assert(loadfile(root.."UI/Character/CharacterUI.lua"))()
 local C=HolyStorm.CharacterUI
 
 local dummy=function()end

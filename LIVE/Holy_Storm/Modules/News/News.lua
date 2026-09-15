@@ -1,8 +1,8 @@
 local addonVersion="2.0.1"
 local HolyStorm=LibStub("AceAddon-3.0"):GetAddon("Holy_Storm")
 local L=LibStub("AceLocale-3.0"):GetLocale("Holy_Storm_News")
-local News=HolyStorm:RegisterRequiredModule("News")
-HolyStorm:ApplyModuleMetadata(News,{displayName=L["TITLE"],internalName="content",version=addonVersion,category="required",description=L["DESCRIPTION"],permissions={"news-view","guide-view"},dependencies={"core","ui","synchronization"},enabledByDefault=true})
+local metadata={id="News",name="News",internalName="content",displayName=L["TITLE"],description=L["DESCRIPTION"],version=addonVersion,moduleType="feature",category="required",permissions={"news-view","guide-view"},dependencies={"core","ui","synchronization"},ui={page="news",navigation=true},data={store="ContentStore"},sync={domains={"content"}},enabledByDefault=true}
+HolyStorm:RegisterModule(metadata,function(News)
 
 local types={"ALL","NEWS","GUIDE","ANNOUNCEMENT"}
 local priorities={"NORMAL","IMPORTANT","URGENT"}
@@ -98,3 +98,4 @@ function News:OnInitialize()
 end
 function News:OnEnable()local guildId=HolyStorm.Content:GetGuildId();if guildId then HolyStorm.Tasks:Queue("Content.Migrate",{triggerSource="CONTENT_ENABLE",metadata={guildId=guildId}})end;if HolyStorm.Content:IsEnabled()then HolyStorm.Sync:Discover("content",nil,{reason="CONTENT_ENABLE",priority=92})end;for _,event in ipairs({"HS_CONTENT_CREATED","HS_CONTENT_UPDATED","HS_CONTENT_PUBLISHED","HS_CONTENT_ARCHIVED","HS_CONTENT_DELETED","HS_CONTENT_READ","HS_CONTENT_SYNC_UPDATED","HS_FILTER_UPDATED","HS_PERMISSIONS_STATE_UPDATED"})do HolyStorm.Events:Register(event,"content-ui",function()News:RefreshListIfVisible();if HolyStorm.UI.driver then HolyStorm.UI.driver:RefreshDashboardProviders()end end)end;HolyStorm.Events:Register("HS_CONTENT_LOADING","content-ui-loading",function()HolyStorm.UI:ShowPage("news");News:ShowMessage("LOADING")end);HolyStorm.Events:Register("HS_CONTENT_OPEN_FAILED","content-ui-failed",function(_,_,reason)HolyStorm.UI:ShowPage("news");News:ShowMessage((reason=="PERMISSION"or reason=="VISIBILITY")and"ERROR_PERMISSION"or"ERROR_NOT_FOUND")end)end
 function News:OnDisable()HolyStorm.Events:UnregisterOwner("content-ui");HolyStorm.Events:UnregisterOwner("content-ui-loading");HolyStorm.Events:UnregisterOwner("content-ui-failed")end
+end)

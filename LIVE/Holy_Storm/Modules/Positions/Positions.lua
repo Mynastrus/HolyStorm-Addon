@@ -1,8 +1,8 @@
 local addonVersion="1.0.0"
 local HolyStorm=LibStub("AceAddon-3.0"):GetAddon("Holy_Storm")
 local L=LibStub("AceLocale-3.0"):GetLocale("Holy_Storm_Positions")
-local Module=HolyStorm:RegisterRequiredModule("Positions")
-HolyStorm:ApplyModuleMetadata(Module,{displayName=L["TITLE"],internalName="positions",version=addonVersion,category="required",description=L["DESCRIPTION"],permissions={"position-view","position-share"},dependencies={"core","ui","synchronization"},enabledByDefault=true})
+local metadata={id="Positions",name="Positions",internalName="positions",displayName=L["TITLE"],description=L["DESCRIPTION"],version=addonVersion,moduleType="feature",category="required",permissions={"position-view","position-share"},dependencies={"core","ui","synchronization"},ui={page="positions",navigation=true},sync={domains={"guild-position"}},enabledByDefault=true}
+HolyStorm:RegisterModule(metadata,function(Module)
 local function yes(value)return value and L["YES"]or L["NO"]end
 local function stamp(value)return value and date("%H:%M:%S",value)or"-"end
 local columns={{key="character",label="COLUMN_CHARACTER",weight=.25},{key="position",label="COLUMN_POSITION",weight=.18},{key="age",label="COLUMN_AGE_SOURCE",weight=.15},{key="state",label="COLUMN_STATE",weight=.14},{key="pins",label="COLUMN_PINS",weight=.13},{key="transform",label="COLUMN_TRANSFORM",weight=.15}}
@@ -23,3 +23,4 @@ function Module:OnInitialize()
 end
 function Module:OnEnable()for _,event in ipairs({"HS_GUILD_POSITION_UPDATED","HS_GUILD_POSITIONS_CLEARED","HS_GUILD_POSITIONS_RECONCILED","HS_POSITION_SETTINGS_CHANGED","HS_GUILD_POSITION_MAP_REFRESHED"})do local eventName=event;HolyStorm.Events:Register(eventName,"positions-ui",function()Module:Refresh()end)end end
 function Module:OnDisable()HolyStorm.Events:UnregisterOwner("positions-ui")end
+end)

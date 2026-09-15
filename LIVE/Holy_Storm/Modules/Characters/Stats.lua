@@ -1,8 +1,7 @@
 local addonVersion="1.1.0"
 local HolyStorm=LibStub("AceAddon-3.0"):GetAddon("Holy_Storm");local L=LibStub("AceLocale-3.0"):GetLocale("Holy_Storm_Twinks")
-local metadata={displayName="Character Stats",internalName="characterStats",version=addonVersion,category="optional",description="Persistent character attributes",permissions={"player-read","sync-send"},dependencies={"core","ui"},enabledByDefault=true}
-HolyStorm:RegisterOptionalModule("CharacterStats",metadata,function(Module)
- HolyStorm:ApplyModuleMetadata(Module,metadata)
+local metadata={id="CharacterStats",name="CharacterStats",displayName="Character Stats",internalName="characterStats",version=addonVersion,moduleType="feature",category="optional",description="Persistent character attributes",permissions={"player-read","sync-send"},dependencies={"core","ui"},capabilities={"character.scan.stats","character.scan.additional"},data={block="stats"},enabledByDefault=true}
+HolyStorm:RegisterModule(metadata,function(Module)
  function Module:GetCharacterSnapshot(guid)return HolyStorm.Data.CharacterStore:GetBlock(guid,"stats")end
  function Module:Collect()
   local s={primary={},secondary={},updatedAt=HolyStorm.Utils.Now(),snapshotVersion=1};for i,key in ipairs({"strength","agility","stamina","intellect"})do local base,effective=UnitStat("player",i);s.primary[key]={base=base,effective=effective}end

@@ -6,7 +6,7 @@ function time()return clock end;function GetTime()return clock end;function Unit
 local locale=setmetatable({}, {__index=function(_,key)return key end})
 local HolyStorm={db={global={localPlayerId="acct-maristi",localAccountUUID="acct-maristi",data={players={},characters={},characterOwners={},guilds={}},permissions={groups={},roles={}},permissionStates={},rules={global={}},filters={global={},templates={},demands={quests={},achievements={}}},policy={tombstones={groups={},rules={},filters={}}},news={entries={keep=true}}},profile={rules={localRules={}},filters={localFilters={},activeByContext={}}}}}
 function HolyStorm:GetAddon()return self end;function LibStub(name)if name=="AceLocale-3.0"then return{GetLocale=function()return locale end}end;return HolyStorm end
-assert(loadfile(root.."Core/Utils.lua"))();assert(loadfile(root.."Core/Serializer.lua"))()
+assert(loadfile(root.."Core/Utils/Utils.lua"))();assert(loadfile(root.."Core/Serialization/Serializer.lua"))()
 HolyStorm.Logger={Write=function()end};HolyStorm.Events={listeners={}}
 function HolyStorm.Events:Register(e,o,fn)self.listeners[e]=self.listeners[e]or{};self.listeners[e][o]=fn end;function HolyStorm.Events:Emit(e,...)for _,fn in pairs(self.listeners[e]or{})do fn(e,...)end end
 HolyStorm.Tasks={types={},queued={}};function HolyStorm.Tasks:RegisterTaskType(id,d)self.types[id]=d;return true end;function HolyStorm.Tasks:GetTaskType(id)return self.types[id]end;function HolyStorm.Tasks:Queue(id,o)self.queued[#self.queued+1]={id=id,options=o};return id end
@@ -20,7 +20,7 @@ function HolyStorm.Data.PlayerStore:GetLocalPlayerId()return"acct-maristi"end;fu
 function HolyStorm.Data.CharacterStore:Get(guid)return characters[guid]end;function HolyStorm.Data.CharacterStore:Upsert(guid,changes)characters[guid]=characters[guid]or{guid=guid};for k,v in pairs(changes)do characters[guid][k]=v end;return true end
 function HolyStorm.Data.GuildStore:GetCurrent()return guild end;function HolyStorm.Data.GuildStore:GetGuildId()return guild.id end;function HolyStorm.Data.GuildStore:ResolveSenderGuid(sender)return sender end
 HolyStorm.TwinkCore={GetLocalAccountUUID=function()return"acct-maristi"end,GetAccountUUIDForCharacter=function(_,guid)return accounts[guid]end,GetAccount=function(_,id)return id and{accountUUID=id}end,GetCharactersForAccount=function(_,id)local out={};for guid,account in pairs(accounts)do if account==id then out[guid]={characterUUID=guid}end end;return out end,GetAccountMain=function(_,id)for guid,account in pairs(accounts)do if account==id then return guid end end end}
-assert(loadfile(root.."Core/RuleEngine.lua"))();assert(loadfile(root.."Core/Permissions.lua"))();assert(loadfile(root.."Core/Policy.lua"))();HolyStorm.Rules:Initialize();HolyStorm.Permissions:Initialize();HolyStorm.Policy:Initialize()
+assert(loadfile(root.."Core/Permissions/RuleEngine.lua"))();assert(loadfile(root.."Core/Permissions/Permissions.lua"))();assert(loadfile(root.."Core/Permissions/Policy.lua"))();HolyStorm.Rules:Initialize();HolyStorm.Permissions:Initialize();HolyStorm.Policy:Initialize()
 local P,R=HolyStorm.Policy,HolyStorm.Rules;local ids=HolyStorm.Permissions.systemIds;local state=P:GetState();assert(state and state.status==P.status.VALID and state.version==1);assert(HolyStorm.Sync:GetDomain("permissions").freshness=="revision-chain")
 
 -- A: guild membership is dynamic and disappears with Blizzard roster state.

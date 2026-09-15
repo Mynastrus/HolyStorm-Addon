@@ -1,7 +1,10 @@
-local addonVersion = "1.0.0"
+local addonVersion = "1.1.0"
 local HolyStorm = LibStub("AceAddon-3.0"):GetAddon("Holy_Storm")
 local Events = { version=addonVersion, listeners = {}, frame = nil }
 local function isInternal(event) return event:sub(1, 3) == "HS_" end
+local function isTechnicalInternal(event)
+    return event:sub(1, 7) == "HS_LOG_" or event:sub(1, 8) == "HS_TASK_" or event:sub(1, 12) == "HS_WORKFLOW_"
+end
 function Events:Initialize()
     if self.frame then return end
     self.frame = CreateFrame("Frame")
@@ -30,7 +33,7 @@ function Events:Emit(event, ...)
         for owner in pairs(bucket) do
             local source=type(owner)=="string" and owner or "unknown"
             HolyStorm.Tasks:RecordEvent(event, source, type(first)=="table" and {taskId=first.uniqueId,workflowId=first.workflowId,triggeredTask=first.registryId} or nil)
-            if event:sub(1,3) ~= "HS_" and HolyStorm.Logger then HolyStorm.Logger:Write("DEBUG", source, "event", "Event received: " .. event, { listener=source }) end
+            if not isTechnicalInternal(event) and HolyStorm.Logger then HolyStorm.Logger:Write("DEBUG", source, "event", "Event received: " .. event, { listener=source,event=event,eventName=event }) end
         end
     end
     local callbacks = {}; for owner, callback in pairs(bucket) do callbacks[#callbacks + 1] = { owner, callback } end

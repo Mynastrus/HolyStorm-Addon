@@ -1,16 +1,19 @@
-local addonVersion="2.1.0"
+local addonVersion="2.1.2"
 local HolyStorm=LibStub("AceAddon-3.0"):GetAddon("Holy_Storm");local L=LibStub("AceLocale-3.0"):GetLocale("Holy_Storm_Dungeons")
-local metadata={displayName=L["DISPLAY_NAME"],internalName="mythicPlus",version=addonVersion,category="optional",description=L["DESCRIPTION"],permissions={"mythicplus-read","sync-send","sync-receive"},dependencies={"core","ui"},enabledByDefault=true}
+local metadata={id="mythicPlus",name="MythicPlus",displayName=L["DISPLAY_NAME"],description=L["DESCRIPTION"],version=addonVersion,moduleType="feature",category="optional",permissions={"mythicplus-read","sync-send","sync-receive"},dependencies={"core","ui"},capabilities={"character.scan.mythicplus"},ui={},options={},administration={},data={block="mythicPlus",snapshotType="mythicplus",schemaVersion=3,capability="character.scan.mythicplus"},sync={domains={"character"}},enabledByDefault=true}
 local function plain(v,depth) if type(v)~="table"then return (type(v)=="string"or type(v)=="number"or type(v)=="boolean")and v or nil end;if depth>5 then return nil end;local r={};for k,x in pairs(v)do if type(k)=="string"or type(k)=="number"then r[k]=plain(x,depth+1)end end;return r end
 local function bestRun(intime,overtime,affixScores)
  local best;local function consider(entry,overTime)local score=entry and tonumber(entry.dungeonScore or entry.score or entry.seasonScore);local level=entry and tonumber(entry.level or entry.bestLevel);if level and level>0 and(not best or(score or 0)>(best.score or 0)or((score or 0)==(best.score or 0)and level>(best.level or 0)))then best={level=level,score=score or 0,durationSec=tonumber(entry.durationSec),overTime=overTime==true or entry.overTime==true}end end
  consider(intime,false);consider(overtime,true);for _,entry in pairs(type(affixScores)=="table"and affixScores or{})do consider(entry,entry.overTime)end;return best
 end
-HolyStorm:RegisterOptionalModule("MythicPlus",metadata,function(Module)
+HolyStorm:RegisterModule(metadata,function(Module)
  HolyStorm:ApplyModuleMetadata(Module,metadata)
  function Module:GetCharacterSnapshot(guid)return HolyStorm.Data.CharacterStore:GetBlock(guid,"mythicPlus")end
+ function Module:RequestData(force)
+  if self.initialDataRequested and not force then return false end;self.initialDataRequested=true;local mp=C_MythicPlus;if not mp then return false end;local requested=false;if mp.RequestCurrentAffixes then mp.RequestCurrentAffixes();requested=true end;if mp.RequestMapInfo then mp.RequestMapInfo();requested=true end;if mp.RequestRewards then mp.RequestRewards();requested=true end;return requested
+ end
  function Module:Collect()
-  local mp,cm=C_MythicPlus,C_ChallengeMode;if not mp or not cm then return nil end;if mp.RequestCurrentAffixes then mp.RequestCurrentAffixes()end;if mp.RequestMapInfo then mp.RequestMapInfo()end;if mp.RequestRewards then mp.RequestRewards()end
+  local mp,cm=C_MythicPlus,C_ChallengeMode;if not mp or not cm then return nil end
   local s={seasonId=mp.GetCurrentSeason and mp.GetCurrentSeason(),displaySeasonId=mp.GetCurrentUIDisplaySeason and mp.GetCurrentUIDisplaySeason(),overallScore=cm.GetOverallDungeonScore and cm.GetOverallDungeonScore()or 0,dungeons={},affixes={},updatedAt=HolyStorm.Utils.Now(),snapshotVersion=3}
   s.ownedKey={level=mp.GetOwnedKeystoneLevel and mp.GetOwnedKeystoneLevel()or 0,challengeMapId=mp.GetOwnedKeystoneChallengeMapID and mp.GetOwnedKeystoneChallengeMapID()or 0,mapId=mp.GetOwnedKeystoneMapID and mp.GetOwnedKeystoneMapID()or 0}
   for _,a in ipairs(mp.GetCurrentAffixes and mp.GetCurrentAffixes()or{})do local id=type(a)=="table"and a.id or a;local n,d,icon=cm.GetAffixInfo(id);s.affixes[#s.affixes+1]={id=id,name=n,description=d,icon=icon}end
@@ -18,11 +21,11 @@ HolyStorm:RegisterOptionalModule("MythicPlus",metadata,function(Module)
   s.scoreDataReady=(tonumber(s.overallScore)or 0)<=0 or hasDungeonScore
   table.sort(s.dungeons,function(a,b)return(a.name or"")<(b.name or"")end);return s
  end
- function Module:Validate(s)if type(s)~="table"then return false,"API unavailable"end;if not tonumber(s.seasonId)or s.seasonId<=0 then return false,"season unavailable"end;if #s.dungeons==0 then return false,"dungeon pool unavailable"end;for _,d in ipairs(s.dungeons)do if not d.name or not d.challengeMapId or not d.timeLimit then return false,"map data incomplete"end end;if(tonumber(s.overallScore)or 0)>0 and s.scoreDataReady~=true then return false,"dungeon scores pending"end;return true end
+ function Module:Validate(s)if type(s)~="table"then return false,"API unavailable"end;if not tonumber(s.seasonId)or tonumber(s.seasonId)<=0 then return false,"season unavailable"end;if type(s.dungeons)~="table"or next(s.dungeons)==nil then return false,"dungeon pool unavailable"end;for _,d in pairs(s.dungeons)do if type(d)~="table"or not d.name or not d.challengeMapId or not d.timeLimit then return false,"map data incomplete"end end;if(tonumber(s.overallScore)or 0)>0 and s.scoreDataReady~=true then return false,"dungeon scores pending"end;return true end
  function Module:Commit(s)local guid=UnitGUID("player");return HolyStorm.Data.CharacterStore:SetMythicPlus(guid,s,{updatedAt=s.updatedAt,updatedBy=guid},"blizzard")end
  function Module:Queue(sync,delay)return HolyStorm.Snapshots:Queue("mythicplus",function()return Module:Collect()end,function(s)return Module:Validate(s)end,function(s,f)return Module:Commit(s,f,sync)end,{source="MythicPlus",delay=delay or 1.5,retryDelay=2.5,priority=4})end
  function Module:RefreshPage()if not self.page or not self.page:IsShown()then return end;local r=HolyStorm.Data.CharacterStore:Get(UnitGUID("player"));local d=r and r.mythicPlus;if not d then self.text:SetText(L["NO_MYTHIC_DATA"]);return end;local lines={string.format("Season %s  |  Score %.1f",d.seasonId or"-",d.overallScore or 0)};for _,x in ipairs(d.dungeons or{})do lines[#lines+1]=string.format("%s  +%s  %.1f",x.name or"-",x.bestInTime and x.bestInTime.level or"-",x.score or 0)end;self.text:SetText(table.concat(lines,"\n"))end
- function Module:OnInitialize()HolyStorm:RegisterCapability("MythicPlus","character.scan.mythicplus",function(_,sync)return Module:Queue(sync,1.5)end)end
- function Module:OnEnable()if not C_MythicPlus or not C_ChallengeMode then self:Disable();return end;for _,ev in ipairs({"CHALLENGE_MODE_COMPLETED","CHALLENGE_MODE_MAPS_UPDATE","MYTHIC_PLUS_CURRENT_AFFIX_UPDATE","MYTHIC_PLUS_NEW_WEEKLY_RECORD","PLAYER_ENTERING_WORLD"})do local event=ev;HolyStorm.Events:Register(event,"mythicplus",function()Module:Queue(true,(event=="CHALLENGE_MODE_COMPLETED"or event=="CHALLENGE_MODE_MAPS_UPDATE")and 0.5 or 1.5)end)end end
- function Module:OnDisable()HolyStorm.Events:UnregisterOwner("mythicplus");HolyStorm.Snapshots:Cancel("mythicplus")end
+ function Module:OnInitialize()HolyStorm:RegisterCapability("MythicPlus","character.scan.mythicplus",function(_,sync)Module:RequestData(sync==true);return Module:Queue(sync,1.5)end)end
+ function Module:OnEnable()if not C_MythicPlus or not C_ChallengeMode then self:Disable();return end;self.initialDataRequested=false;for _,ev in ipairs({"CHALLENGE_MODE_COMPLETED","CHALLENGE_MODE_MAPS_UPDATE","MYTHIC_PLUS_CURRENT_AFFIX_UPDATE","MYTHIC_PLUS_NEW_WEEKLY_RECORD","PLAYER_ENTERING_WORLD"})do local event=ev;HolyStorm.Events:Register(event,"mythicplus",function()if event=="PLAYER_ENTERING_WORLD"then Module:RequestData(false)end;Module:Queue(true,(event=="CHALLENGE_MODE_COMPLETED"or event=="CHALLENGE_MODE_MAPS_UPDATE")and 0.5 or 1.5)end)end end
+ function Module:OnDisable()self.initialDataRequested=false;HolyStorm.Events:UnregisterOwner("mythicplus");HolyStorm.Snapshots:Cancel("mythicplus")end
 end)

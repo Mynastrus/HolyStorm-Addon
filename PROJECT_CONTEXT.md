@@ -102,15 +102,15 @@ mit der fachlichen Änderung im Changelog dokumentiert.
 ## Addon-Architektur
 
 Der Core bindet Ace3 lokal ein, nutzt es jedoch nur für Addon-/Modul-Lifecycle,
-Konfiguration und UI-Komponenten. `Core/Bootstrap.lua` erstellt den Namespace und
+Konfiguration und UI-Komponenten. `Core/Bootstrap/Bootstrap.lua` erstellt den Namespace und
 steuert ausschließlich Initialisierung, Login-Zustände und die initiale
 Datenerfassungsreihenfolge. WoW- und interne Ereignisse laufen über
 `HolyStorm.Events`; teure Arbeiten über die priorisierte, deduplizierende
 `HolyStorm.Tasks`-Queue.
 
-Persistenz und Fachzugriffe sind getrennt: `Core/Database.lua` verwaltet AceDB,
-Defaults und Schema-Versionen. `Data/GuildStore.lua`, `Data/PlayerStore.lua` und
-`Data/CharacterStore.lua` kapseln Gilden-, Spieler- und Charakterdaten. Eine
+Persistenz und Fachzugriffe sind getrennt: `Persistence/Database.lua` verwaltet AceDB,
+Defaults und Schema-Versionen. `Persistence/GuildStore.lua`, `Persistence/PlayerStore.lua` und
+`Persistence/CharacterStore.lua` kapseln Gilden-, Spieler- und Charakterdaten. Eine
 accountweite Installationskennung verbindet eigene Charaktere automatisch mit
 dem lokalen Spielerprofil. Blizzard-Daten besitzen Vorrang vor empfangenen
 Synchronisationsdaten.

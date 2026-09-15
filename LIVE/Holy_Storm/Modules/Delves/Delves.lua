@@ -1,8 +1,8 @@
 local addonVersion="2.1.0"
 local HolyStorm=LibStub("AceAddon-3.0"):GetAddon("Holy_Storm");local L=LibStub("AceLocale-3.0"):GetLocale("Holy_Storm_Delves")
-local metadata={displayName=L["DISPLAY_NAME"],internalName="delves",version=addonVersion,category="optional",description=L["DESCRIPTION"],permissions={"delves-read","sync-send"},dependencies={"core","ui"},enabledByDefault=true}
+local metadata={id="delves",name="Delves",displayName=L["DISPLAY_NAME"],description=L["DESCRIPTION"],version=addonVersion,moduleType="feature",category="optional",permissions={"delves-read","sync-send"},dependencies={"core","ui"},capabilities={"character.scan.delves","character.scan.additional"},ui={},options={},administration={},data={block="delves",snapshotType="delves",schemaVersion=2,capabilities={"character.scan.delves","character.scan.additional"}},sync={domains={"character"}},enabledByDefault=true}
 local function unknown(reason)return{status="unknown",reason=reason or"not_exposed_by_blizzard_api"}end
-HolyStorm:RegisterOptionalModule("Delves",metadata,function(Module)
+HolyStorm:RegisterModule(metadata,function(Module)
  HolyStorm:ApplyModuleMetadata(Module,metadata)
  function Module:GetCharacterSnapshot(guid)return HolyStorm.Data.CharacterStore:GetBlock(guid,"delves")end
  function Module:Collect()

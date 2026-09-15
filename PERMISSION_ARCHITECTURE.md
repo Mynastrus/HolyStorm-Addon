@@ -2,7 +2,7 @@
 
 ## Authority and scope
 
-`Core/Policy.lua` is the only authority for groups, effective memberships,
+`Core/Permissions/Policy.lua` is the only authority for groups, effective memberships,
 permissions, permission-context filter references, guild module flags, revisions,
 catch-up, and recovery. State is keyed by stable guild ID. UI code reads copies
 and invokes public mutation APIs; it neither edits SavedVariables nor sends sync
@@ -41,7 +41,7 @@ Read APIs include `GetGroups`, `GetGroupSummaries`, `GetEffectiveMembers`,
 `SaveGroup`, membership APIs, filter/rule APIs, `SetGuildModuleEnabled`, and
 `RestoreDefaults`.
 
-The reusable UI infrastructure in `UI/Components/PolicyUI.lua` supplies dynamic
+The reusable UI infrastructure in `UI/Framework/Components/PolicyUI.lua` supplies dynamic
 selectors, checked lists, virtualized/scrolled lists, trace formatting, and the
 nested condition builder. Conditions come from the Rule Engine registry;
 permissions come from the Permission registry. Core events mark pages dirty, and
