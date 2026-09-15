@@ -1,99 +1,85 @@
-# Holy Storm 5.0.0 – Ingame-Testcheckliste
+# Holy Storm – Ingame-Testcheckliste
 
-Alle Fälle mit aktivierten Lua-Fehlern testen; nach jedem fehlgeschlagenen Snapshot prüfen, dass der letzte gültige Stand erhalten bleibt und spätestens nach Versuch 5 kein weiterer automatischer Retry entsteht.
+Mit aktivierten Lua-Fehlern testen. Nach Reload/Login prüfen, dass gespeicherte Daten ohne erzwungenen Neuscan sichtbar sind. Der Standard für Retry-fähige Tasks/Workflow-Ergebnisse ist drei Retries; ein Task darf bewusst eine andere Grenze deklarieren. Nach fehlgeschlagenen Snapshot-Scans muss der letzte gültige Stand erhalten bleiben.
 
-## Gildenerfolge
+## Start, UI und Daten
 
-- Als Gildenleitung einen automatischen Erfolg mit verschachteltem AND/OR/NOT anlegen, als Entwurf speichern, aktivieren und anschließend archivieren. Nur der aktive Zustand darf automatisch vergeben.
-- Eine Regel mit absichtlich fehlenden Charakterdaten testen: Vorschau und Diagnose müssen `Unbekannt` samt Grund zeigen und dürfen keine Vergabe erzeugen.
-- Einen manuellen Erfolg für Gildenroster, aktuelle Gruppe, aktuellen Raid sowie einen zentralen Gildenfilter vorprüfen. Kandidatenzahl und PASS/FAIL/UNKNOWN vor und nach der Bestätigung vergleichen.
-- Eine Vorschau erzeugen, danach Gruppenmitglieder wechseln lassen und erst dann bestätigen. Vergeben werden darf ausschließlich an den unveränderlichen Snapshot.
-- Testmodus mit mehreren berechtigten Spielern ausführen: Ergebnis und Erklärungen müssen sichtbar sein, Store, Verlauf, Benachrichtigungen und Sync bleiben unverändert.
-- Mehr als 30 Kandidaten vergeben und auf einem zweiten Client nachladen. Die Batches müssen zusammen vollständig und ohne Doppelvergabe erscheinen.
-- Eine Vergabe mit Grund widerrufen, einen alten Client synchronisieren und neu laden. Der Widerruf muss durch das Korrekturereignis erhalten bleiben.
-- Charakter- und Account-Scope mit zwei Twinks desselben Accounts prüfen. Account-Erfolge dürfen im Charakter-Reiter nicht doppelt vergeben werden.
-- Einen Erfolgslink in Chat, News und Guide anklicken sowie per Shift-Klick einfügen. Sichtbarkeit, Tooltip und geöffnete Detailansicht müssen der zentralen Link-Infrastruktur entsprechen.
-- Mit Mitglied-, Offiziers- und Leitungsrollen Create/Edit/Publish/Award/Revoke/Test getrennt prüfen; versteckte oder nicht erlaubte Aktionen dürfen auch über direkte Service- und Sync-Pfade nicht gelingen.
+- Frische Installation, Update einer bestehenden Datenbank, Login, `/reload` und Charakterwechsel ohne Lua-Fehler prüfen.
+- Hauptfenster, Navigation, CharacterOverview und Utility-Seiten öffnen, schließen, skalieren und aktualisieren.
+- Equipment-, Mythic+-, Raid-, Delve-, Stats-, Profile- und Profession-Daten nach Reload aus dem zentralen Store anzeigen.
+- Einen absichtlich ungültigen Snapshot provozieren: kein Commit, begrenzte Retries, letzter gültiger Snapshot weiterhin sichtbar.
 
-## Equipment
+## Administration Host
 
-- Einzelnes Item, mehrere Items schnell und ein komplettes Set wechseln.
-- Ringe und Schmuckplätze tauschen; Waffe, Verzauberung, Gem und Sockel ändern.
-- Ein Item entfernen, vollständig ausziehen und wieder anlegen.
-- Logout/Login sowie verzögerte Itemdaten prüfen: kontrollierte Validation-Retries sind erlaubt, `ITEM_DATA_LOAD_RESULT` darf aber keinen neuen Equipment-Workflow starten.
+- Admin-Seiten erscheinen nur mit mindestens einer passenden effektiven Berechtigung.
+- Gruppen/Berechtigungen, Regeln, Filter und Diagnose werden über die zentrale Administration registriert.
+- Eine dynamisch registrierte Section erscheint in definierter Reihenfolge und wird beim Entzug der Berechtigung entfernt.
+- Section eines fehlenden oder gildenweit deaktivierten Moduls erzeugt weder Navigation noch kaputte Seite.
+- Reaktivierung eines Moduls beziehungsweise einer Permission aktiviert die vorhandene Section ohne Reload.
+- Alle Admin-Texte, Tooltips, Status- und Bestätigungsdialoge in `deDE` und `enUS` prüfen.
 
-## Task-Manager und Workflows
+## Gruppen und Membership
 
-- Entwicklerseite öffnen und Live Tasks, Queue, Workflows, Historie, Performance, Ereignismonitor und Abhängigkeiten prüfen.
-- Schnell mehrere Equipment-Slots wechseln: genau ein Workflow darf laufen; vor dem Scan werden Trigger gemergt, während der Ausführung darf höchstens ein Pending-Restart entstehen.
-- Triggeranzahl und Quellen für `PLAYER_EQUIPMENT_CHANGED`, `UNIT_INVENTORY_CHANGED` und `SOCKET_INFO_UPDATE` mit Event-Monitor und korrelierten Logs vergleichen.
-- Queue im Leerlauf, während Debounce, mit blockiertem Task und während `WAITING_ASYNC` pausieren und fortsetzen.
-- Im Kampf einen Equipment-Scan anfordern: der Task muss mit lokalisiertem Blockierungsgrund warten, andere ausführbare Tasks dürfen weiterlaufen.
-- Workflow abbrechen, neu starten und Pending-Restart entfernen; Abbruch und Queue-Bereinigung jeweils im Bestätigungsdialog prüfen.
-- Tabellen sortieren, Spaltenbreite ziehen, Spalten per Umschalt-/Strg-Klick verschieben, per Rechtsklick ausblenden und über Zurücksetzen wiederherstellen; UI neu laden und gespeichertes Layout kontrollieren.
-- Deutsch und Englisch testen; Tasknamen, Status, Blockierungsgründe, Buttons, Tooltips und Tabellenüberschriften dürfen nicht auf die andere Sprache zurückfallen.
+- Custom-Gruppe anlegen, umbenennen, beschreiben, speichern und löschen.
+- `guild-leadership`, `officers` und `guild-member` sind gesperrt und nicht löschbar; geschützte Felder bleiben unveränderbar.
+- Nur der tatsächliche aktuelle Blizzard-Gildenleiter kann zusätzliche Leadership-Memberships ändern.
+- Character-, Account- und Guild-Rank-Membership einzeln testen.
+- Filter- und Rule-Membership testen; Datenänderung invalidiert die effektiven Memberships.
+- Charakter mit mehreren gleichzeitigen Membership-Gründen zeigt alle Quellen getrennt.
+- Account-Membership gilt nach Erkennung auch für einen neuen Twink desselben Accounts.
+- Permissions aus mehreren Gruppen werden additiv vereinigt.
+- Leadership zeigt Vollzugriff und erhält auch eine nachträglich registrierte Permission.
+- Manager-Gruppe kann die Zielgruppe verwalten, erbt aber weder deren Mitgliedschaft noch deren Permissions.
+- Direkten und indirekten Manager-Zyklus versuchen; der Core muss speichern ablehnen.
 
-## Mythic+
+## Permissions, Rules und Filter
 
-- Login mit vorhandenen Season-Runs und dynamischem Dungeon-Pool.
-- Dungeon intime und overtime beenden; Score, Key-Level und Affixwerte prüfen.
-- Direkt nach Abschluss teleportieren beziehungsweise Ladebildschirm auslösen und Retry beobachten.
+- Permission-Liste entspricht der PermissionRegistry und zeigt Kategorie, Owner/Modul und lokalisierte Beschreibung.
+- Rechtezuweisung speichern und mit einem zweiten Charakter positiv und negativ prüfen.
+- Rules und Filter mit `AND`, `OR` und verschachtelten Gruppen erstellen, duplizieren, testen, speichern und löschen.
+- Vorschau und Diagnose zeigen `PASS`, `FAIL` und bei fehlenden/veralteten Daten ausdrücklich `UNKNOWN`.
+- `UNKNOWN` darf weder als Membership noch als erlaubtes Filterergebnis behandelt werden.
+- Verwendete Rules/Filter können nicht unbemerkt gelöscht werden.
+- Lokale Rules/Filter bleiben persönlich; gildenweite Änderungen erzeugen Permission-Revisionen und Sync.
 
-## Raids
+## Revision Chain, Catch-up und Recovery
 
-- Login ohne und mit Lockout.
-- Bosskill und `UPDATE_INSTANCE_INFO` prüfen.
-- Lockout verlängern oder zurücksetzen; neuesten Raid-Tier und Difficulty vergleichen.
+- Normale Mutation: Version steigt um eins, neue Revision-ID, korrekter Vorgänger, Changed By/At und History-Eintrag.
+- Fehlender Vorgänger: lokale Anwendung ablehnen und Catch-up starten.
+- Vollständige angebotene Kette: in Reihenfolge validieren und Status wieder `VALID`.
+- Nicht reparierbare Lücke: `RECOVERY_REQUIRED` anzeigen.
+- Vertrauenswürdige Snapshot-Recovery nur vom sichtbaren aktuellen Blizzard-Gildenleiter akzeptieren.
+- Zwei Geschwisterrevisionen mit gleichem Vorgänger als Fork erkennen und `CONFLICT` anzeigen.
+- Alte Revision ablehnen; identische Revision als Duplikat behandeln.
+- Konflikt niemals durch „höchste Version gewinnt“ auflösen.
+- Diagnose zeigt Guild ID, Status, Version, Revision, Previous, Last Sync, Changed By/At, History, Rejected Count, Missing und Fork.
 
-## Delves
+## Factory Reset
 
-- Delve abschließen und Weekly-Rewards-Fortschritt ändern.
-- Bountiful-/Wochenzustände prüfen; nicht verfügbare Werte müssen `unknown` bleiben.
-- Companion wechseln beziehungsweise Rolle/Curios ändern und erneut scannen.
+- Sicherheitsdialog nennt ausschließlich Gruppen, Permissions, gildenweite Rules/Filter und Policy-/Modulkonfiguration; andere Daten bleiben erhalten.
+- Reset mit berechtigtem Account ausführen: Version steigt, Revision-ID ändert sich, Previous verweist auf den alten Kopf.
+- Custom-Gruppen, manuelle Memberships, Manager- und Permission-Zuweisungen sowie gildenweite Custom-Rules/-Filter sind entfernt.
+- Genau drei Systemgruppen entsprechen wieder den Defaults.
+- Persönliche lokale Rules/Filter bleiben erhalten.
+- Player-/Character-Daten, Snapshots, Equipment, Mythic+, Raid, Delves, Achievements, Content, POIs, Logs und Twink-Identität bleiben unverändert.
+- Reset ohne `permissions-reset` ablehnen und keine Revision erzeugen.
+- Reset wird über die Permission-Sync-Domain an andere Clients verteilt.
 
-## Stats und Profile
+## Sync und Identität
 
-- Equipment, Spec und Talente ändern.
-- Food, Flask, Rune, Proc und Encounter-Buff anwenden; es dürfen keine Aura-/Buffdatensätze synchronisiert werden.
-- Jeden bekannten eigenen Charakter auswählen und getrennt speichern.
-- Leere Profilfelder dürfen nicht geteilt werden; ausgefüllte Felder auf zweitem Gildenclient prüfen.
+- Character-Blöcke zwischen zwei Clients entdecken, gezielt anfordern, validieren und in CharacterOverview aktualisieren.
+- Direkten Owner-Payload und Relay-Payload prüfen: Owner bleibt stabil, `receivedFrom` und `direct` sind korrekt.
+- Stale Version, Owner-Mismatch, ungültige Payload und nicht autorisierte Änderung ablehnen.
+- Twink- und TwinkAdmin-Sync mit Account-Main und Zuordnungen prüfen.
+- Permission-Catch-up, Recovery und Fork mit zwei Testclients gemäß obigem Abschnitt prüfen.
 
-## Roster und Charakteransicht
+## Feature-Smoke-Tests
 
-- Online, AFK, DND, offline/zuletzt online, Klassenicon und Klassenfarbe prüfen.
-- Holy-Storm-Version, Itemlevel, Mythic+- und Raidwerte prüfen.
-- Sortierung, Spaltenbreite/-reihenfolge/-sichtbarkeit sowie gespeichertes Layout prüfen.
-- Twink-Gruppierung an/aus und alternative Gruppierungen prüfen.
-- Charakter anklicken und den gleichbleibenden Header sowie die internen Tabs Übersicht, Ausrüstung, Mythisch+, Raid, Tiefen, Werte und Twinks kontrollieren.
-- Zwischen zwei Charakteren wechseln, während der erste aktualisiert wird; verspätete Daten des ersten Charakters dürfen die zweite Ansicht nicht überschreiben. Anschließend die Zurück-Navigation prüfen.
-- Cache-Daten müssen sofort erscheinen. Der Refresh-Status darf danach nur echte Zustände anzeigen und bei mehreren schnellen Modulereignissen nicht den kompletten Frame mehrfach neu aufbauen.
-- Equipment-Links und Gem-Tooltips, Raid-/Dungeon-Journal-Links sowie deaktivierte Teleport-Hinweise mit und ohne Kampfzustand prüfen.
-- Raid-Weekly-Tooltips für LFR, Normal, Heroisch und Mythisch sowie den Best-Tooltip prüfen: je Boss darf nur die höchste jemals besiegte Schwierigkeit erscheinen.
-- Twink-Tab mit Sichtbarkeit „Alle“ und „Nur Gilde“, Account-Main, Gilden-/Shadow-Main sowie administrativer Beziehung prüfen; ein Twink-Link muss im selben Character-Framework öffnen.
-- Deutsch und Englisch bei schmaler und breiter Fenstergröße prüfen; lange Listen müssen innerhalb des Tabs scrollbar bleiben.
-
-## News
-
-- Entwurf, veröffentlichte und archivierte News erstellen.
-- Genau einen sowie mehrere konkrete Gildenränge auswählen; höhere Ränge dürfen nicht automatisch sehen.
-- News lesen, Receipt und Zusammenfassung kontrollieren.
-- Gelesene News bearbeiten; neue Version muss wieder ungelesen sein.
-- Neues Mitglied synchronisieren; ältere unveränderte News dürfen nicht neu zählen.
-
-## Permissions und Filter
-
-- Eigene Gruppe erstellen, umbenennen, duplizieren und löschen.
-- Standardgruppen umbenennen; Löschen muss abgelehnt werden.
-- Gildenmeister-Automatik, Offiziersrang, manuelles Mitglied und mehrere Mitgliedschaftsgründe prüfen.
-- Änderungen verwerfen und anschließend bewusst speichern.
-- Lokale und globale Filter mit UND/ODER/NICHT, Zahlen-, Text-, Bereichs- und Listenoperatoren testen.
-- Max-Level, Klasse, Rolle, Main/Twink, Itemlevel, Quest-ID und Achievement-ID testen.
-- Regelanalyse mit erfüllten und nicht erfüllten Einzelbedingungen prüfen.
-
-## Logs
-
-- DEBUG/INFO/WARN/ERROR, Modul-, Level- und Textfilter prüfen.
-- Pause, Refresh, Clear und Auto-Scroll an/aus testen.
-- Spalten verschieben, ausblenden und skalieren; Fenstergröße und gespeichertes Layout prüfen.
-- Gefilterten und vollständigen Export als Text, CSV und JSON prüfen.
-- Discord-Export in ein Discord-Eingabefeld kopieren und Format/Längenlimit prüfen.
+- Achievements: Entwurf, Aktivierung, Vergabe, Widerruf, Archiv und Sync.
+- News/Guides: CRUD, Publish, RichContent, Read Receipt und Sync.
+- POI: persönliche/Gilden-/Gruppen-/Raid-Ziele, Kartenpins, Ablauf und Berechtigungen.
+- Positions: freiwillige Freigabe, Ablauf, Weltkarte/Minimap und keine Persistenz/Relays.
+- Chat: Spielerlinks, Tooltips, Kontextmenü, URL/MapLinks, Erwähnungen und native Links.
+- Equipment, Mythic+, Raids und Delves: Scan, Validierung, last-known-good und Character-Tabs.
+- TaskManager-Seite: Queue, Merge, Blocked/Waiting, Pause/Resume, Retry-Zähler und Workflow-Verlauf.
+- Logs: Filter, Pause, Auto-Scroll, Details und Export ohne Payload-Leaks.

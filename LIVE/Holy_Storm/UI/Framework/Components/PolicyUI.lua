@@ -1,6 +1,7 @@
+local addonVersion="1.1.0"
 local HolyStorm=LibStub("AceAddon-3.0"):GetAddon("Holy_Storm")
 local L=LibStub("AceLocale-3.0"):GetLocale("Holy_Storm_Policy")
-local UI={}
+local UI={version=addonVersion}
 local DEFAULT_LOGIC="AND"
 local function copy(v)return HolyStorm.Utils.DeepCopy(v)end
 function UI:Label(parent,text,template)local label=parent:CreateFontString(nil,"OVERLAY",template or"GameFontHighlightSmall");label:SetText(text or"");label:SetJustifyH("LEFT");return label end
@@ -29,7 +30,7 @@ function UI:CreateCheckList(parent,getItems,onToggle)
 end
 function UI:CharacterItems()local out={};local guild=HolyStorm.Data.GuildStore:GetCurrent();for guid,member in pairs(guild and guild.roster or{})do out[#out+1]={value=guid,label=member.name or guid,member=member}end;table.sort(out,function(a,b)return a.label<b.label end);return out end
 function UI:AccountItems()local seen,out={},{};for _,character in ipairs(self:CharacterItems())do local id=HolyStorm.TwinkCore and HolyStorm.TwinkCore:GetAccountUUIDForCharacter(character.value);if id and not seen[id]then seen[id]=true;local chars=HolyStorm.TwinkCore:GetCharactersForAccount(id);local main=HolyStorm.TwinkCore:GetAccountMain(id);local record=main and HolyStorm.Data.CharacterStore:Get(main);local label=record and record.name or main or id;out[#out+1]={value=id,label=string.format(L["ACCOUNT_SELECTOR_FORMAT"],label,HolyStorm.Utils.TableCount(chars)),main=main}end end;table.sort(out,function(a,b)return a.label<b.label end);return out end
-function UI:GroupItems(excludeId)local out={};for _,group in pairs(HolyStorm.Policy:GetGroups())do out[#out+1]={value=group.id,label=self:DisplayGroupName(group),disabled=group.id==excludeId}end;table.sort(out,function(a,b)return a.label<b.label end);return out end
+function UI:GroupItems(excludeId)local out={};for _,group in pairs(HolyStorm.GroupManager:GetGroups())do out[#out+1]={value=group.id,label=self:DisplayGroupName(group),disabled=group.id==excludeId}end;table.sort(out,function(a,b)return a.label<b.label end);return out end
 function UI:CreateRuleBuilder(parent,onChanged)
  local builder=CreateFrame("Frame",nil,parent);builder.root={logic="AND",children={{field="character.level",operator=">=",value=1}}};builder.selectedPath={1};builder.rows={}
  local logic=self:CreateSelector(builder,75,function()return{{value="AND",label=L["LOGIC_AND"]},{value="OR",label=L["LOGIC_OR"]},{value="NOT",label=L["LOGIC_NOT"]}}end,function(v)local n=builder:GetSelected();if n and n.logic then n.logic=v;if v=="NOT"then while#n.children>1 do table.remove(n.children)end end;builder:Changed()end end);logic:SetPoint("TOPLEFT",-15,3)
@@ -54,13 +55,13 @@ function UI:CreateRuleBuilder(parent,onChanged)
  builder:Render();return builder
 end
 function UI:CreateFilterBar(parent,contextId,onChanged)
- local bar=CreateFrame("Frame",nil,parent);bar:SetHeight(52);bar.contextId=contextId;bar.active=HolyStorm.Policy:GetActiveFilters(contextId);bar.chips={}
+ local bar=CreateFrame("Frame",nil,parent);bar:SetHeight(52);bar.contextId=contextId;bar.active=HolyStorm.FilterManager:GetActiveFilters(contextId);bar.chips={}
  local menu=CreateFrame("Frame",nil,bar,"UIDropDownMenuTemplate");menu:SetPoint("TOPLEFT",-16,0);UIDropDownMenu_SetWidth(menu,125);UIDropDownMenu_SetText(menu,L["FILTER"])
- local function changed()HolyStorm.Policy:SetActiveFilters(contextId,bar.active);if onChanged then onChanged()end end
- local function refresh()for _,chip in ipairs(bar.chips)do chip:Hide()end;local x=145;for i,entry in ipairs(bar.active)do local index=i;local filter=HolyStorm.Policy:GetFilter(entry.id,entry.scope);local chip=bar.chips[index]or UI:Button(bar,"",115,function()table.remove(bar.active,index);refresh();changed()end);bar.chips[index]=chip;chip:SetText((filter and filter.name or entry.id).." ×");chip:ClearAllPoints();chip:SetPoint("TOPLEFT",x,2);chip:Show();x=x+120 end end
- UIDropDownMenu_Initialize(menu,function(_,level)if level~=1 then return end;for _,scope in ipairs({"local","global"})do local selectedScope=scope;local root=HolyStorm.Policy:GetFilters(selectedScope);for id,filter in pairs(root or{})do local selectedId=id;local info=UIDropDownMenu_CreateInfo();info.text=(selectedScope=="global"and L["GLOBAL_BADGE"]or L["LOCAL_BADGE"])..filter.name;info.keepShownOnClick=true;local found;for index,entry in ipairs(bar.active)do if entry.id==selectedId and entry.scope==selectedScope then found=index end end;local foundIndex=found;info.checked=foundIndex~=nil;info.func=function()if foundIndex then table.remove(bar.active,foundIndex)else bar.active[#bar.active+1]={id=selectedId,scope=selectedScope}end;refresh();changed()end;UIDropDownMenu_AddButton(info,level)end end end)
+ local function changed()HolyStorm.FilterManager:SetActiveFilters(contextId,bar.active);if onChanged then onChanged()end end
+ local function refresh()for _,chip in ipairs(bar.chips)do chip:Hide()end;local x=145;for i,entry in ipairs(bar.active)do local index=i;local filter=HolyStorm.FilterManager:GetFilter(entry.id,entry.scope);local chip=bar.chips[index]or UI:Button(bar,"",115,function()table.remove(bar.active,index);refresh();changed()end);bar.chips[index]=chip;chip:SetText((filter and filter.name or entry.id).." ×");chip:ClearAllPoints();chip:SetPoint("TOPLEFT",x,2);chip:Show();x=x+120 end end
+ UIDropDownMenu_Initialize(menu,function(_,level)if level~=1 then return end;for _,scope in ipairs({"local","global"})do local selectedScope=scope;local root=HolyStorm.FilterManager:GetFilters(selectedScope);for id,filter in pairs(root or{})do local selectedId=id;local info=UIDropDownMenu_CreateInfo();info.text=(selectedScope=="global"and L["GLOBAL_BADGE"]or L["LOCAL_BADGE"])..filter.name;info.keepShownOnClick=true;local found;for index,entry in ipairs(bar.active)do if entry.id==selectedId and entry.scope==selectedScope then found=index end end;local foundIndex=found;info.checked=foundIndex~=nil;info.func=function()if foundIndex then table.remove(bar.active,foundIndex)else bar.active[#bar.active+1]={id=selectedId,scope=selectedScope}end;refresh();changed()end;UIDropDownMenu_AddButton(info,level)end end end)
  local reset=self:Button(bar,L["RESET"],110,function()for i=#bar.active,1,-1 do table.remove(bar.active,i)end;refresh();changed()end);reset:SetPoint("TOPLEFT",0,-28)
  local manage=self:Button(bar,L["MANAGE_FILTERS"],135,function()HolyStorm.UI:ShowPage("filters")end);manage:SetPoint("LEFT",reset,"RIGHT",6,0)
- function bar:Matches(value)return HolyStorm.Policy:ApplyFilters(self.active,value,"AND")end;function bar:Apply(items)local out={};for _,item in ipairs(items or{})do if self:Matches(item)then out[#out+1]=item end end;return out end;refresh();return bar
+ function bar:Matches(value)return HolyStorm.FilterManager:ApplyFilters(self.active,value,"AND")end;function bar:Apply(items)local out={};for _,item in ipairs(items or{})do if self:Matches(item)then out[#out+1]=item end end;return out end;refresh();return bar
 end
 HolyStorm.PolicyUI=UI

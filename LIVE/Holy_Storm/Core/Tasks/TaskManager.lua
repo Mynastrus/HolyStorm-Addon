@@ -1,4 +1,4 @@
-local addonVersion = "3.1.0"
+local addonVersion = "3.1.1"
 local HolyStorm = LibStub("AceAddon-3.0"):GetAddon("Holy_Storm")
 local L = LibStub("AceLocale-3.0"):GetLocale("Holy_Storm")
 
@@ -45,7 +45,7 @@ function Tasks:RegisterTaskType(id,d)
  if type(id)~="string"or id==""or type(d)~="table"or type(d.execute)~="function"then return false,"INVALID_TASK_DEFINITION"end
  local mode=d.executionMode or"UNIQUE";if not self.ExecutionMode[mode]then return false,"INVALID_EXECUTION_MODE"end
  local old=self.registry[id];if old and old.execute~=d.execute and not d.replace then return false,"TASK_TYPE_ALREADY_REGISTERED"end
- self.registry[id]={registryId=id,name=d.name or id,localizedNameKey=d.localizedNameKey or id,module=d.module or"Core",priority=tonumber(d.priority)or 50,executionMode=mode,conditions=copy(d.conditions or{}),dependencies=copy(d.dependencies or{}),maxRetries=math.max(0,tonumber(d.maxRetries)or 0),execute=d.execute,failurePolicy=d.failurePolicy or"FAIL",metadata=copy(d.metadata or{})};return true
+ self.registry[id]={registryId=id,name=d.name or id,localizedNameKey=d.localizedNameKey or id,module=d.module or"Core",priority=tonumber(d.priority)or 50,executionMode=mode,conditions=copy(d.conditions or{}),dependencies=copy(d.dependencies or{}),maxRetries=math.max(0,tonumber(d.maxRetries)or 3),execute=d.execute,failurePolicy=d.failurePolicy or"FAIL",metadata=copy(d.metadata or{})};return true
 end
 function Tasks:GetTaskType(id)return self.registry[id]end
 local function trigger(self,t,s,m)s=tostring(s or"UNKNOWN");t.triggerCount=t.triggerCount+1;t.triggerSources[s]=(t.triggerSources[s]or 0)+1;t.lastTriggeredAt=wall();if self.maxTriggerHistory>0 then addLimited(t.triggerHistory,{source=s,at=t.lastTriggeredAt,metadata=copy(m)},self.maxTriggerHistory)end end

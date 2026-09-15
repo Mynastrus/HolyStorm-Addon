@@ -1,7 +1,7 @@
 local root=(arg[0]:gsub("tools[/\\]test_equipment_snapshot.lua$","")).."LIVE/Holy_Storm/"
 local HolyStorm={Utils={Now=function()return 100 end,DeepCopy=function(value)return value end},Workflows={workflows={}},Serializer={Serialize=function()return"snapshot"end}}
 function LibStub(name)if name=="AceAddon-3.0"then return{GetAddon=function()return HolyStorm end}end;return{GetLocale=function()return setmetatable({},{__index=function(_,key)return key end})end}end
-function HolyStorm:RegisterOptionalModule(_,_,factory)local module={};factory(module);self.Equipment=module end
+function HolyStorm:RegisterModule(_,factory)local module={};factory(module);self.Equipment=module end
 function HolyStorm:ApplyModuleMetadata()end
 for index,name in ipairs({"HEAD","NECK","SHOULDER","CHEST","WAIST","LEGS","FEET","WRIST","HAND","FINGER1","FINGER2","TRINKET1","TRINKET2","BACK","MAINHAND","OFFHAND"})do _G["INVSLOT_"..name]=index end
 local itemLink="|cffa335ee|Hitem:111:42::::::::80:70:::::::|h[Tier Helm]|h|r"

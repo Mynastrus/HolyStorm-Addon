@@ -33,6 +33,9 @@ local requiredKeys = {
     "PERMISSION_CALENDAR_MANAGE",
     "PERMISSION_DESC_CALENDAR_MANAGE",
     "CATEGORY_CALENDAR",
+    "MATCHES_WITH_UNKNOWN",
+    "STATE_DETAILS_FORMAT",
+    "CONFIRM_PERMISSION_RESET",
 }
 
 for _, key in ipairs(requiredKeys) do

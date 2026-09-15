@@ -6,6 +6,12 @@ oder anderen Dateien außerhalb von `LIVE` gehören nicht in dieses Changelog.
 
 ## Noch nicht veröffentlicht
 
+### 15. September 2026
+
+- Die Administration registriert Gruppen-/Berechtigungs-, Regel-, Filter- und Diagnosebereiche nun über einen zentralen, permission- und modulgebundenen Section-Host. Die Seiten verwenden direkt PermissionRegistry, PermissionEngine, GroupManager, FilterManager, Rules und PolicyState; die bestehenden Policy-/Permissions-Fassaden bleiben für Compatibility erhalten.
+- „Standards wiederherstellen“ erzeugt weiterhin eine normale autorisierte Revision und setzt jetzt den vollständigen gildenweiten Permission-/Policy-State einschließlich Custom-Gruppen, Rules, Filtern und Modulkonfiguration zurück. Persönliche lokale Rules/Filter sowie sämtliche fachfremden Holy-Storm-Daten bleiben erhalten. Statusansichten zeigen zusätzlich Gilden-ID, Changed By/At, abgelehnte Revisionen, Lücken und Fork-Daten.
+- Die lebende Architektur-, Modul-, Permission-, Sync- und Ingame-Testdokumentation wurde auf den aktuellen Stand gebracht; der historische Refactor-Handoff wurde entfernt. Der Standard für Retry-fähige Tasks und Snapshot-Workflows beträgt drei Retries, sofern eine Definition bewusst keinen anderen Wert setzt. Holy Storm wurde auf `5.3.3` erhöht.
+
 ### 14. September 2026
 
 - Die zentrale Logansicht verwendet nun eine virtualisierte, zeilenbasierte Scrolltabelle mit Level- und Kategoriefarben, kombinierten und dauerhaft gespeicherten Filtern, Schnellfiltern, pausierbarer Darstellung, optionalem Auto-Scroll sowie einer scrollbareren strukturierten Detailansicht. Comms-, Sync-, Task-, Workflow- und Event-Diagnosen enthalten kompakte Richtungs-, Absender-, Ziel-, Paket-, Domain-, Objekt-, Versions-, Übertragungs- und Korrelationsdaten, ohne Payloads oder interne Objektstrukturen zu protokollieren; Text-, CSV-, JSON- und Discord-Export bleiben verfügbar. Logger wurde auf `2.1.0`, EventBus auf `1.1.0`, TaskManager auf `3.1.0`, Comms auf `2.1.0`, SyncManager auf `3.3.0`, Schema auf `2.4.0` und die Logseite auf `1.1.0` erhöht; die sichtbaren Texte der Logseite besitzen neue deutsche und englische Locale-Dateien.

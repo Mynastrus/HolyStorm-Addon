@@ -7,7 +7,7 @@
 ## Author: Mynastrus - Norgannon - EU
 ## Category: Utility
 ## DefaultState: enabled
-## Version: 5.3.2
+## Version: 5.3.3
 ## SavedVariables: HolyStormDB, HS_Player_DB, HS_GuildLog_DB
 
 Libs\LibStub\LibStub.lua
@@ -124,6 +124,7 @@ UI\Pages\TaskManagerLocales\deDE.lua
 UI\Pages\TaskManager.lua
 UI\Administration\Locales\enUS.lua
 UI\Administration\Locales\deDE.lua
+UI\Administration\AdministrationRegistry.lua
 UI\Framework\Components\PolicyUI.lua
 UI\Administration\Permissions.lua
 UI\Administration\Rules.lua

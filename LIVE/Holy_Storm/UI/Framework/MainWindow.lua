@@ -1,4 +1,4 @@
-local addonVersion = "2.2.1"
+local addonVersion = "2.3.0"
 local HolyStorm = LibStub("AceAddon-3.0"):GetAddon("Holy_Storm")
 local L = LibStub("AceLocale-3.0"):GetLocale("Holy_Storm_UI")
 
@@ -263,6 +263,12 @@ function UI:AddRightDockIcon(id, order, iconPath, tooltipTitle, tooltipDescripti
     self:LayoutRightDock()
 end
 
+function UI:RemoveRightDockIcon(id)
+    local entry=self.rightDockEntries and self.rightDockEntries[id]
+    if not entry then return false end
+    entry.slot:Hide(); entry.slot:SetParent(nil); self.rightDockEntries[id]=nil; self:LayoutRightDock(); return true
+end
+
 function UI:ScrollRightDock(delta)
     if not self.rightDockScroll then return end
     local maximum=self.rightDockScroll:GetVerticalScrollRange()or 0
@@ -299,6 +305,12 @@ function UI:RegisterPage(id, pageFrame, title, onShow)
     pageFrame:SetParent(self.content)
     pageFrame:SetAllPoints(self.content)
     pageFrame:Hide()
+end
+
+function UI:UnregisterPage(id)
+    local page=self.pages[id]
+    if not page then return false end
+    page.frame:Hide(); self.pages[id]=nil; return true
 end
 
 function UI:HideRegisteredPages()

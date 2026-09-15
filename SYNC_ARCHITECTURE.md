@@ -1,97 +1,63 @@
-# Holy Storm PlayerData and synchronization architecture
+# Holy Storm – Sync-Architektur
 
-`HS_Player_DB` schema 2 is the canonical persistent store for characters,
-accounts, ownership links, per-domain watermarks, and owner-issued block
-metadata. `HolyStormDB.global.data` is assigned compatibility aliases at
-runtime; it is not a second write path.
+## Schichten
 
-Modules read and write characters through `HolyStorm.Data.CharacterStore` (or
-the lower-level `HolyStorm.PlayerData` block API) and accounts through
-`HolyStorm.Data.PlayerStore`. Only `WriteOwnedBlock` increments a character
-block version. Network imports must use `AcceptRemoteBlock`, which preserves
-the owner's version and timestamp and rejects stale data.
+`Sync/Comms.lua` kapselt Serialisierung, AddonMessage-Präfix, Fragmentierung, Transport und Transportdiagnose. `Sync/SyncManager.lua` implementiert den generischen Domain-Vertrag und die Abläufe Discovery, Offer, Select, Fetch, Payload, Publish und passive Heilung. Versand und verzögerte Auswahl laufen über TaskManager; Module erzeugen keine eigene Transport-Queue.
 
-## Character block metadata
+Eine Domain registriert je nach Bedarf:
 
-Each character record has `blockMeta[blockId]` containing:
+- `getMetadata(objectId)` und `listMetadata(since, request)`
+- `export(objectId)`
+- `validate(payload, metadata, objectId)`
+- `authorize(payload, metadata, senderId, sender, objectId)`
+- `import(objectId, payload, metadata, senderId, sender)`
+- optional `getChannel`, `updateEvent`, `freshness`, `live`, `catchUp`, `priority`
 
-- `owner`: character GUID that issued the version
-- `version`: monotonically increasing owner-issued version
-- `updatedAt`: owner-issued timestamp
-- `source`: original collection source
-- `receivedFrom`: most recent transport peer, for diagnostics
-- `direct`: whether the most recent accepted copy came directly from its owner
+Aktuell registrierte Domains sind `character`, `permissions`, `twinks`, `twinkAdmin`, `content`, `poi`, `achievements` und die flüchtige Domain `guild-position`.
 
-At equal versions, a direct-owner copy outranks a relayed copy. A newer
-owner-issued version outranks an older version even when relayed. A relay never
-calls the owned-write path.
+## HS_Player_DB und Character-Blöcke
 
-## Domain API
+`HS_Player_DB` ist der kanonische persistente Player-/Account-/Character-Bestand. `PlayerDataStore` registriert die Blöcke `identity`, `equipment`, `mythicPlus`, `raid`, `delves`, `stats`, `profile`, `professions`, `addon` und `demands`.
 
-Synchronized domains register once through `HolyStorm.Sync:RegisterDomain` and
-provide `getMetadata`, `listMetadata`, `export`, `import`, plus optional
-`validate`, `authorize`, and `updateEvent` callbacks. Transport, serialization,
-discovery, response jitter/suppression, best-source selection, payload fetch,
-retry, passive healing, and login catch-up remain Core responsibilities.
+Jeder Block besitzt eigene Metadaten mit `owner`, `version`, `updatedAt`, `source`, `receivedFrom` und `direct`. Der Objekt-Key der Character-Domain kombiniert Character-UUID und Block-ID. Ein lokaler gültiger Snapshot wird über `WriteOwnedBlock` gespeichert; ein Remote-Block durchläuft Domain-Validierung, Owner-Prüfung und `AcceptRemoteBlock`.
 
-The built-in domain is `character`. `TwinkCore` registers `twinks` for complete
-owner-issued AccountUUID-to-character snapshots and `twinkAdmin` for separately
-authorized administrative assignments/tombstones. News registers `news` and
-`newsRead`; policy registers the permissions/rules/filters `policy` domain.
-Equipment, Mythic+, raid lockouts, delves, stats, profiles, professions, and
-on-demand rule data are character blocks and need no module transport handler.
+SnapshotManager trennt Scan, Validierung und Commit. Ein fehlgeschlagener Scan schreibt keinen leeren oder ungültigen Block über den letzten gültigen Stand. UI und Module lesen den persistenten Store und sind nach `/reload` nicht von einem neuen Scan abhängig.
 
-The Calendar module currently reads Blizzard's server-owned calendar API and
-has no addon-owned synchronized dataset. It therefore does not register a
-domain; any future Holy Storm-owned event objects must register through this
-API rather than adding transport code to the module.
+## Owner Revision und Provenance
 
-## Wire flow
+Für owner-kontrollierte Objekte ist `owner` die stabile fachliche Herkunft. `receivedFrom` bezeichnet nur die Gegenstelle, die ein Paket übertragen hat; ein Relay wird dadurch nicht zum Owner. `direct` zeigt an, ob der erkannte Sender dem Owner entspricht. Foreign Watermarks werden pro Domain fortgeschrieben und vermeiden unnötige Vollabfragen.
 
-1. `DISCOVER` broadcasts metadata criteria only.
-2. Peers jitter `OFFER` metadata responses and suppress equivalent offers they
-   overhear.
-3. The requester selects one best source and whispers `FETCH`.
-4. Only that source whispers `PAYLOAD`.
-5. Other clients may schedule deduplicated, low-priority passive refreshes from
-   overheard metadata.
+`CompareMetadata` entscheidet die Frische normaler Domains anhand der implementierten Version-/Zeit-/Provenance-Regeln. Domain-Validatoren und `authorize` bleiben zusätzlich verpflichtend. Ein Relay darf vorhandene Metadaten weiterreichen, aber keine Owner-Identität übernehmen.
 
-Login catch-up is delayed and low priority. Per-domain foreign watermarks only
-optimize discovery; versions decide final freshness. Locally owned characters
-and the local account never advance foreign watermarks.
+## Discovery und Übertragung
 
-The stable `AccountUUID` is independent of character names and the selected
-main. `twinks` always exports the complete known relationship, including entries
-hidden by the account-wide UI visibility setting. Owner versions are advanced
-only by the local account; relays preserve them. Administrative changes retain
-their actor/version provenance and cannot remove an owner-confirmed relation.
+1. `Discover` stellt eine `Sync.Discover`-Aufgabe mit lokal bekannter Version/Revision ein.
+2. Gegenstellen liefern begrenzte Metadatenangebote.
+3. `Sync.Select` wählt ein geeignetes Angebot; bekannte Owners werden bevorzugt gezielt angefragt.
+4. `FETCH` fordert das Objekt per Whisper an.
+5. `PAYLOAD` wird deserialisiert, validiert, autorisiert und importiert.
+6. Domain- und Feature-Events aktualisieren Verbraucher.
 
-The protocol authenticates claimed senders against guild-roster identity and
-applies domain authority rules, but WoW addon messages have no cryptographic
-signature. Consequently, owner-version provenance is enforceable as a client
-invariant, not cryptographic proof against a malicious modified client.
+Live-Domains wie `guild-position` nutzen direkte, kurzlebige Publishes und keinen persistenten Catch-up. Andere Domains können Discovery und passive Heilung verwenden.
 
-## Account and twink identity
+## PermissionSync
 
-`HolyStorm.TwinkCore` owns the current `AccountUUID -> Characters` layer. A
-future person/player layer can reference one or more AccountUUIDs without
-changing character-facing module contracts. Public read/write entry points are
-`GetAccountUUIDForCharacter`, `GetAccount`, `GetCharactersForAccount`,
-`GetAccountMain`, `SetAccountMain`, `GetGuildMain`, `GetRosterIdentity`,
-`GetRelationshipSource`, `IsOwnerConfirmed`, `GetVisibility`, `SetVisibility`,
-`GetVisibleCharactersForViewer`, `AssignCharacterAdministrative`, and
-`RemoveAdministrativeAssignment`.
+Die Permission-Domain wird in `Core/Permissions/PermissionSync.lua` registriert und nutzt `freshness="revision-chain"`. Ihre Payload enthält aktuellen Revisionskopf, History und Snapshot. Der generische SyncManager überspringt für diese Domain die normale „neuere Metadaten gewinnen“-Entscheidung; PermissionSync prüft stattdessen die Kette.
 
-Relationships carry either `owner-confirmed` or `administrative` provenance.
-Owner evidence applies per character: it upgrades or moves characters explicitly
-present in the owner snapshot but does not delete administrative entries absent
-from that snapshot. Administrative tombstones have their own actor-issued
-versions and permission checks (`twinks.assign`, `twinks.remove`). Guild-main and
-shadow-main selection is deterministic and remains a derived, non-persistent
-view over the current guild roster.
+- Nur die exakte direkte Vorgängerrevision kann sequenziell angewendet werden.
+- Lücken führen zu Catch-up und gegebenenfalls `RECOVERY_REQUIRED`.
+- Geschwisterrevisionen oder Snapshot-Abweichungen führen zu `CONFLICT`.
+- Recovery aus einem Snapshot verlangt den implementierten Blizzard-Gildenleiter-Trust-Anchor.
+- Es gibt ausdrücklich kein „highest version wins“ für Permission-State.
 
-Consumers refresh from `HS_ACCOUNT_UPDATED`, `HS_TWINKS_UPDATED`,
-`HS_CHARACTER_RELATIONSHIP_UPDATED`, `HS_ACCOUNT_MAIN_CHANGED`,
-`HS_GUILD_MAIN_CHANGED`, and `HS_TWINK_VISIBILITY_CHANGED`. Deferred guild-main
-recalculation is deduplicated through `TwinkCore.RecalculateGuildMains` in the
-central Task Manager.
+## Account- und Twink-Identität
+
+PlayerStore und TwinkCore verwalten Account-/Player-UUIDs, Character-Zuordnungen und Main-Informationen. Die Domains `twinks` und `twinkAdmin` synchronisieren die vorgesehenen Identitäts- beziehungsweise administrativen Zuordnungsdaten. Character-Blöcke bleiben trotzdem Eigentum ihrer Character-UUID; Account-Zuordnung ändert keine Block-Provenance.
+
+## Sicherheit und Grenzen
+
+Alle eingehenden Daten werden als untrusted behandelt. IDs, Payloadstruktur, Guild-Kontext, Owner und fachliche Berechtigungen werden in der jeweiligen Domain geprüft. Logs enthalten Metadaten und Korrelationsdaten, keine vollständigen Payloads. Da WoW-Addons keine Kryptografie oder serverseitige Autorität besitzen, kann ein modifizierter Client nicht vollständig ausgeschlossen werden; Revision Chain, Blizzard-Ränge, Owner-Bindung und Konflikterkennung sind die vorhandenen Schutzmechanismen.
+
+## Compatibility und Restschuld
+
+Bestehende öffentliche APIs von Comms, SyncManager, PlayerDataStore und den Stores bleiben erhalten. Einige Feature-Domains autorisieren noch über `HolyStorm.Policy`; diese Fassade delegiert auf die neue Permission-Architektur. Die spätere direkte Nutzung von PermissionEngine durch alle Domains ist ein separater Umbau.

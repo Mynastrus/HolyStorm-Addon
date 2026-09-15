@@ -1,4 +1,4 @@
-local addonVersion="1.0.0"
+local addonVersion="1.0.1"
 local HolyStorm=LibStub("AceAddon-3.0"):GetAddon("Holy_Storm")
 
 -- DE: Workflows besitzen nur Kontext und Zustandsuebergaenge. Schritte werden immer
@@ -74,7 +74,7 @@ function Workflows:OnTaskFinished(task,success,result)
  if success then w.completedTasks[#w.completedTasks+1]=task.uniqueId;w.context.results[w.currentStepId or w.currentTask]=result end;local step=w.definition.steps[w.currentStep]
  if not success then local p=step.failurePolicy or w.definition.failurePolicy;if p=="SKIP"then return self:QueueStep(w,w.currentStep+1,0,"FAILURE_SKIP")end;if p=="RETRY"then local key="failure:"..(step.id or tostring(w.currentStep));local count=(w.context.retryCounts[key]or 0)+1;w.context.retryCounts[key]=count;if count<=(step.maxRetries or task.maxRetries or 0)then return self:QueueStep(w,w.currentStep,step.retryDelay or 1,"FAILURE_RETRY",count)end end;if type(p)=="table"and p.alternate then return self:QueueStep(w,p.alternate,0,"FAILURE_ALTERNATE")end;return self:Finish(w,false,task.lastError or result)end
  local action=type(result)=="table"and result.workflowAction
- if action=="RETRY"then local key=step.id or tostring(w.currentStep);local count=(w.context.retryCounts[key]or 0)+1;w.context.retryCounts[key]=count;if count>(tonumber(result.maxRetries)or 5)then return self:Finish(w,false,result.reason or"RETRY_LIMIT")end;return self:QueueStep(w,tonumber(result.gotoStep)or w.currentStep,tonumber(result.delay)or 1,"VALIDATION_RETRY",count)
+ if action=="RETRY"then local key=step.id or tostring(w.currentStep);local count=(w.context.retryCounts[key]or 0)+1;w.context.retryCounts[key]=count;if count>(tonumber(result.maxRetries)or task.maxRetries or 3)then return self:Finish(w,false,result.reason or"RETRY_LIMIT")end;return self:QueueStep(w,tonumber(result.gotoStep)or w.currentStep,tonumber(result.delay)or 1,"VALIDATION_RETRY",count)
  elseif action=="COMPLETE"then return self:Finish(w,true)
  elseif action=="GOTO"then return self:QueueStep(w,tonumber(result.gotoStep),tonumber(result.delay)or 0,"WORKFLOW_BRANCH")end
  local nextStep=w.currentStep+1;if type(step.onResult)=="function"then local ok,value=HolyStorm.Utils.SafeCall("workflow.result:"..w.workflowType,step.onResult,result,w.context,w);if not ok then return self:Finish(w,false,value)end;if value==false then return self:Finish(w,true)elseif tonumber(value)then nextStep=value end end;return self:QueueStep(w,nextStep,0,"TASK_COMPLETED")

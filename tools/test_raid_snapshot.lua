@@ -3,7 +3,7 @@ local oldSnapshot
 local HolyStorm={Utils={}}
 function HolyStorm.Utils.DeepCopy(value,seen)if type(value)~="table"then return value end;seen=seen or{};if seen[value]then return seen[value]end;local out={};seen[value]=out;for key,child in pairs(value)do out[HolyStorm.Utils.DeepCopy(key,seen)]=HolyStorm.Utils.DeepCopy(child,seen)end;return out end
 function HolyStorm.Utils.Now()return 123456 end
-function HolyStorm:RegisterOptionalModule(_,_,factory)local module={};factory(module);self.raidModule=module end
+function HolyStorm:RegisterModule(_,factory)local module={};factory(module);self.raidModule=module end
 function HolyStorm:ApplyModuleMetadata(module,metadata)module.metadata=metadata end
 function LibStub(name)
  if name=="AceAddon-3.0"then return{GetAddon=function()return HolyStorm end}end

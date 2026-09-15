@@ -1,4 +1,4 @@
-local addonVersion = "5.0.0"
+local addonVersion = "5.0.1"
 local HolyStorm = LibStub("AceAddon-3.0"):GetAddon("Holy_Storm")
 local Core = HolyStorm.PermissionCore
 local State = {
@@ -79,7 +79,7 @@ function State:ApplyChange(snapshot,change)
     elseif action=="RULE_UPSERT" then nextState.rules[change.rule.id]=Core.Copy(change.rule)
     elseif action=="RULE_DELETE" then nextState.rules[change.ruleId]=nil
     elseif action=="MODULE_SET" then nextState.modules[change.moduleId]=change.enabled==true
-    elseif action=="RESET" then nextState.groups=self:GetDefaultGroups(); nextState.modules={}
+    elseif action=="RESET" then nextState.groups=self:GetDefaultGroups(); nextState.filters={}; nextState.rules={}; nextState.modules={}
     else return nil,"UNKNOWN_ACTION" end
     return nextState
 end
@@ -130,7 +130,7 @@ function State:CommitSnapshot(state,snapshot,revision)
     self:EnsureSystemGroups(state)
     if self:GetState(state.guildId)==state then
         self:BindCompatibility(state)
-        if revision.change.action=="FILTER_UPSERT" or revision.change.action=="FILTER_DELETE" or revision.change.action=="RULE_UPSERT" or revision.change.action=="RULE_DELETE" then HolyStorm.Rules:RebuildDemands() end
+        if revision.change.action=="FILTER_UPSERT" or revision.change.action=="FILTER_DELETE" or revision.change.action=="RULE_UPSERT" or revision.change.action=="RULE_DELETE" or revision.change.action=="RESET" then HolyStorm.Rules:RebuildDemands() end
         self:Invalidate(revision.change.action); self:EmitChangeEvents(revision.change); HolyStorm.Events:Emit("HS_PERMISSIONS_REVISION_APPLIED",Core.Copy(revision)); HolyStorm.Events:Emit("HS_PERMISSIONS_STATE_UPDATED",state.guildId,state.version,state.revisionID)
     end
     return true
@@ -162,7 +162,7 @@ function State:IsGuildModuleEnabled(moduleId) local state=self:GetState(); retur
 function State:RestoreDefaults() local ok,result=self:CommitChange({action="RESET"}); if ok then Core.Log("INFO","administration","Permission factory reset completed",{revisionID=result.revisionID,version=result.version}) end; return ok,result end
 function State:GetPermissionStateStatus()
     local state=self:GetState(); if not state then return {status=self.status.UNINITIALIZED,version=0} end
-    return {guildId=state.guildId,status=state.status,version=state.version,revisionID=state.revisionID,previousRevisionID=state.previousRevisionID,historyLength=#state.history,oldestRevisionID=state.history[1] and state.history[1].revisionID,missingRevisions=Core.Copy(state.missingRevisions),fork=Core.Copy(state.fork),lastSync=state.lastSync,recovery=Core.Copy(state.recovery),catchup=Core.Copy(state.catchup),catchupReason=state.catchupReason}
+    return {guildId=state.guildId,status=state.status,version=state.version,revisionID=state.revisionID,previousRevisionID=state.previousRevisionID,changedBy=Core.Copy(state.changedBy),changedAt=state.changedAt,historyLength=#state.history,rejectedLength=#(state.rejectedRevisions or {}),oldestRevisionID=state.history[1] and state.history[1].revisionID,missingRevisions=Core.Copy(state.missingRevisions),fork=Core.Copy(state.fork),lastSync=state.lastSync,recovery=Core.Copy(state.recovery),catchup=Core.Copy(state.catchup),catchupReason=state.catchupReason}
 end
 function State:GetRevisionHistory() local state=self:GetState(); return Core.Copy(state and state.history or {}) end
 function State:GetRejectedRevisions() local state=self:GetState(); return Core.Copy(state and state.rejectedRevisions or {}) end
