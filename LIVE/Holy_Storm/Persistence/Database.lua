@@ -1,7 +1,8 @@
 local addonVersion = "1.0.0"
 local HolyStorm = LibStub("AceAddon-3.0"):GetAddon("Holy_Storm")
-local Database = { version=addonVersion, areas = {} }
+local Database = { version=addonVersion, areas = {}, initialized = false }
 function Database:Initialize()
+    self.initialized = false
     local legacy = type(HolyStormDB) == "table" and HolyStormDB.profiles == nil and HolyStorm.Utils.DeepCopy(HolyStormDB) or nil
     HolyStorm.db = LibStub("AceDB-3.0"):New("HolyStormDB", HolyStorm.Data.Schema.defaults, true)
     HS_Player_DB = type(HS_Player_DB) == "table" and HS_Player_DB or {}
@@ -12,15 +13,23 @@ function Database:Initialize()
     end
     local ok, err = HolyStorm.Data.Migrations:Run(HolyStorm.db.global, HolyStorm.db.global.schemaVersion, legacy)
     if not ok then error("Holy Storm database: " .. tostring(err)) end
+    self.initialized = true
 end
-function Database:GetRoot(scope) if scope == "character" or scope == "char" then return HolyStorm.db.char end; return HolyStorm.db[scope or "profile"] end
+function Database:IsInitialized() return self.initialized == true and type(HolyStorm.db) == "table" end
+function Database:GetRoot(scope)
+    if not self:IsInitialized() then return nil end
+    if scope == "character" or scope == "char" then return HolyStorm.db.char end
+    return HolyStorm.db[scope or "profile"]
+end
 function Database:Get(path, scope)
     local value = self:GetRoot(scope)
+    if type(value) ~= "table" then return nil end
     for segment in string.gmatch(path or "", "[^%.]+") do if type(value) ~= "table" then return nil end; value = value[segment] end
     return value
 end
 function Database:Set(path, value, scope)
     local target, segments = self:GetRoot(scope), {}; for segment in string.gmatch(path or "", "[^%.]+") do segments[#segments + 1] = segment end
+    if type(target) ~= "table" then return false,"DATABASE_NOT_INITIALIZED" end
     if #segments == 0 then return false end
     for index = 1, #segments - 1 do local key = segments[index]; target[key] = type(target[key]) == "table" and target[key] or {}; target = target[key] end
     local key = segments[#segments]; if target[key] == value then return false end; target[key] = value

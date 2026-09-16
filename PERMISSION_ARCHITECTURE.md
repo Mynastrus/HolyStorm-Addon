@@ -48,6 +48,8 @@ Rechte sind additiv: Die Vereinigungsmenge der Permissions aller effektiven Grup
 
 Rules bestehen aus Bedingungen oder verschachtelten `AND`-/`OR`-/`NOT`-Bäumen. RuleEngine ist die einzige Auswertungsengine. Das Ergebnis enthält Boolean-Kompatibilität, Tri-State und Trace. FilterManager speichert gildenweite Objekte revisionsbasiert im Permission-State und persönliche lokale Objekte im Profil. Die Admin-Seiten verwenden denselben zentralen Condition Builder, aber keine eigene Auswertung.
 
+RuleEngine kennt keine fachlichen Feld-IDs. Felder gehören einem Owner und werden über `RegisterField(owner, fieldID, definition)` beziehungsweise `metadata.ruleFields` registriert. Unbekannte Felder sind kein Strukturfehler: `ValidatePortable` akzeptiert ihren deklarativen Knoten, Speicherung und Synchronisation bleiben unverändert möglich, und Evaluation liefert `UNKNOWN`. Nur tatsächlich fehlerhafte Bäume, Operatoren oder Werte werden abgelehnt. Owner-Cleanup entfernt ausschließlich aktive Registry-Einträge, niemals persistierte Rules oder Filter.
+
 ## Revision Chain
 
 Jede autorisierte gildenweite Änderung erzeugt:
@@ -97,4 +99,4 @@ Die Administration greift direkt auf Registry, Engine, GroupManager, FilterManag
 
 Feature-Permissions werden von ihren Modulen über die ModuleRegistry in der zentralen PermissionRegistry registriert. Nicht geladene optionale Module hinterlassen ihre Feature-Permissions nicht im aktiven Registry-Bestand; persistierte unbekannte IDs bleiben jedoch erhalten und werden bei einer späteren Registrierung wieder wirksam.
 
-RuleEngine bleibt generisch. Equipment, Mythic+, Raid und Delves registrieren ihre bestehenden Rule-Field-IDs über `HolyStorm.Rules:RegisterField`; Quest-/Achievement-Demand-Provider verbleiben vorerst als technische Restschuld.
+RuleEngine und FilterManager sind fachlich entkoppelt. Feature-Felder und Filtervorlagen werden von ihren Modulen registriert; Quest-/Achievement-Demand-Erfassung liegt in `CharacterRuleData` und verwendet TaskManager sowie CharacterStore. Verbleibend ist die paketbezogene Kopplung einiger fest eingebauter Services, nicht mehr eine zweite oder fachlich verdrahtete Rule Engine.

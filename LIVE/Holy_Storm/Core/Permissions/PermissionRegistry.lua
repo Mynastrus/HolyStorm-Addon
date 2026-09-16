@@ -64,7 +64,10 @@ function Registry:RegisterPermission(definition)
     normalized.descriptionKey = normalized.descriptionKey or keyFor("PERMISSION_DESC_", normalized.id)
     self.keys[normalized.id] = normalized
     local state = HolyStorm.PermissionComponents and HolyStorm.PermissionComponents.State
-    if state and state.ApplyPermissionDefault then state:ApplyPermissionDefault(normalized) end
+    -- Module metadata is loaded before AceDB exists. UpgradeState applies every
+    -- registered definition once persistence is ready; runtime registrations can
+    -- still update the active state immediately.
+    if state and state.ApplyPermissionDefault and (not state.IsPersistenceReady or state:IsPersistenceReady()) then state:ApplyPermissionDefault(normalized) end
     if HolyStorm.Events then HolyStorm.Events:Emit("HS_PERMISSION_REGISTERED", normalized.id) end
     return true
 end

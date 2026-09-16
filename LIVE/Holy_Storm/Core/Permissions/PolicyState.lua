@@ -4,26 +4,58 @@ local Core = HolyStorm.PermissionCore
 local State = {
     version=addonVersion,
     status={VALID="VALID",CATCHING_UP="CATCHING_UP",RECOVERY_REQUIRED="RECOVERY_REQUIRED",CONFLICT="CONFLICT",UNINITIALIZED="UNINITIALIZED"},
-    maxHistory=100,maxRejected=100,maxObjects=500,sequence=0,
+    maxHistory=100,maxRejected=100,maxObjects=500,sequence=0,persistenceWarningLogged=false,
 }
+
+function State:IsPersistenceReady()
+    return HolyStorm.Database and type(HolyStorm.Database.IsInitialized)=="function" and HolyStorm.Database:IsInitialized()
+end
+function State:GetPersistenceRoot(scope,operation)
+    if not self:IsPersistenceReady() then
+        if not self.persistenceWarningLogged then
+            self.persistenceWarningLogged=true
+            Core.Log("WARN","lifecycle","Policy state requested before persistence was ready",{operation=operation or "read",scope=scope})
+        end
+        return nil,"PERSISTENCE_NOT_READY"
+    end
+    local root=HolyStorm.Database:GetRoot(scope)
+    if type(root)~="table" then
+        Core.Log("ERROR","lifecycle","Policy persistence root is unavailable",{operation=operation or "read",scope=scope})
+        return nil,"PERSISTENCE_ROOT_UNAVAILABLE"
+    end
+    self.persistenceWarningLogged=false
+    return root
+end
 
 function State:GetGuildId()
     local guild=HolyStorm.Data.GuildStore:GetCurrent()
     return guild and guild.id or (HolyStorm.Data.GuildStore.GetGuildId and HolyStorm.Data.GuildStore:GetGuildId())
 end
 function State:GetStates()
-    local global=HolyStorm.db.global; global.permissionStates=type(global.permissionStates)=="table" and global.permissionStates or {}; return global.permissionStates
+    local global,reason=self:GetPersistenceRoot("global","GetStates")
+    if not global then return nil,reason end
+    global.permissionStates=type(global.permissionStates)=="table" and global.permissionStates or {}
+    return global.permissionStates
 end
-function State:GetState(guildId) return self:GetStates()[guildId or self:GetGuildId()] end
+function State:GetState(guildId)
+    local states=self:GetStates()
+    if not states then return nil end
+    local resolvedGuildId=guildId or self:GetGuildId()
+    return resolvedGuildId and states[resolvedGuildId] or nil
+end
 function State:GetStateStore()
     local state=self:GetState(); return state and {groups=state.groups,roles=state.groups,version=state.version} or {groups={},roles={},version=0}
 end
 function State:GetStore(kind,scope)
+    local profile=self:GetPersistenceRoot("profile","GetStore:"..tostring(kind))
+    if not profile then return nil end
     if scope=="local" then
-        if kind=="rules" then return HolyStorm.db.profile.rules.localRules elseif kind=="filters" then return HolyStorm.db.profile.filters.localFilters end
+        if kind=="rules" then return profile.rules and profile.rules.localRules elseif kind=="filters" then return profile.filters and profile.filters.localFilters end
     end
     local state=self:GetState(); if state and state[kind] then return state[kind] end
-    if kind=="groups" then return {} elseif kind=="rules" then return HolyStorm.db.global.rules.global elseif kind=="filters" then return HolyStorm.db.global.filters.global end
+    local global=self:GetPersistenceRoot("global","GetStore:"..tostring(kind))
+    if not global then return nil end
+    if kind=="groups" then return {} elseif kind=="rules" then return global.rules and global.rules.global elseif kind=="filters" then return global.filters and global.filters.global end
 end
 function State:NewRevisionId(guildId,version)
     self.sequence=self.sequence+1
@@ -31,26 +63,35 @@ function State:NewRevisionId(guildId,version)
     return string.format("rev-%s-%d-%x-%x",tostring(guildId):gsub("[^%w]","_"),version,Core.Now()%0x7fffffff,(self.sequence+math.random(0,0x7fffffff))%0x7fffffff).."-"..actor
 end
 function State:BindCompatibility(state)
-    HolyStorm.db.global.permissions.groups=state.groups
-    HolyStorm.db.global.permissions.roles=state.groups
-    HolyStorm.db.global.permissions.version=state.version
-    HolyStorm.db.global.filters.global=state.filters
-    HolyStorm.db.global.rules.global=state.rules
+    local global,reason=self:GetPersistenceRoot("global","BindCompatibility")
+    if not global then return false,reason end
+    global.permissions.groups=state.groups
+    global.permissions.roles=state.groups
+    global.permissions.version=state.version
+    global.filters.global=state.filters
+    global.rules.global=state.rules
+    return true
 end
 function State:ApplyPermissionDefault(definition, targetState)
+    if not self:IsPersistenceReady() then return false,"PERSISTENCE_NOT_READY" end
     local state=targetState or self:GetState()
     if state and HolyStorm.GroupManager and HolyStorm.GroupManager.ApplyRegisteredDefaults then
         HolyStorm.GroupManager:ApplyRegisteredDefaults(state,definition)
         if HolyStorm.PermissionEngine then HolyStorm.PermissionEngine:Invalidate("PERMISSION_REGISTERED") end
+        return true
     end
+    return false,"STATE_UNAVAILABLE"
 end
 function State:Snapshot(state) return {groups=Core.Copy(state.groups),filters=Core.Copy(state.filters),rules=Core.Copy(state.rules),modules=Core.Copy(state.modules)} end
 
 function State:CreateState(guildId)
-    local firstGuild=next(self:GetStates())==nil
-    local legacy=firstGuild and HolyStorm.db.global.permissions and (HolyStorm.db.global.permissions.groups or HolyStorm.db.global.permissions.roles)
-    local state={guildId=guildId,groups=self:MigrateLegacyGroups(legacy),filters=firstGuild and Core.Copy(HolyStorm.db.global.filters.global or {}) or {},rules=firstGuild and Core.Copy(HolyStorm.db.global.rules.global or {}) or {},modules={},version=0,revisionID=nil,previousRevisionID=nil,history={},status=self.status.UNINITIALIZED,lastSync=0,missingRevisions={}}
-    self:EnsureSystemGroups(state); self:GetStates()[guildId]=state; return state
+    local states,reason=self:GetStates()
+    local global=self:GetPersistenceRoot("global","CreateState")
+    if not states or not global then return nil,reason or "PERSISTENCE_NOT_READY" end
+    local firstGuild=next(states)==nil
+    local legacy=firstGuild and global.permissions and (global.permissions.groups or global.permissions.roles)
+    local state={guildId=guildId,groups=self:MigrateLegacyGroups(legacy),filters=firstGuild and Core.Copy(global.filters.global or {}) or {},rules=firstGuild and Core.Copy(global.rules.global or {}) or {},modules={},version=0,revisionID=nil,previousRevisionID=nil,history={},status=self.status.UNINITIALIZED,lastSync=0,missingRevisions={}}
+    self:EnsureSystemGroups(state); states[guildId]=state; return state
 end
 function State:UpgradeState(state)
     local previousSchema=tonumber(state.schemaVersion) or 0

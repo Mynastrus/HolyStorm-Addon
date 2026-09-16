@@ -11,6 +11,15 @@ oder anderen Dateien außerhalb von `LIVE` gehören nicht in dieses Changelog.
 
 ## Noch nicht veröffentlicht
 
+### 16. September 2026
+
+- Die RuleEngine ist nun ein reiner Core-Vertrag ohne Character-, Guild-, Equipment-, Mythic+-, Raid-, Delve-, Quest-, Achievement-, POI-, Content- oder Calendar-Feldwissen. Fachmodule registrieren lokalisierte, typisierte Felder ownergebunden über `metadata.ruleFields` oder die öffentliche Registry; Lifecycle-Cleanup, Availability, erlaubte Operatoren, Value-Provider, Aliase und Resolverfehler werden zentral behandelt.
+- Unbekannte Felder bleiben in Rules und Filtern strukturell gültig, speicher- und synchronisierbar und liefern bei der Auswertung `UNKNOWN`. Owner-Cleanup löscht keine persistierten Objekte. AND/OR/NOT sowie kombinierte Filter verwenden konsistente Tri-State-Semantik.
+- Quest- und Blizzard-Erfolgsdaten werden nicht mehr aus der RuleEngine gescannt. `CharacterRuleData` sammelt registrierte Bedarfe, plant die Erfassung über den TaskManager und persistiert ausschließlich über den CharacterStore.
+- Feature-Filtervorlagen und Condition-Builder-Defaults sind nicht länger im Core an konkrete Character-Felder gekoppelt. Rule-Feldnamen und -beschreibungen besitzen deutsche und englische Modul-Lokalisierungen.
+- Die Sync-Autorisierung wurde abgegrenzt: normale ownergebundene Character-Daten bleiben ohne Share-Permission sichtbar; administrative, veränderbare oder sensible Domains verwenden direkt PermissionEngine mit Compatibility-Fallback. Neue Vertragstests decken Registry-Owner, Cleanup, unbekannte Felder, Resolverfehler, Portabilität und Tri-State-Logik ab.
+- Frühe Permission-Registrierungen greifen nicht mehr vor der AceDB-Initialisierung auf PolicyState zu. PolicyState verwendet die zentrale Database-Fassade, bewahrt vorhandene Zustände bei erneutem Bootstrap und behandelt verfrühte Zugriffe kontrolliert. Der Policy-Locale-Vertrag enthält nun außerdem die fehlende Kategorie `CATEGORY_CHARACTERS` und wird vollständig für deDE/enUS geprüft.
+
 ### 15. September 2026
 
 - Die Administration registriert Gruppen-/Berechtigungs-, Regel-, Filter- und Diagnosebereiche nun über einen zentralen, permission- und modulgebundenen Section-Host. Die Seiten verwenden direkt PermissionRegistry, PermissionEngine, GroupManager, FilterManager, Rules und PolicyState; die bestehenden Policy-/Permissions-Fassaden bleiben für Compatibility erhalten.

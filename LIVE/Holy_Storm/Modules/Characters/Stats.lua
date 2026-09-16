@@ -1,6 +1,9 @@
 local addonVersion="1.1.0"
 local HolyStorm=LibStub("AceAddon-3.0"):GetAddon("Holy_Storm");local L=LibStub("AceLocale-3.0"):GetLocale("Holy_Storm_Twinks")
-local metadata={id="CharacterStats",name="CharacterStats",displayName="Character Stats",internalName="characterStats",version=addonVersion,moduleType="feature",category="optional",description="Persistent character attributes",permissions={"player-read","sync-send"},dependencies={"core","ui"},capabilities={"character.scan.stats","character.scan.additional"},data={block="stats"},enabledByDefault=true}
+local metadata={id="CharacterStats",name="CharacterStats",displayName=L["RULE_CATEGORY_STATS"],internalName="characterStats",version=addonVersion,moduleType="feature",category="optional",description=L["RULE_CATEGORY_STATS_DESC"],permissions={"player-read","sync-send"},dependencies={"core","ui"},capabilities={"character.scan.stats","character.scan.additional"},data={block="stats"},enabledByDefault=true,ruleFields={
+ {id="character.spec",aliases={"spec"},type="string",name=L["RULE_FIELD_SPECIALIZATION"],nameKey="RULE_FIELD_SPECIALIZATION",description=L["RULE_FIELD_SPECIALIZATION_DESC"],descriptionKey="RULE_FIELD_SPECIALIZATION_DESC",category=L["RULE_CATEGORY_STATS"],dependencies={"stats"},resolver=function(context)local spec=context.character and context.character.stats and context.character.stats.spec;return spec and(spec.id or spec.name)end},
+ {id="character.role",aliases={"role"},type="string",name=L["RULE_FIELD_ROLE"],nameKey="RULE_FIELD_ROLE",description=L["RULE_FIELD_ROLE_DESC"],descriptionKey="RULE_FIELD_ROLE_DESC",category=L["RULE_CATEGORY_STATS"],dependencies={"stats"},resolver=function(context)return context.character and context.character.stats and context.character.stats.spec and context.character.stats.spec.role end},
+}}
 HolyStorm:RegisterModule(metadata,function(Module)
  function Module:GetCharacterSnapshot(guid)return HolyStorm.Data.CharacterStore:GetBlock(guid,"stats")end
  function Module:Collect()

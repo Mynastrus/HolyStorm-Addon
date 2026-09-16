@@ -31,6 +31,7 @@ function HolyStorm:NormalizeModuleMetadata(metadata, fallbackId, defaultCategory
     normalized.data = type(normalized.data) == "table" and normalized.data or {}
     normalized.sync = type(normalized.sync) == "table" and normalized.sync or {}
     normalized.permissions = type(normalized.permissions) == "table" and normalized.permissions or {}
+    normalized.ruleFields = type(normalized.ruleFields) == "table" and normalized.ruleFields or {}
     assert(type(normalized.id) == "string" and normalized.id ~= "", L["ERROR_MODULE_INTERNAL_NAME"])
     assert(type(normalized.name) == "string" and normalized.name ~= "", L["ERROR_MODULE_INTERNAL_NAME"])
     assert(type(normalized.displayName) == "string", L["ERROR_MODULE_DISPLAY_NAME"])
@@ -60,10 +61,30 @@ function HolyStorm:RegisterModulePermissions(metadata)
     end
 end
 
+function HolyStorm:RegisterModuleRuleFields(metadata)
+    if not HolyStorm.Rules or type(metadata)~="table" then return 0 end
+    local registered=0
+    for key,entry in pairs(metadata.ruleFields or {}) do
+        if type(entry)=="table" then
+            local definition=HolyStorm.Utils.DeepCopy(entry)
+            local fieldID=definition.id or (type(key)=="string" and key or nil)
+            local aliases=definition.aliases
+            definition.id,definition.aliases=nil,nil
+            local ok=fieldID and HolyStorm.Rules:RegisterField(metadata.id,fieldID,definition)
+            if ok then
+                registered=registered+1
+                for _,aliasID in ipairs(type(aliases)=="table" and aliases or {}) do HolyStorm.Rules:RegisterAlias(metadata.id,aliasID,fieldID) end
+            end
+        end
+    end
+    return registered
+end
+
 function HolyStorm:ApplyModuleMetadata(module, metadata)
     local normalized = self:NormalizeModuleMetadata(metadata, module and module:GetName(), "required")
     module.metadata = normalized
     module.version = normalized.version
+    self:RegisterModuleRuleFields(normalized)
     return normalized
 end
 
@@ -153,7 +174,7 @@ function HolyStorm:ProtectModule(module)
     if not module or module.holyStormProtected then return end; module.holyStormProtected=true
     for _,methodName in ipairs({"OnInitialize","OnEnable","OnDisable"}) do
         local original=module[methodName]
-        if type(original)=="function" then
+        if type(original)=="function" or methodName=="OnEnable" or methodName=="OnDisable" then
             module[methodName]=function(self,...)
                 if methodName=="OnInitialize" then
                     for _,dependency in ipairs((self.metadata and self.metadata.dependencies) or {}) do
@@ -161,7 +182,10 @@ function HolyStorm:ProtectModule(module)
                         if not available then HolyStorm.Logger:WARN("ModuleRegistry","%s disabled: dependency %s is unavailable",self:GetName(),dependency); self:SetEnabledState(false); return end
                     end
                 end
-                local ok,err=HolyStorm.Utils.SafeCall((self.metadata and self.metadata.internalName or self:GetName())..":"..methodName,original,self,...)
+                if methodName=="OnEnable" then HolyStorm:RegisterModuleRuleFields(self.metadata) end
+                local ok,err=true
+                if original then ok,err=HolyStorm.Utils.SafeCall((self.metadata and self.metadata.internalName or self:GetName())..":"..methodName,original,self,...) end
+                if methodName=="OnDisable" and HolyStorm.Rules and self.metadata then HolyStorm.Rules:UnregisterOwner(self.metadata.id) end
                 if not ok then HolyStorm.Logger:ERROR("ModuleRegistry","%s failed in %s: %s",self:GetName(),methodName,tostring(err)); if methodName~="OnDisable" then self:SetEnabledState(false) end end
             end
         end

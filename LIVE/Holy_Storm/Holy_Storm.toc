@@ -79,6 +79,7 @@ Core\Permissions\PermissionSync.lua
 Core\Permissions\Policy.lua
 Core\Permissions\Permissions.lua
 Modules\Characters\TwinkCore.lua
+Modules\Characters\RuleDataProvider.lua
 Sync\Comms.lua
 Sync\SyncManager.lua
 Core\Content\MapLinks.lua

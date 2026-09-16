@@ -1,7 +1,10 @@
 local addonVersion = "2.0.0"
 local HolyStorm = LibStub("AceAddon-3.0"):GetAddon("Holy_Storm")
 local L = LibStub("AceLocale-3.0"):GetLocale("Holy_Storm_GuildEvents")
-local metadata = { id = "GuildEvents", name = "Calendar", internalName = "guildEvents", displayName = L["DISPLAY_NAME"], description = L["DESCRIPTION"], version = addonVersion, moduleType = "feature", category = "optional", permissions = {{id="calendar-read",category="Calendar",defaults={member=true}}}, dependencies = { "core", "ui" }, ui = { page = "guildEvents", navigation = true }, enabledByDefault = false }
+local metadata = { id = "GuildEvents", name = "Calendar", internalName = "guildEvents", displayName = L["DISPLAY_NAME"], description = L["DESCRIPTION"], version = addonVersion, moduleType = "feature", category = "optional", permissions = {{id="calendar-read",category="Calendar",defaults={member=true}}}, dependencies = { "core", "ui" }, ui = { page = "guildEvents", navigation = true }, enabledByDefault = false, ruleFields={
+    {id="calendar.title",type="string",name=L["RULE_FIELD_TITLE"],nameKey="RULE_FIELD_TITLE",description=L["RULE_FIELD_TITLE_DESC"],descriptionKey="RULE_FIELD_TITLE_DESC",category=L["DISPLAY_NAME"],resolver=function(context)return context.target and context.target.calendarEvent and context.target.calendarEvent.title end},
+    {id="calendar.description",type="string",name=L["RULE_FIELD_DESCRIPTION"],nameKey="RULE_FIELD_DESCRIPTION",description=L["RULE_FIELD_DESCRIPTION_DESC"],descriptionKey="RULE_FIELD_DESCRIPTION_DESC",category=L["DISPLAY_NAME"],resolver=function(context)return context.target and context.target.calendarEvent and context.target.calendarEvent.description end},
+} }
 
 HolyStorm:RegisterModule(metadata, function(Events)
     HolyStorm:ApplyModuleMetadata(Events, metadata)
@@ -413,7 +416,7 @@ HolyStorm:RegisterModule(metadata, function(Events)
             if calendar.AreNamesReady and not calendar.AreNamesReady() and attempt < 10 then
                 HolyStorm.Tasks:Enqueue("calendar.names-ready", function() CollectDetails(attempt + 1) end, { priority=2, debounce=0.2, combat="defer" }); return
             end
-            local details = calendar.GetEventInfo and calendar.GetEventInfo(); event.details = details; event.isLocked = details and (details.isLocked or details.locked) or false; event.canEdit = HolyStorm.Policy:Can("calendar-manage") and calendar.EventCanEdit and calendar.EventCanEdit() or false; event.description = details and details.description or nil
+            local details = calendar.GetEventInfo and calendar.GetEventInfo(); event.details = details; event.isLocked = details and (details.isLocked or details.locked) or false; event.canEdit = (HolyStorm.PermissionEngine or HolyStorm.Policy):Can("calendar-manage") and calendar.EventCanEdit and calendar.EventCanEdit() or false; event.description = details and details.description or nil
             event.raidInfo = calendar.GetRaidInfo and calendar.GetRaidInfo(selection.offsetMonths, selection.monthDay, selection.eventIndex) or nil
             if calendar.GetNumInvites and calendar.EventGetInvite then
                 for inviteIndex = 1, calendar.GetNumInvites() do
@@ -458,7 +461,6 @@ HolyStorm:RegisterModule(metadata, function(Events)
     function Events:OnInitialize()
         local UI = HolyStorm:GetModule("UI", true); local aceGUI = LibStub("AceGUI-3.0"); local page = CreateFrame("Frame", nil, UI.content)
         local heading = page:CreateFontString(nil, "OVERLAY", "GameFontHighlightLarge"); heading:SetPoint("TOPLEFT", page, "TOPLEFT", 18, -18); heading:SetText(L["HEADING"])
-        HolyStorm.Rules:RegisterField("calendar.title",{type="string",get=function(x)return x.target and x.target.calendarEvent and x.target.calendarEvent.title end});HolyStorm.Rules:RegisterField("calendar.description",{type="string",get=function(x)return x.target and x.target.calendarEvent and x.target.calendarEvent.description end})
         local filterBar=HolyStorm.PolicyUI:CreateFilterBar(page,"calendar",function()Events:Render()end);filterBar:SetPoint("TOPLEFT",14,-42);filterBar:SetPoint("TOPRIGHT",-20,-42)
         local scroll = CreateFrame("ScrollFrame", nil, page, "UIPanelScrollFrameTemplate"); scroll:SetPoint("TOPLEFT", page, "TOPLEFT", 18, -98); scroll:SetPoint("BOTTOMRIGHT", page, "BOTTOMRIGHT", -28, 16)
         local content = CreateFrame("Frame", nil, scroll); content:SetSize(1, 1); scroll:SetScrollChild(content)

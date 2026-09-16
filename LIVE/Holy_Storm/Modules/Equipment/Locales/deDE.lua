@@ -5,6 +5,9 @@ if not L then
     return
 end
 
+L["RULE_FIELD_ITEM_LEVEL"] = "Gegenstandsstufe"
+L["RULE_FIELD_ITEM_LEVEL_DESC"] = "Die im Ausrüstungs-Snapshot gespeicherte durchschnittliche Gegenstandsstufe."
+
 L["HEADING"] = "Aktuelle Ausrüstung"
 L["WINDOW_TITLE"] = "Holy Storm     |cffBFBFBFAusrüstung|r"
 L["NAVIGATION_TITLE"] = "Ausrüstung"

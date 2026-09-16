@@ -33,7 +33,7 @@ Normale owner-kontrollierte Objekte werden anhand ihrer Domain-Metadaten verglic
 
 ## ModuleRegistry und Capabilities
 
-`ModuleRegistry` normalisiert Metadaten mit `id`, `internalName`, `name`, `displayName`, `description`, `icon`, `version`, `moduleType`, `category`, `dependencies`, `capabilities`, `ui`, `options`, `administration`, `data` und `sync`. `RegisterModule` ist der einheitliche Vertrag; `RegisterRequiredModule` und `RegisterOptionalModule` bleiben kompatibel.
+`ModuleRegistry` normalisiert Metadaten mit `id`, `internalName`, `name`, `displayName`, `description`, `icon`, `version`, `moduleType`, `category`, `dependencies`, `capabilities`, `ui`, `options`, `administration`, `data`, `sync`, `permissions` und `ruleFields`. `RegisterModule` ist der einheitliche Vertrag; `RegisterRequiredModule` und `RegisterOptionalModule` bleiben kompatibel. Deklarierte Rule-Felder werden beim Laden beziehungsweise Aktivieren ownergebunden registriert und beim Deaktivieren geschlossen entfernt.
 
 Capabilities sind benannte, von Modulen registrierte Handler. Der Bootstrap verwendet sie derzeit für Equipment-, Raid-, Mythic+-, Delve- und weitere Character-Scans. Der detaillierte Implementierungsstand steht in `MODULE_ARCHITECTURE.md`.
 
@@ -52,6 +52,10 @@ Capabilities sind benannte, von Modulen registrierte Handler. Der Bootstrap verw
 - `FilterManager`: lokale und gildenweite Rules/Filter sowie Verknüpfungen.
 - `PolicyState`: gildenweiter State, Validierung, Autorisierung und revisionsbasierte Mutationen.
 - `PermissionSync`: Revision-Catch-up, vertrauensgebundene Recovery und Sync-Domain.
+
+Der Core besitzt ausschließlich den Rule-Vertrag: Registry, Operatoren, Typ- und Strukturvalidierung, Abhängigkeitsermittlung sowie die drei Ergebnisse `PASS`, `FAIL` und `UNKNOWN`. Fachmodule besitzen Resolver, Feldmetadaten und optionale Demand-Collector. Unbekannte Feld-IDs bleiben in gespeicherten Rules und Filtern unverändert, gelten strukturell als portabel und ergeben bei der Auswertung `UNKNOWN`. Resolver- oder Availability-Fehler werden protokolliert und ebenfalls in `UNKNOWN` überführt.
+
+Quest- und Blizzard-Erfolgsbedarfe werden deklarativ durch `CharacterRuleData` gesammelt. Sowohl der Neuaufbau des Bedarfs als auch dessen Erfassung laufen als Tasks; die Erfassung verwendet WoW-APIs und schreibt ausschließlich über `CharacterStore`. Die RuleEngine startet keine Scans und persistiert weder Bedarfslisten noch Character-Snapshots.
 
 Die Systemgruppen sind `guild-leadership`, `officers` und `guild-member`. Rechte mehrerer Gruppen werden addiert. Leadership besitzt dynamisch alle registrierten Permissions. Manager-Gruppen dürfen eine Zielgruppe verwalten, erben aber weder Mitgliedschaft noch Rechte dieser Gruppe. Die tatsächliche Blizzard-Gildenleitung ist der Trust Anchor für geschützte Leadership-Mitgliedschaft und Snapshot-Recovery.
 
@@ -73,8 +77,7 @@ Target / Planned: Feature-Pakete wie Equipment, MythicPlus, Raid, Delves oder PO
 
 ## Bekannte technische Restschulden
 
-- Feature-Permissions und Feature-Rule-Felder werden durch die besitzenden Module registriert. `PermissionRegistry` und `HolyStorm.Rules` bleiben jeweils die einzigen zentralen Verträge; optionale Module registrieren ihre Definitionen erst beim Laden.
-- `RuleEngine.lua` besitzt noch Feature-Felder für Equipment, Mythic+, Raid, Delves und Demand-Provider für Quests/Achievements.
-- Einzelne Feature-Sync-Domains autorisieren noch über `HolyStorm.Policy`.
 - Der Bootstrap initialisiert einige konkrete Services statt ausschließlich deklarative Lifecycle-Hooks zu nutzen.
-- Modulmetadaten sind vorhanden, werden aber nicht in allen Modulen gleich vollständig für UI, Administration, Data und Sync genutzt.
+- Modulmetadaten sind vorhanden, werden aber noch nicht in allen Modulen vollständig für UI, Administration, Data und Sync genutzt.
+- Feature-Pakete liegen weiterhin im Hauptaddon und sind noch nicht als separate Addons ausgeliefert; TOC und einzelne Service-Initialisierungen bilden deshalb weiterhin eine Paketkopplung.
+- `HolyStorm.Policy` bleibt als öffentliche Compatibility-Fassade bestehen. Neue fachliche Autorisierungen verwenden `PermissionEngine`; Test- und Altverbraucher können während der Übergangszeit auf die Fassade zurückfallen.

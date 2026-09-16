@@ -5,6 +5,9 @@ if not L then
     return
 end
 
+L["RULE_FIELD_PROGRESS"] = "Raidfortschritt"
+L["RULE_FIELD_PROGRESS_DESC"] = "Die Anzahl besiegter Bosse aus dem besten gespeicherten Raidfortschritt."
+
 L["HEADING"] = "Schlachtzugssperren"
 L["WINDOW_TITLE"] = "Holy Storm     |cffBFBFBFSchlachtzugssperren|r"
 L["NAVIGATION_TITLE"] = "Schlachtzugssperren"

@@ -11,6 +11,7 @@ Diese Referenz trennt klar zwischen **A: implementiert**, **B: vorbereitet** und
 - `moduleType`, `category`
 - `dependencies`, `capabilities`
 - `ui`, `options`, `administration`, `data`, `sync`
+- `permissions`, `ruleFields`
 
 `id` und `internalName` sind stabile technische Identitäten. Sichtbare Namen und Beschreibungen sollen lokalisiert werden. `version` ist SemVer. `category` unterscheidet derzeit insbesondere `required` und `optional`; `moduleType` beschreibt etwa `core` oder `feature`.
 
@@ -46,18 +47,23 @@ Module können Seiten über `HolyStorm.UI:RegisterPage` und Navigation über `Ad
 - Modulspezifische Locales liegen unter `Modules/<Modul>/Locales` und werden vor dem Modul geladen.
 - Slash Commands werden zentral über die Commands-Infrastruktur angebunden; Module sollen keine konkurrierenden Root-Kommandos erzeugen.
 
+### Rule-Felder
+
+Module deklarieren Rule-Felder bevorzugt in `metadata.ruleFields` oder registrieren sie explizit über `HolyStorm.Rules:RegisterField(owner, fieldID, definition)`. Eine Definition unterstützt `type`, lokalisierten Namen und Beschreibung, Kategorie, `resolver`, optionale `availability`, `dependencies`, `allowedOperators`, `valueProvider`/`enumProvider`, Einheit-/Anzeige-Metadaten und einen optionalen Demand-Collector. `RegisterAlias` hält alte Feld-IDs kompatibel.
+
+Öffentliche Lifecycle- und Lese-APIs sind `RegisterField`, `RegisterAlias`, `UnregisterField`, `UnregisterOwner`, `GetField`, `GetFields`, `GetFieldsByOwner` und `GetAllowedOperators`. Module verändern keine internen Registry-Tabellen. Die ModuleRegistry registriert deklarierte Felder erneut beim Aktivieren und entfernt beim Deaktivieren nur die Felder des betreffenden Owners.
+
 ## B – vorbereitet, aber nicht flächendeckend genutzt
 
 - Die Metadatenfelder `ui`, `options`, `administration`, `data` und `sync` existieren, treiben aber noch nicht automatisch alle Registrierungen und Lifecycle-Schritte.
 - Die Administration-Registry akzeptiert externe Modul-Sections und blendet fehlende oder gildenweit deaktivierte Module sicher aus.
 - Feature-Module deklarieren ihre Permissions als Metadaten. Die ModuleRegistry registriert sie über die zentrale PermissionRegistry und übernimmt dabei Owner, Kategorie und Systemgruppen-Defaults.
-- RuleEngine besitzt die generische Feld-/Provider-Registry; Equipment, MythicPlus, Raids und Delves registrieren ihre Feature-Felder selbst über `HolyStorm.Rules:RegisterField`.
+- RuleEngine besitzt ausschließlich die generische Feld-/Provider-Registry; alle fachlichen Felder einschließlich Character, Guild, Profile, Quest-/Achievement-Demand, Equipment, MythicPlus, Raids, Delves, Calendar, Content und POI werden durch ihre Owner registriert.
 - Capabilities reduzieren Bootstrap-Kopplung, während einige Services noch direkt in Bootstrap initialisiert werden.
-- Sync-Domains sind generisch registrierbar, einzelne Features verwenden bei Autorisierung aber noch Compatibility-Fassaden.
+- Sync-Domains sind generisch registrierbar; geschützte Feature-Domains autorisieren über PermissionEngine, während normale ownergebundene Character-Daten ohne separates Share-Recht auskommen.
 
 ## C – Target / Planned
 
-- Rule-Feldprovider werden schrittweise durch die besitzenden Module registriert.
 - Metadaten können Lifecycle, UI, Administration, Datenblöcke und Sync-Domains vollständiger deklarativ verbinden.
 - Externe Drittanbieter-Module verwenden nur öffentliche Core-Verträge und keine internen Tabellen.
 - Feature-Pakete können als separate WoW-Addons ausgeliefert werden, beispielsweise `Holy_Storm_Equipment`, `Holy_Storm_MythicPlus`, `Holy_Storm_Raid` oder `Holy_Storm_POI`.

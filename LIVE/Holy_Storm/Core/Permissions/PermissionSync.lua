@@ -66,8 +66,11 @@ function Sync:ValidatePermissionPayload(payload,meta,guildId)
     return type(payload)=="table" and payload.guildId==guildId and type(payload.current)=="table" and type(meta)=="table" and tonumber(payload.current.version)==tonumber(meta.version) and payload.current.revisionID==meta.revisionID and type(payload.history)=="table" and type(payload.snapshot)=="table"
 end
 function Sync:BootstrapState()
+    if not self:IsPersistenceReady() then Core.Log("ERROR","lifecycle","Permission state bootstrap requires initialized persistence");return false,"PERSISTENCE_NOT_READY" end
     local guildId=self:GetGuildId(); if not guildId then return false end
-    local state=self:GetState(guildId) or self:CreateState(guildId); self:UpgradeState(state); self:BindCompatibility(state)
+    local state=self:GetState(guildId)
+    if not state then local reason;state,reason=self:CreateState(guildId);if not state then return false,reason end end
+    self:UpgradeState(state); self:BindCompatibility(state)
     if state.version==0 then
         if self:IsActualGuildLeader(nil,UnitGUID("player")) then
             local actor=self:Actor(); local snapshot={groups=self:GetDefaultGroups(),filters=Core.Copy(state.filters),rules=Core.Copy(state.rules),modules={}}
@@ -78,15 +81,17 @@ function Sync:BootstrapState()
     return true
 end
 function Sync:Initialize()
-    HolyStorm.db.profile.rules=HolyStorm.db.profile.rules or {localRules={}}; HolyStorm.db.profile.rules.localRules=HolyStorm.db.profile.rules.localRules or {}; HolyStorm.db.profile.filters.localFilters=HolyStorm.db.profile.filters.localFilters or {}; HolyStorm.db.profile.filters.activeByContext=HolyStorm.db.profile.filters.activeByContext or {}; self:RestoreTemplates()
+    if not self:IsPersistenceReady() then Core.Log("ERROR","lifecycle","Permission sync initialization requires initialized persistence");return false,"PERSISTENCE_NOT_READY" end
+    local profile=HolyStorm.Database:GetRoot("profile")
+    profile.rules=profile.rules or {localRules={}}; profile.rules.localRules=profile.rules.localRules or {}; profile.filters.localFilters=profile.filters.localFilters or {}; profile.filters.activeByContext=profile.filters.activeByContext or {}; self:RestoreTemplates()
     HolyStorm.Tasks:RegisterTaskType("Policy.RecalculateEffectiveMemberships",{name=L["TASK_POLICY_RECALCULATE"],localizedNameKey="TASK_POLICY_RECALCULATE",module="Policy",priority=20,executionMode="UNIQUE",execute=function() return HolyStorm.Policy:Recalculate() end})
-    HolyStorm.Tasks:RegisterTaskType("Policy.CaptureOnDemand",{name=L["TASK_POLICY_CAPTURE"],localizedNameKey="TASK_POLICY_CAPTURE",module="Policy",priority=25,executionMode="UNIQUE",execute=function() return HolyStorm.Rules:CaptureDemands() end})
     HolyStorm.Tasks:RegisterTaskType("Policy.PermissionCatchup",{name=L["TASK_PERMISSION_CATCHUP"],localizedNameKey="TASK_PERMISSION_CATCHUP",module="Policy",priority=10,executionMode="MERGE_BY_KEY",execute=function() return HolyStorm.Policy:RunPermissionCatchup() end})
     HolyStorm.Tasks:RegisterTaskType("Policy.PermissionRecovery",{name=L["TASK_PERMISSION_RECOVERY"],localizedNameKey="TASK_PERMISSION_RECOVERY",module="Policy",priority=5,executionMode="MERGE_BY_KEY",execute=function(task) local metadata=task.metadata; return HolyStorm.Policy:RecoverFromSnapshot(HolyStorm.Policy:GetState(metadata.guildId),metadata.payload,metadata.senderId) end})
-    HolyStorm.Sync:RegisterDomain("permissions",{freshness="revision-chain",getMetadata=function(id) return HolyStorm.Policy:GetPermissionMetadata(id) end,listMetadata=function(since) local out={}; for id in pairs(HolyStorm.Policy:GetStates()) do local metadata=HolyStorm.Policy:GetPermissionMetadata(id); if metadata and (metadata.updatedAt or 0)>since then out[#out+1]=metadata end end; return out end,export=function(id) return HolyStorm.Policy:ExportPermissionState(id) end,validate=function(payload,meta,id) return HolyStorm.Policy:ValidatePermissionPayload(payload,meta,id) end,authorize=function() return true end,import=function(id,payload,meta,senderId) return HolyStorm.Policy:ImportPermissionState(id,payload,meta,senderId) end,updateEvent="HS_PERMISSIONS_SYNC_UPDATED"})
+    HolyStorm.Sync:RegisterDomain("permissions",{freshness="revision-chain",getMetadata=function(id) return HolyStorm.Policy:GetPermissionMetadata(id) end,listMetadata=function(since) local out={}; for id in pairs(HolyStorm.Policy:GetStates() or {}) do local metadata=HolyStorm.Policy:GetPermissionMetadata(id); if metadata and (metadata.updatedAt or 0)>since then out[#out+1]=metadata end end; return out end,export=function(id) return HolyStorm.Policy:ExportPermissionState(id) end,validate=function(payload,meta,id) return HolyStorm.Policy:ValidatePermissionPayload(payload,meta,id) end,authorize=function() return true end,import=function(id,payload,meta,senderId) return HolyStorm.Policy:ImportPermissionState(id,payload,meta,senderId) end,updateEvent="HS_PERMISSIONS_SYNC_UPDATED"})
     for _,event in ipairs({"HS_CHARACTER_UPDATED","HS_PLAYER_UPDATED","HS_ROSTER_UPDATED","HS_CHARACTER_RELATIONSHIP_UPDATED","HS_TWINKS_UPDATED","HS_FILTER_UPDATED"}) do local eventName=event; HolyStorm.Events:Register(eventName,"policy-cache",function() HolyStorm.Policy:Invalidate(eventName); if eventName=="HS_ROSTER_UPDATED" then HolyStorm.Policy:BootstrapState() end end) end
-    HolyStorm.Events:Register("HS_RULE_DEMANDS_CHANGED","policy-demands",function() HolyStorm.Tasks:Queue("Policy.CaptureOnDemand",{triggerSource="HS_RULE_DEMANDS_CHANGED",debounce=.5}) end)
-    self:BootstrapState(); self:Invalidate("INITIALIZE")
+    local bootstrapped,bootstrapError=self:BootstrapState()
+    if bootstrapped==false and bootstrapError then return false,bootstrapError end
+    self:Invalidate("INITIALIZE"); return true
 end
 
 HolyStorm.PermissionComponents = HolyStorm.PermissionComponents or {}

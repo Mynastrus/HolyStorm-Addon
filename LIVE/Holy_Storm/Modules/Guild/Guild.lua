@@ -7,7 +7,16 @@ HolyStorm:RegisterModule({
     moduleType = "feature", category = "required", description = L["DESCRIPTION"], permissions = {{id="guild-roster-read",category="Roster",defaults={member=true}}, {id="roster-manage",category="Roster",defaults={officers=true}}},
     dependencies = { "core", "ui", "options" }, ui = { page = "guildRoster", navigation = true },
     data = { stores = { "GuildStore", "CharacterStore" } }, enabledByDefault = true,
+    ruleFields = {
+        {id="guild.rank",aliases={"guildRank"},type="string",name=L["RULE_FIELD_GUILD_RANK"],nameKey="RULE_FIELD_GUILD_RANK",description=L["RULE_FIELD_GUILD_RANK_DESC"],descriptionKey="RULE_FIELD_GUILD_RANK_DESC",category=L["DISPLAY_NAME"],dependencies={"roster"},resolver=function(context)return(context.member and context.member.rank)or(context.character and context.character.guildRank)end},
+        {id="guild.rankIndex",type="number",name=L["RULE_FIELD_GUILD_RANK_INDEX"],nameKey="RULE_FIELD_GUILD_RANK_INDEX",description=L["RULE_FIELD_GUILD_RANK_INDEX_DESC"],descriptionKey="RULE_FIELD_GUILD_RANK_INDEX_DESC",category=L["DISPLAY_NAME"],dependencies={"roster"},resolver=function(context)return(context.member and context.member.rankIndex)or(context.character and context.character.guildRankIndex)end},
+        {id="player.online",aliases={"online"},type="boolean",name=L["RULE_FIELD_ONLINE"],nameKey="RULE_FIELD_ONLINE",description=L["RULE_FIELD_ONLINE_DESC"],descriptionKey="RULE_FIELD_ONLINE_DESC",category=L["DISPLAY_NAME"],dependencies={"roster"},resolver=function(context)return context.member and context.member.online end},
+        {id="player.afk",type="boolean",name=L["RULE_FIELD_AFK"],nameKey="RULE_FIELD_AFK",description=L["RULE_FIELD_AFK_DESC"],descriptionKey="RULE_FIELD_AFK_DESC",category=L["DISPLAY_NAME"],dependencies={"roster"},resolver=function(context)if not context.member then return nil,"MISSING_ROSTER"end;return context.member.status=="AFK"or context.member.status==1 end},
+        {id="player.dnd",type="boolean",name=L["RULE_FIELD_DND"],nameKey="RULE_FIELD_DND",description=L["RULE_FIELD_DND_DESC"],descriptionKey="RULE_FIELD_DND_DESC",category=L["DISPLAY_NAME"],dependencies={"roster"},resolver=function(context)if not context.member then return nil,"MISSING_ROSTER"end;return context.member.status=="DND"or context.member.status==2 end},
+    },
 }, function(GuildRoster)
+
+HolyStorm.FilterManager:RegisterTemplate("GuildRoster",{id="template-online",name=L["FILTER_TEMPLATE_ONLINE"],description=L["FILTER_TEMPLATE_ONLINE_DESC"],rules={field="player.online",operator="true"}})
 
 local function setColumnText(fontString, text, color)
     fontString:SetText(text or L["UNKNOWN_VALUE"])
@@ -165,7 +174,7 @@ function GuildRoster:ShowGuildMemberMenu(row, member)
     menu.lastSeen:SetText(L["MEMBER_LAST_SEEN"] .. " " .. (member.online and L["ONLINE"] or self:FormatOfflineDuration(member.status)))
     local note = member.note and member.note ~= "" and member.note or L["NO_NOTE"]
     local officerNote = member.officerNote and member.officerNote ~= "" and member.officerNote or L["NO_NOTE"]
-    local policyCanManage=HolyStorm.Policy:Can("roster-manage")
+    local policyCanManage=(HolyStorm.PermissionEngine or HolyStorm.Policy):Can("roster-manage")
     menu.canEditNote = policyCanManage and (((_G.CanEditPublicNote and _G.CanEditPublicNote()) or (_G.CanEditOfficerNote and _G.CanEditOfficerNote()))==true)
     menu.canEditOfficerNote = policyCanManage and ((_G.CanEditOfficerNote and _G.CanEditOfficerNote())==true)
     menu.member = member
@@ -200,7 +209,7 @@ end
 
 function GuildRoster:OnInitialize()
     HolyStorm.Actions:Register("guild.save-notes", "GuildRoster", function(index, publicNote, officerNote, canEditPublic, canEditOfficer)
-        if not HolyStorm.Policy:Can("roster-manage") then return false end
+        if not (HolyStorm.PermissionEngine or HolyStorm.Policy):Can("roster-manage") then return false end
         if canEditPublic and _G.GuildRosterSetPublicNote then _G.GuildRosterSetPublicNote(index, publicNote) end
         if canEditOfficer and _G.GuildRosterSetOfficerNote then _G.GuildRosterSetOfficerNote(index, officerNote) end
         GuildRoster:RequestAndRefresh()

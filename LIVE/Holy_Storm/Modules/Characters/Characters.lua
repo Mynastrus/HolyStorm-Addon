@@ -7,7 +7,15 @@ HolyStorm:RegisterModule({
  permissions={"player-read","savedvariables-write",{id="twinks-assign",category="Characters"},{id="twinks-remove",category="Characters"}},dependencies={"core","ui"},
  ui={page="twinks",navigation=true},data={stores={"PlayerDataStore","CharacterStore","GuildStore"}},
  sync={domains={"twinks","twinkAdmin"}},enabledByDefault=true,
+ ruleFields={
+  {id="character.level",aliases={"level"},type="number",name=L["RULE_FIELD_LEVEL"],nameKey="RULE_FIELD_LEVEL",description=L["RULE_FIELD_LEVEL_DESC"],descriptionKey="RULE_FIELD_LEVEL_DESC",category=L["DISPLAY_NAME"],dependencies={"identity"},resolver=function(context)return context.character and context.character.level end},
+  {id="character.class",aliases={"class"},type="string",name=L["RULE_FIELD_CLASS"],nameKey="RULE_FIELD_CLASS",description=L["RULE_FIELD_CLASS_DESC"],descriptionKey="RULE_FIELD_CLASS_DESC",category=L["DISPLAY_NAME"],dependencies={"identity"},resolver=function(context)return context.character and context.character.classFile end},
+  {id="character.maxLevel",aliases={"maxLevel"},type="boolean",name=L["RULE_FIELD_MAX_LEVEL"],nameKey="RULE_FIELD_MAX_LEVEL",description=L["RULE_FIELD_MAX_LEVEL_DESC"],descriptionKey="RULE_FIELD_MAX_LEVEL_DESC",category=L["DISPLAY_NAME"],dependencies={"identity"},resolver=function(context)if not(context.character and context.character.level)then return nil,"MISSING_LEVEL"end;local maximum=GetMaxLevelForPlayerExpansion and GetMaxLevelForPlayerExpansion()or GetMaxPlayerLevel and GetMaxPlayerLevel();if not maximum then return nil,"MAX_LEVEL_UNAVAILABLE"end;return context.character.level==maximum end},
+ },
 },function(Twinks)
+
+HolyStorm.FilterManager:RegisterTemplate("Twinks",{id="template-max-level",name=L["FILTER_TEMPLATE_MAX_LEVEL"],description=L["FILTER_TEMPLATE_MAX_LEVEL_DESC"],rules={field="character.maxLevel",operator="true"}})
+HolyStorm.FilterManager:RegisterTemplate("Twinks",{id="template-main",name=L["FILTER_TEMPLATE_MAIN"],description=L["FILTER_TEMPLATE_MAIN_DESC"],rules={field="character.mainTwinkStatus",operator="=",value="MAIN"}})
 
 function Twinks:StoreCurrentCharacter()
  local character=HolyStorm.Data.CharacterStore:CaptureCurrent();if character then HolyStorm.TwinkCore:ConfirmLocalCharacter(character.guid)end;return character

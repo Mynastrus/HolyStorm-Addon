@@ -60,4 +60,14 @@ Alle eingehenden Daten werden als untrusted behandelt. IDs, Payloadstruktur, Gui
 
 ## Compatibility und Restschuld
 
-Bestehende öffentliche APIs von Comms, SyncManager, PlayerDataStore und den Stores bleiben erhalten. Einige Feature-Domains autorisieren noch über `HolyStorm.Policy`; diese Fassade delegiert auf die neue Permission-Architektur. Die spätere direkte Nutzung von PermissionEngine durch alle Domains ist ein separater Umbau.
+Bestehende öffentliche APIs von Comms, SyncManager, PlayerDataStore und den Stores bleiben erhalten.
+
+Die Autorisierungsprüfung ergibt folgende Abgrenzung:
+
+- `character` transportiert normale ownergebundene Character-Blöcke. Es gibt bewusst kein separates Share-Recht; Payload, Objekt-ID und Owner müssen übereinstimmen, und `PlayerDataStore` erzwingt Provenance sowie Versionsregeln.
+- `twinks` transportiert ownerbestätigte Identität und benötigt Owner-/Senderbindung, aber kein allgemeines Share-Recht. `twinkAdmin` verändert dagegen administrative Zuordnungen und bleibt permission-gesteuert.
+- `content`, `poi` und `achievements` enthalten gildenweit veränderbare beziehungsweise veröffentlichte Objekte. Create/Edit/Delete/Publish/Award/Revoke bleiben legitime PermissionEngine-Prüfungen.
+- `guild-position` ist ausdrücklich sensible, freiwillig aktivierte Live-Standortinformation. `position-share`/`position-view`, direkte Sender-/Owner-Bindung, Gildenkontext und Ablauf bleiben erforderlich.
+- `permissions` synchronisiert den administrativen Revision-State und verwendet statt normaler Feature-Rechte Revision Chain, Payloadvalidierung und Blizzard-Gildenleiter-Trust-Anchor.
+
+Produktive Feature-Autorisierung verwendet `PermissionEngine`; der Fallback auf `HolyStorm.Policy` bleibt ausschließlich als Compatibility-Pfad für ältere beziehungsweise isolierte Verbraucher. Normale Character-Daten erhielten kein neues Share-Recht.

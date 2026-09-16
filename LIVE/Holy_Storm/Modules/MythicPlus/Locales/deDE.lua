@@ -5,6 +5,9 @@ if not L then
     return
 end
 
+L["RULE_FIELD_RATING"] = "Mythisch+-Wertung"
+L["RULE_FIELD_RATING_DESC"] = "Die im Mythisch+-Snapshot gespeicherte Gesamtwertung."
+
 L["DISPLAY_NAME"] = "Mythisch+"
 L["DESCRIPTION"] = "Erfasst Schlüsselsteine, Affixe und wöchentliche Mythisch+-Läufe aus Blizzard-Daten."
 L["CURRENT_KEY"] = "Aktueller Schlüsselstein"

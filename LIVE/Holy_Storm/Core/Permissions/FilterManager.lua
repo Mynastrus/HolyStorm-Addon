@@ -2,7 +2,17 @@ local addonVersion = "5.0.0"
 local HolyStorm = LibStub("AceAddon-3.0"):GetAddon("Holy_Storm")
 local L = LibStub("AceLocale-3.0"):GetLocale("Holy_Storm")
 local Core = HolyStorm.PermissionCore
-local Filters = { version=addonVersion }
+local templateDefinitions,templateOwners={},{}
+local Filters = { version=addonVersion, templateDefinitions=templateDefinitions, templateOwners=templateOwners }
+
+function Filters:RegisterTemplate(owner,template)
+    if type(owner)~="string" or type(template)~="table" or not Core.ValidId(template.id) or type(template.name)~="string" then return false,"INVALID_TEMPLATE" end
+    local root=template.root or template.rules;local valid,reason=HolyStorm.Rules:ValidatePortable(root);if not valid then return false,reason end
+    local current=templateDefinitions[template.id];if current and current.owner~=owner then return false,"TEMPLATE_ALREADY_REGISTERED" end
+    local value=Core.Copy(template);value.owner=owner;value.scope="template";templateDefinitions[value.id]=value;templateOwners[owner]=templateOwners[owner]or{};templateOwners[owner][value.id]=true
+    return true
+end
+function Filters:UnregisterTemplateOwner(owner)local removed=0;for id in pairs(templateOwners[owner]or{})do templateDefinitions[id]=nil;removed=removed+1 end;templateOwners[owner]=nil;return removed end
 
 function Filters:GetFilters(scope) return Core.Copy(self:GetStore("filters",scope) or {}) end
 function Filters:GetRules(scope) return Core.Copy(self:GetStore("rules",scope) or {}) end
@@ -74,14 +84,14 @@ function Filters:ApplyFilter(filterOrId,value,scope)
     return HolyStorm.Rules:Evaluate(filter.root or filter.rules,context)
 end
 function Filters:ApplyFilters(active,value,combine)
-    local mode=string.upper(combine or "AND"); local result=mode~="OR"; local trace={}; local sawUnknown=false
+    local mode=string.upper(combine or "AND"); local status=mode=="OR" and HolyStorm.Rules.Result.FAIL or HolyStorm.Rules.Result.PASS; local trace={}
     for _,entry in ipairs(active or {}) do
         local id,scope=type(entry)=="table" and entry.id or entry,type(entry)=="table" and entry.scope or nil
-        local ok,detail,status=self:ApplyFilter(id,value,scope); trace[#trace+1]={id=id,result=ok,status=status,trace=detail}
-        if status==HolyStorm.Rules.Result.UNKNOWN then sawUnknown=true end
-        if mode=="OR" then result=result or ok elseif not ok then result=false end
+        local ok,detail,childStatus=self:ApplyFilter(id,value,scope); trace[#trace+1]={id=id,result=ok,status=childStatus,trace=detail}
+        if mode=="OR" then if childStatus==HolyStorm.Rules.Result.PASS then status=HolyStorm.Rules.Result.PASS elseif childStatus==HolyStorm.Rules.Result.UNKNOWN and status~=HolyStorm.Rules.Result.PASS then status=HolyStorm.Rules.Result.UNKNOWN end
+        elseif childStatus==HolyStorm.Rules.Result.FAIL then status=HolyStorm.Rules.Result.FAIL elseif childStatus==HolyStorm.Rules.Result.UNKNOWN and status~=HolyStorm.Rules.Result.FAIL then status=HolyStorm.Rules.Result.UNKNOWN end
     end
-    return result,trace,sawUnknown and HolyStorm.Rules.Result.UNKNOWN or (result and HolyStorm.Rules.Result.PASS or HolyStorm.Rules.Result.FAIL)
+    return status==HolyStorm.Rules.Result.PASS,trace,status
 end
 function Filters:GetUsage(kind,id)
     local usage={}; for groupId,group in pairs(self:GetStore("groups") or {}) do for _,candidate in ipairs(group.filterIds or {}) do if kind=="filters" and candidate==id then usage[#usage+1]={kind="group",id=groupId} end end; for _,candidate in ipairs(group.ruleIds or {}) do if kind=="rules" and candidate==id then usage[#usage+1]={kind="group",id=groupId} end end end; return usage
@@ -93,8 +103,7 @@ function Filters:GetObjectSummary(kind,id,scope)
 end
 function Filters:RestoreTemplates()
     local templates=HolyStorm.db.global.filters.templates
-    local definitions={{id="template-max-level",name=L["FILTER_TEMPLATE_MAX_LEVEL"],description=L["FILTER_TEMPLATE_MAX_LEVEL_DESC"],scope="template",rules={field="character.maxLevel",operator="true"}},{id="template-main",name=L["FILTER_TEMPLATE_MAIN"],description=L["FILTER_TEMPLATE_MAIN_DESC"],scope="template",rules={field="character.mainTwinkStatus",operator="=",value="MAIN"}},{id="template-online",name=L["FILTER_TEMPLATE_ONLINE"],description=L["FILTER_TEMPLATE_ONLINE_DESC"],scope="template",rules={field="player.online",operator="true"}}}
-    for _,template in ipairs(definitions) do if not templates[template.id] then templates[template.id]=template end end
+    for _,template in pairs(templateDefinitions) do if not templates[template.id] then templates[template.id]=Core.Copy(template) end end
 end
 
 HolyStorm.PermissionComponents = HolyStorm.PermissionComponents or {}
