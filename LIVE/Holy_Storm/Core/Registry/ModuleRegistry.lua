@@ -1,10 +1,12 @@
-local addonVersion = "2.1.0"
+local addonVersion = "2.2.0"
 local HolyStorm = LibStub("AceAddon-3.0"):GetAddon("Holy_Storm")
 local L = LibStub("AceLocale-3.0"):GetLocale("Holy_Storm")
 
 HolyStorm.moduleRegistryVersion = addonVersion
 HolyStorm.optionalModuleFactories = {}
 HolyStorm.moduleCapabilities = {}
+HolyStorm.pendingModulePermissions = HolyStorm.pendingModulePermissions or {}
+HolyStorm.pendingAdministrationSections = HolyStorm.pendingAdministrationSections or {}
 
 local function copyMetadata(metadata)
     local copy = {}
@@ -44,7 +46,8 @@ end
 
 function HolyStorm:RegisterModulePermissions(metadata)
     local registry = HolyStorm.PermissionRegistry
-    if not registry then return end
+    if not registry then self.pendingModulePermissions[metadata.id]=metadata; return 0 end
+    local registered=0
     for _, entry in ipairs(metadata.permissions or {}) do
         local definition
         if type(entry) == "table" then
@@ -56,9 +59,18 @@ function HolyStorm:RegisterModulePermissions(metadata)
             definition.module = definition.module or metadata.id
             definition.owner = definition.owner or definition.module
             definition.category = definition.category or metadata.name or "Feature"
-            registry:RegisterPermission(definition)
+            if registry:RegisterPermission(definition) then registered=registered+1 end
         end
     end
+    self.pendingModulePermissions[metadata.id]=nil
+    return registered
+end
+
+function HolyStorm:FlushModulePermissions()
+    if not self.PermissionRegistry then return 0 end
+    local ids={}; for id in pairs(self.pendingModulePermissions) do ids[#ids+1]=id end; table.sort(ids)
+    local registered=0; for _,id in ipairs(ids) do registered=registered+self:RegisterModulePermissions(self.pendingModulePermissions[id]) end
+    return registered
 end
 
 function HolyStorm:RegisterModuleRuleFields(metadata)
@@ -80,11 +92,49 @@ function HolyStorm:RegisterModuleRuleFields(metadata)
     return registered
 end
 
+function HolyStorm:RegisterModuleAdministration(metadata)
+    if type(metadata)~="table" or type(metadata.administration)~="table" then return 0 end
+    local definitions=metadata.administration.id and {metadata.administration} or metadata.administration
+    local registered=0
+    for _,entry in ipairs(definitions) do
+        if type(entry)=="table" then
+            local definition=copyMetadata(entry)
+            definition.owner=definition.owner or metadata.id
+            definition.moduleId=definition.moduleId or metadata.id
+            definition.requires=type(definition.requires)=="table" and HolyStorm.Utils.DeepCopy(definition.requires) or {}
+            definition.requires.module=definition.requires.module or metadata.id
+            local key=tostring(definition.owner)..":"..tostring(definition.id)
+            if self.Administration then
+                local ok,reason=self.Administration:RegisterSection(definition)
+                if ok or reason=="ADMINISTRATION_SECTION_EXISTS" then registered=registered+1 end
+                self.pendingAdministrationSections[key]=nil
+            else
+                self.pendingAdministrationSections[key]=definition
+            end
+        end
+    end
+    return registered
+end
+
+function HolyStorm:FlushAdministrationSections()
+    if not self.Administration then return 0 end
+    local keys={}; for key in pairs(self.pendingAdministrationSections) do keys[#keys+1]=key end; table.sort(keys)
+    local registered=0
+    for _,key in ipairs(keys) do
+        local definition=self.pendingAdministrationSections[key]
+        local ok,reason=self.Administration:RegisterSection(definition)
+        if ok or reason=="ADMINISTRATION_SECTION_EXISTS" then self.pendingAdministrationSections[key]=nil; registered=registered+1 end
+    end
+    return registered
+end
+
 function HolyStorm:ApplyModuleMetadata(module, metadata)
     local normalized = self:NormalizeModuleMetadata(metadata, module and module:GetName(), "required")
     module.metadata = normalized
     module.version = normalized.version
+    self:RegisterModulePermissions(normalized)
     self:RegisterModuleRuleFields(normalized)
+    self:RegisterModuleAdministration(normalized)
     return normalized
 end
 
@@ -101,7 +151,6 @@ function HolyStorm:RegisterModule(metadata, factory)
         self.optionalModuleFactories[normalized.id] = { factory = factory, metadata = normalized }
         return normalized
     end
-    self:RegisterModulePermissions(normalized)
     local module = self:NewModule(normalized.id, "AceEvent-3.0")
     self.Modules[normalized.id] = module
     self:ApplyModuleMetadata(module, normalized)
@@ -114,6 +163,43 @@ function HolyStorm:RegisterCapability(moduleName, capability, handler)
     assert(type(handler) == "function", "Invalid capability handler")
     self.moduleCapabilities[capability] = self.moduleCapabilities[capability] or {}
     self.moduleCapabilities[capability][moduleName] = handler
+    if self.Events then self.Events:Emit("HS_CAPABILITY_REGISTERED",capability,moduleName) end
+    return true
+end
+
+function HolyStorm:UnregisterCapability(moduleName, capability)
+    local handlers=self.moduleCapabilities[capability]
+    if not handlers or not handlers[moduleName] then return false end
+    handlers[moduleName]=nil; if not next(handlers) then self.moduleCapabilities[capability]=nil end
+    if self.Events then self.Events:Emit("HS_CAPABILITY_UNREGISTERED",capability,moduleName) end
+    return true
+end
+
+function HolyStorm:GetLoadedModuleById(id)
+    if type(id)~="string" then return nil end
+    local direct=self:GetModule(id,true); if direct then return direct end
+    for name,module in self:IterateModules() do
+        local metadata=module.metadata or {}
+        if name==id or metadata.id==id or metadata.internalName==id or metadata.name==id then return module end
+    end
+end
+
+function HolyStorm:IsModuleAvailable(id, requireEnabled)
+    local module=self:GetLoadedModuleById(id)
+    if not module then return false end
+    return requireEnabled==false or not module.IsEnabled or module:IsEnabled()
+end
+
+function HolyStorm:IsCapabilityAvailable(capability, moduleId)
+    local handlers=self.moduleCapabilities[capability]
+    if type(handlers)~="table" then return false end
+    for owner in pairs(handlers) do
+        local module=self:GetLoadedModuleById(owner)
+        local metadata=module and module.metadata or {}
+        local ownerMatches=not moduleId or owner==moduleId or metadata.id==moduleId or metadata.internalName==moduleId or metadata.name==moduleId
+        if ownerMatches and module and (not module.IsEnabled or module:IsEnabled()) then return true end
+    end
+    return false
 end
 
 function HolyStorm:CallCapability(capability, ...)
@@ -144,7 +230,9 @@ function HolyStorm:IsOptionalModuleEnabled(moduleName)
 end
 
 function HolyStorm:SetOptionalModuleEnabled(moduleName, enabled)
-    return self.Database:Set("optionalModules." .. moduleName, enabled == true, "profile")
+    local result=self.Database:Set("optionalModules." .. moduleName, enabled == true, "profile")
+    if self.Events then self.Events:Emit("HS_MODULE_AVAILABILITY_CHANGED",moduleName,enabled==true,"profile") end
+    return result
 end
 
 function HolyStorm:CreateOptionalModule(moduleName)
@@ -161,7 +249,6 @@ function HolyStorm:CreateOptionalModule(moduleName)
     end
 
     module = self:NewModule(moduleName)
-    self:RegisterModulePermissions(registration.metadata)
     self:ApplyModuleMetadata(module, registration.metadata)
     local ok, err = HolyStorm.Utils.SafeCall("module:" .. moduleName, registration.factory, module)
     if not ok then HolyStorm.Logger:ERROR("ModuleRegistry", "Module %s failed to load: %s", moduleName, tostring(err)); return nil end
@@ -186,6 +273,7 @@ function HolyStorm:ProtectModule(module)
                 local ok,err=true
                 if original then ok,err=HolyStorm.Utils.SafeCall((self.metadata and self.metadata.internalName or self:GetName())..":"..methodName,original,self,...) end
                 if methodName=="OnDisable" and HolyStorm.Rules and self.metadata then HolyStorm.Rules:UnregisterOwner(self.metadata.id) end
+                if (methodName=="OnEnable" or methodName=="OnDisable") and HolyStorm.Events then HolyStorm.Events:Emit("HS_MODULE_AVAILABILITY_CHANGED",self.metadata and self.metadata.id or self:GetName(),methodName=="OnEnable","lifecycle") end
                 if not ok then HolyStorm.Logger:ERROR("ModuleRegistry","%s failed in %s: %s",self:GetName(),methodName,tostring(err)); if methodName~="OnDisable" then self:SetEnabledState(false) end end
             end
         end

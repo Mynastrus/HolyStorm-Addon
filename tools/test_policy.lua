@@ -1,4 +1,4 @@
--- Offline contracts for the guild-scoped permission revision engine (A-O).
+-- Offline contracts for the guild-scoped permission revision engine (A-V).
 local root=(arg[0]:gsub("tools[/\\]test_policy.lua$","")).."LIVE/Holy_Storm/"
 local clock,currentGuid=100000,"Maristi"
 unpack=unpack or table.unpack
@@ -103,6 +103,8 @@ assert(HolyStorm.PermissionManager==HolyStorm.Permissions and HolyStorm:HasPermi
 -- Generic condition contracts are retained and IDs are hyphenated.
 assert(R:Evaluate({field="character.level",operator=">=",value=80},P:BuildContext("acct-maristi","Maristi")));for id in pairs(HolyStorm.Permissions:GetPermissionDefinitions())do assert(id:match("^[a-z][a-z0-9%-]*$"),id)end
 local nested={logic="AND",children={{field="character.level",operator=">=",value=80},{logic="NOT",children={{field="character.class",operator="=",value="MAGE"}}}}};assert(R:Evaluate(nested,P:BuildContext("acct-maristi","Maristi")));assert(not R:Validate({field="character.level",operator="contains",value="8"}))
+-- V: defaults initialize a newly known permission once and never overwrite a manual removal.
+assert(HolyStorm.PermissionRegistry:RegisterPermission({id="default-once",module="Test",category="Test",defaults={member=true}}));local defaultsMember=P:GetGroup(ids.MEMBER);assert(defaultsMember.permissions["default-once"]==true,"new permission default was not initialized");defaultsMember.permissions["default-once"]=nil;assert(P:SaveGroup(defaultsMember));assert(HolyStorm.PermissionRegistry:RegisterPermission({id="default-once",module="Test",category="Test",defaults={member=true}}));P:UpgradeState(state);assert(P:GetGroup(ids.MEMBER).permissions["default-once"]==nil,"module re-registration or upgrade overwrote an administrator change")
 local otherGuild=P:CreateState("realm:other");assert(next(otherGuild.filters)==nil and next(otherGuild.rules)==nil and HolyStorm.Utils.TableCount(otherGuild.groups)==3,"guild state leaked across guilds")
 assert(P:Recalculate(),"effective membership recalculation failed")
-print("Permission engine scenarios A-U passed")
+print("Permission engine scenarios A-V passed")

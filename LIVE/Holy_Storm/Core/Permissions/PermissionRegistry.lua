@@ -1,4 +1,4 @@
-local addonVersion = "5.1.0"
+local addonVersion = "5.2.0"
 local HolyStorm = LibStub("AceAddon-3.0"):GetAddon("Holy_Storm")
 
 local Core = HolyStorm.PermissionCore or {}
@@ -87,3 +87,4 @@ for id, category in pairs(definitions) do Registry:RegisterPermission({ id=id, m
 HolyStorm.PermissionRegistry = Registry
 HolyStorm.PermissionComponents = HolyStorm.PermissionComponents or {}
 HolyStorm.PermissionComponents.Registry = Registry
+if HolyStorm.FlushModulePermissions then HolyStorm:FlushModulePermissions() end

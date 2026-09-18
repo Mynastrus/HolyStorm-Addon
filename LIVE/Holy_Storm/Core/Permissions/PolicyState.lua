@@ -1,4 +1,4 @@
-local addonVersion = "5.1.0"
+local addonVersion = "5.2.0"
 local HolyStorm = LibStub("AceAddon-3.0"):GetAddon("Holy_Storm")
 local Core = HolyStorm.PermissionCore
 local State = {
@@ -76,9 +76,12 @@ function State:ApplyPermissionDefault(definition, targetState)
     if not self:IsPersistenceReady() then return false,"PERSISTENCE_NOT_READY" end
     local state=targetState or self:GetState()
     if state and HolyStorm.GroupManager and HolyStorm.GroupManager.ApplyRegisteredDefaults then
-        HolyStorm.GroupManager:ApplyRegisteredDefaults(state,definition)
-        if HolyStorm.PermissionEngine then HolyStorm.PermissionEngine:Invalidate("PERMISSION_REGISTERED") end
-        return true
+        state.permissionDefaults=type(state.permissionDefaults)=="table" and state.permissionDefaults or {}
+        if state.permissionDefaults[definition.id] then return true,"ALREADY_INITIALIZED" end
+        local changed=HolyStorm.GroupManager:ApplyRegisteredDefaults(state,definition)
+        state.permissionDefaults[definition.id]=true
+        if changed and HolyStorm.PermissionEngine then HolyStorm.PermissionEngine:Invalidate("PERMISSION_REGISTERED") end
+        return true,changed and "INITIALIZED" or "NO_DEFAULTS"
     end
     return false,"STATE_UNAVAILABLE"
 end
@@ -90,7 +93,8 @@ function State:CreateState(guildId)
     if not states or not global then return nil,reason or "PERSISTENCE_NOT_READY" end
     local firstGuild=next(states)==nil
     local legacy=firstGuild and global.permissions and (global.permissions.groups or global.permissions.roles)
-    local state={guildId=guildId,groups=self:MigrateLegacyGroups(legacy),filters=firstGuild and Core.Copy(global.filters.global or {}) or {},rules=firstGuild and Core.Copy(global.rules.global or {}) or {},modules={},version=0,revisionID=nil,previousRevisionID=nil,history={},status=self.status.UNINITIALIZED,lastSync=0,missingRevisions={}}
+    local knownPermissions={}; for id in pairs(HolyStorm.PermissionRegistry.keys) do knownPermissions[id]=true end
+    local state={guildId=guildId,groups=self:MigrateLegacyGroups(legacy),filters=firstGuild and Core.Copy(global.filters.global or {}) or {},rules=firstGuild and Core.Copy(global.rules.global or {}) or {},modules={},permissionDefaults=knownPermissions,version=0,revisionID=nil,previousRevisionID=nil,history={},status=self.status.UNINITIALIZED,lastSync=0,missingRevisions={}}
     self:EnsureSystemGroups(state); states[guildId]=state; return state
 end
 function State:UpgradeState(state)
@@ -98,8 +102,14 @@ function State:UpgradeState(state)
     state.groups=type(state.groups)=="table" and state.groups or {}; state.filters=type(state.filters)=="table" and state.filters or {}; state.rules=type(state.rules)=="table" and state.rules or {}; state.modules=type(state.modules)=="table" and state.modules or {}; state.history=type(state.history)=="table" and state.history or {}
     for id,group in pairs(state.groups) do local normalized=self:NormalizeGroup(group,group); if normalized then state.groups[id]=normalized else state.groups[id]=nil end end
     self:EnsureSystemGroups(state)
-    for _, definition in pairs(HolyStorm.PermissionRegistry.keys) do self:ApplyPermissionDefault(definition, state) end
-    state.schemaVersion=5; return state
+    if type(state.permissionDefaults)~="table" then
+        -- Existing states predate the initialization ledger. Treat their current
+        -- assignments as authoritative so a login cannot restore an admin-revoked default.
+        state.permissionDefaults={}; for id in pairs(HolyStorm.PermissionRegistry.keys) do state.permissionDefaults[id]=true end
+    else
+        for _, definition in pairs(HolyStorm.PermissionRegistry.keys) do self:ApplyPermissionDefault(definition, state) end
+    end
+    state.schemaVersion=6; return state
 end
 function State:ValidateSnapshot(snapshot)
     if type(snapshot)~="table" or type(snapshot.groups)~="table" or type(snapshot.filters)~="table" or type(snapshot.rules)~="table" or type(snapshot.modules)~="table" then return false,"INVALID_SNAPSHOT" end

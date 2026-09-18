@@ -41,7 +41,7 @@ Capabilities sind benannte, von Modulen registrierte Handler. Der Bootstrap verw
 
 `UIManager` verwaltet Seiten, Refresh-Ereignisse und Navigation. `MainWindow` ist der zentrale Host. CharacterUI/CharacterOverview bilden die Character-Oberfläche; Feature-Tabs lesen über zentrale Stores.
 
-`HolyStorm.Administration` ist der Erweiterungspunkt für Admin-Seiten. Eine Section beschreibt ID, Namen/Locale-Key, Beschreibung/Locale-Key, Reihenfolge, erforderliche Permission, optionales Modul/Owner, Seite oder Build-Callback, Render-Callback, Ereignisse und optionale Verfügbarkeit. Nicht verfügbare, deaktivierte oder nicht autorisierte Sections werden nicht in Seite und Navigation aktiviert. Die Administration enthält Gruppen, Berechtigungen, Regeln, Filter, Module und Status/Diagnose; ihre Fachoperationen verwenden direkt die Permission-Komponenten.
+`HolyStorm.Administration` ist der generische Erweiterungspunkt für Admin-Seiten. Ein einzelner Host im bestehenden Hauptfenster stellt eine kategorisierte Tree-Navigation, Lifecycle, gezielten Refresh sowie Permission-, Modul- und Capability-Gating bereit. Nicht verfügbare, deaktivierte oder nicht autorisierte Sections fehlen vollständig in der Navigation. Gruppen/Berechtigungen, Regeln, Filter und Policy-Diagnose sind als vorhandene Sections eingebunden; ihre Fachoperationen verwenden direkt die Permission-Komponenten. Der vollständige Vertrag steht in `ADMINISTRATION_ARCHITECTURE.md`.
 
 ## Permissions, Gruppen, Rules und Filter
 

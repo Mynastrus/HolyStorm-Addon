@@ -31,7 +31,7 @@ Diese Referenz trennt klar zwischen **A: implementiert**, **B: vorbereitet** und
 
 ### UI und Administration
 
-Module können Seiten über `HolyStorm.UI:RegisterPage` und Navigation über `AddNavigation` registrieren. CharacterOverview stellt eine eigene Tab-Registry bereit. Administrative Erweiterungen verwenden `HolyStorm:RegisterAdministrationSection` beziehungsweise `HolyStorm.Administration:RegisterSection` mit ID, Anzeigeinformationen, Reihenfolge, Permission, Modul/Owner, Page oder Build, Render und Verfügbarkeit.
+Module können Seiten über `HolyStorm.UI:RegisterPage` und Navigation über `AddNavigation` registrieren. CharacterOverview stellt eine eigene Tab-Registry bereit. Administrative Erweiterungen deklarieren `metadata.administration` oder verwenden `HolyStorm:RegisterAdministrationSection`. Die ModuleRegistry übergibt deklarierte Sections an den zentralen Host; dieser prüft Permission, geladenes/aktiviertes Modul, Capability und optionale Verfügbarkeit. Der vollständige Vertrag steht in `ADMINISTRATION_ARCHITECTURE.md`.
 
 ### Daten, Snapshots und Sync
 
@@ -55,7 +55,7 @@ Module deklarieren Rule-Felder bevorzugt in `metadata.ruleFields` oder registrie
 
 ## B – vorbereitet, aber nicht flächendeckend genutzt
 
-- Die Metadatenfelder `ui`, `options`, `administration`, `data` und `sync` existieren, treiben aber noch nicht automatisch alle Registrierungen und Lifecycle-Schritte.
+- Die Metadatenfelder `ui`, `options`, `data` und `sync` existieren, treiben aber noch nicht automatisch alle Registrierungen und Lifecycle-Schritte. `administration` wird bereits automatisch vom zentralen Host registriert.
 - Die Administration-Registry akzeptiert externe Modul-Sections und blendet fehlende oder gildenweit deaktivierte Module sicher aus.
 - Feature-Module deklarieren ihre Permissions als Metadaten. Die ModuleRegistry registriert sie über die zentrale PermissionRegistry und übernimmt dabei Owner, Kategorie und Systemgruppen-Defaults.
 - RuleEngine besitzt ausschließlich die generische Feld-/Provider-Registry; alle fachlichen Felder einschließlich Character, Guild, Profile, Quest-/Achievement-Demand, Equipment, MythicPlus, Raids, Delves, Calendar, Content und POI werden durch ihre Owner registriert.

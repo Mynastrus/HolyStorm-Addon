@@ -11,6 +11,13 @@ oder anderen Dateien außerhalb von `LIVE` gehören nicht in dieses Changelog.
 
 ## Noch nicht veröffentlicht
 
+### 18. September 2026
+
+- Die vorhandene Administration ist nun ein generischer Host mit genau einem Hauptfenster-Einstieg, dynamischer kategorisierter Tree-Navigation, deterministischer Sortierung, Lifecycle-Callbacks sowie Permission-, Modul-, Capability- und Availability-Gating. Rechte/Gruppen, Rules, Filter und Policy-Diagnose verwenden den Host; nicht verfügbare Bereiche verschwinden vollständig und eine ungültige aktive Seite fällt kontrolliert zurück.
+- `metadata.administration` und früh geladene Modul-Permissions werden durch die ModuleRegistry gepuffert und nach Verfügbarkeit ihrer zentralen Registry registriert. Der Core kennt weiterhin keine feste Liste optionaler Admin-Module.
+- Modul-Permission-Defaults werden pro Gilden-State nur einmal initialisiert. Erneute Registrierung, Reload, Login und Upgrade stellen eine manuell entfernte Zuweisung nicht wieder her. Die Character Overview deklariert keine eigene Grundzugriffs-Permission mehr.
+- Neue Vertragstests decken Section-Registrierung und -Entfernung, Duplikate, Sortierung, Permission-/Modul-/Capability-Gating, Deaktivierung, aktiven Fallback, Navigations-Deduplizierung, deutsche/englische Lokalisierung, deklarative Modulregistrierung, einmalige Permission-Defaults und den freien Character-Overview-Grundzugriff ab.
+
 ### 16. September 2026
 
 - Die RuleEngine ist nun ein reiner Core-Vertrag ohne Character-, Guild-, Equipment-, Mythic+-, Raid-, Delve-, Quest-, Achievement-, POI-, Content- oder Calendar-Feldwissen. Fachmodule registrieren lokalisierte, typisierte Felder ownergebunden über `metadata.ruleFields` oder die öffentliche Registry; Lifecycle-Cleanup, Availability, erlaubte Operatoren, Value-Provider, Aliase und Resolverfehler werden zentral behandelt.

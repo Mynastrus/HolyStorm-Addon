@@ -1,4 +1,4 @@
-local addonVersion = "2.3.0"
+local addonVersion = "2.3.1"
 local HolyStorm = LibStub("AceAddon-3.0"):GetAddon("Holy_Storm")
 local L = LibStub("AceLocale-3.0"):GetLocale("Holy_Storm_UI")
 
@@ -246,6 +246,7 @@ function UI:SetReadyStatus()
 end
 
 function UI:AddRightDockIcon(id, order, iconPath, tooltipTitle, tooltipDescription, onClick)
+    if self.rightDockEntries and self.rightDockEntries[id] then self:RemoveRightDockIcon(id) end
     local slot = CreateFrame("Frame", nil, self.rightDockContent, "BackdropTemplate")
     slot:SetSize(42, 38)
     slot:SetFrameLevel(self.rightDockContent:GetFrameLevel() + 2)
@@ -261,6 +262,7 @@ function UI:AddRightDockIcon(id, order, iconPath, tooltipTitle, tooltipDescripti
     button:SetScript("OnLeave", function() GameTooltip:Hide() end)
     self.rightDockEntries[id] = { id=id, order=tonumber(order)or 100, slot=slot, glow=glow }
     self:LayoutRightDock()
+    return true
 end
 
 function UI:RemoveRightDockIcon(id)

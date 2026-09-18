@@ -1,8 +1,8 @@
-local addonVersion="1.4.1"
+local addonVersion="1.4.2"
 local HolyStorm=LibStub("AceAddon-3.0"):GetAddon("Holy_Storm")
 local L=LibStub("AceLocale-3.0"):GetLocale("Holy_Storm_CharacterUI")
 local Page=HolyStorm:RegisterRequiredModule("CharacterOverview")
-HolyStorm:ApplyModuleMetadata(Page,{displayName=L["WINDOW_TITLE"],internalName="characterOverview",version=addonVersion,category="required",description=L["WINDOW_TITLE"],permissions={"player-read"},dependencies={"core","ui"},enabledByDefault=true})
+HolyStorm:ApplyModuleMetadata(Page,{displayName=L["WINDOW_TITLE"],internalName="characterOverview",version=addonVersion,category="required",description=L["WINDOW_TITLE"],permissions={},dependencies={"core","ui"},enabledByDefault=true})
 local C=HolyStorm.CharacterUI
 
 local blocksByTab={summary={"identity","equipment","mythicPlus","raid","delves","stats"},equipment={"equipment"},mythicPlus={"mythicPlus"},raid={"raid"},delves={"delves"},stats={"stats"},twinks={"identity"},achievements={}}

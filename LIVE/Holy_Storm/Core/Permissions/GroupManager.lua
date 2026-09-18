@@ -1,4 +1,4 @@
-local addonVersion = "5.1.0"
+local addonVersion = "5.2.0"
 local HolyStorm = LibStub("AceAddon-3.0"):GetAddon("Holy_Storm")
 local Core = HolyStorm.PermissionCore
 local Groups = { version=addonVersion, systemIds={LEADERSHIP="guild-leadership",OFFICERS="officers",MEMBER="guild-member"} }
@@ -32,11 +32,14 @@ function Groups:GetDefaultGroups()
 end
 
 function Groups:ApplyRegisteredDefaults(state, definition)
-    if not state or not definition or type(definition.defaults) ~= "table" then return end
+    if not state or not definition or type(definition.defaults) ~= "table" then return false end
+    local aliases={leadership=self.systemIds.LEADERSHIP,officers=self.systemIds.OFFICERS,member=self.systemIds.MEMBER}
+    local changed=false
     for groupId, enabled in pairs(definition.defaults) do
-        local group = state.groups and state.groups[groupId]
-        if enabled == true and group and type(group.permissions) == "table" and group.permissions[definition.id] == nil then group.permissions[definition.id] = true end
+        local group = state.groups and state.groups[aliases[groupId] or groupId]
+        if enabled == true and group and type(group.permissions) == "table" and group.permissions[definition.id] == nil then group.permissions[definition.id] = true; changed=true end
     end
+    return changed
 end
 
 function Groups:NormalizeGroup(group, current)

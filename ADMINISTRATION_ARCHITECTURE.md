@@ -1,0 +1,98 @@
+# Holy Storm – Administration Host
+
+## Zweck und Verantwortungsgrenze
+
+`UI/Administration/AdministrationRegistry.lua` ist der zentrale Host für administrative Oberflächen. Er besitzt genau einen Eintrag im rechten Dock des bestehenden `MainWindow` und darin eine dynamische, kategorisierte `AceGUI TreeGroup`-Navigation. Der Host koordiniert Registrierung, Verfügbarkeit, Anzeige, Refresh und Lifecycle; fachliche Permission-, Gruppen-, Rule- oder Filteroperationen verbleiben in den jeweiligen Core-Komponenten beziehungsweise Modulen.
+
+Der Core enthält keine Liste optionaler Feature-Module. Eine Seite erscheint nur, wenn ihr Owner sie registriert und ihre deklarierten Voraussetzungen zur Laufzeit erfüllt sind.
+
+## Öffentliche API
+
+- `HolyStorm.Administration:RegisterSection(definition)`
+- `HolyStorm.Administration:UnregisterSection(id)`
+- `HolyStorm.Administration:UnregisterOwner(owner)`
+- `HolyStorm.Administration:GetSection(id)`
+- `HolyStorm.Administration:GetSections(visibleOnly)`
+- `HolyStorm.Administration:IsSectionAvailable(id)`
+- `HolyStorm.Administration:Open(sectionId)`
+- `HolyStorm.Administration:Refresh(sectionId)`
+- `HolyStorm.Administration:RefreshNavigation()`
+- `HolyStorm.Administration:RegisterCategory(id, definition)`
+- `HolyStorm.Administration:GetNavigationModel()`
+
+Die Convenience-Funktionen `HolyStorm:RegisterAdministrationSection`, `HolyStorm:UnregisterAdministrationSection` und `HolyStorm:GetAdministrationSections` delegieren auf denselben Host. `RefreshSections` bleibt als Alias für bestehende Verbraucher erhalten.
+
+## Section Contract
+
+Pflichtfelder sind `id` und entweder `page` oder `build`. Unterstützte Metadaten sind:
+
+- `owner`, optional `moduleId`
+- `category`, `order`
+- `title`/`displayName` oder `titleKey`/`displayNameKey`
+- `description` oder `descriptionKey`
+- `icon`
+- `permission` beziehungsweise kompatibel `requiredPermission`; eine Liste bedeutet standardmäßig „mindestens eine“, `permissionMode="all"` verlangt alle
+- `requires.module`, `requires.capability`
+- `isAvailable(section, context)`
+- `events` für gezielten Content-Refresh und `availabilityEvents` für eine erneute Gating-/Navigationsprüfung
+- `build(parent, context)`, `show(section, context)`, `hide(section, context)`, `refresh(section, context)`, `destroy(section, context)`
+
+`build` darf einen WoW-Frame oder ein AceGUI-Widget zurückgeben. Der Host baut eine Section erst bei ihrer ersten Anzeige. Ein vom Host gebautes AceGUI-Widget wird beim Entfernen freigegeben, sofern die Section keinen eigenen `destroy`-Callback besitzt. `render` bleibt als Compatibility-Name für `refresh` gültig.
+
+## Registration Lifecycle
+
+Eine direkte Registrierung ist nach dem Laden von `AdministrationRegistry.lua` möglich. Zusätzlich wertet `ModuleRegistry` nichtleere `metadata.administration`-Definitionen aus. Definitionen, die vor dem Host eintreffen, werden zwischengespeichert und nach dessen Initialisierung registriert. Doppelte IDs werden abgelehnt; wiederholtes Refresh erzeugt keine zweiten Navigationszeilen oder Event-Handler.
+
+Beim Entfernen werden sectionbezogene Event-Handler abgemeldet, die sichtbare Seite verborgen und ihr Destroy-Lifecycle ausgeführt. Wird die aktive Section ungültig, wählt der Host deterministisch die erste noch verfügbare Section. Bleibt keine Section übrig, verschwindet der Administration-Dockeintrag und ein geöffneter Host kehrt zur Startseite zurück.
+
+## Permission-, Modul- und Capability-Gating
+
+Permissions werden ausschließlich mit `PermissionEngine:HasPermission` ausgewertet. Nicht autorisierte Sections fehlen vollständig in der Navigation. Die dynamische Vollzugriffsregel der geschützten Gildenleitung bleibt damit unverändert in der PermissionEngine.
+
+`requires.module` prüft ein tatsächlich geladenes und aktiviertes Modul sowie den gildenweiten Modulstatus. Metadaten eines lediglich bekannten, aber nicht geladenen Optional-Moduls genügen nicht. `requires.capability` verwendet die zentrale ModuleRegistry und akzeptiert nur Handler aktivierter Module. Direkte Referenzen auf optionale Module sind nicht erforderlich.
+
+## Navigation und Sortierung
+
+Die eingebauten Kategorien definieren nur Bezeichnungen und Reihenfolge; sie erzeugen keine leeren Seiten: Allgemein, Berechtigungen, Gruppen/Rollen, Regeln, Filter, Module sowie System/Diagnose. Zusätzliche Kategorien sind registrierbar.
+
+Sortiert wird nach Kategorie-Reihenfolge, Section-Reihenfolge, lokalisiertem Titel und abschließend technischer ID. Kategorien ohne verfügbare Section erscheinen nicht.
+
+## Refresh und Events
+
+Section-spezifische `events` markieren nicht eine zweite UI als zuständig, sondern rufen gezielt deren `refresh` auf. Der Host aktualisiert Gating und Navigation insbesondere bei Permission-/State-/Gruppenänderungen, Modul-Lifecycle, Capability-Registrierung, Roster- und Guild-Updates. Relevante Host-Events sind:
+
+- `HS_ADMINISTRATION_SECTION_REGISTERED`
+- `HS_ADMINISTRATION_SECTION_UNREGISTERED`
+- `HS_ADMINISTRATION_NAVIGATION_UPDATED`
+- konsumiert: `HS_MODULE_AVAILABILITY_CHANGED`, `HS_CAPABILITY_REGISTERED`, `HS_CAPABILITY_UNREGISTERED` und die zentralen Permission-/Guild-Events
+
+## Abhängigkeiten und Lokalisierung
+
+Der Host verwendet `UIManager`, `MainWindow`, `AceGUI-3.0`, `EventBus`, `PermissionEngine`, `PolicyState` und die ModuleRegistry. Die Host-Texte und Core-Kategorien liegen in `Holy_Storm_Policy` für `enUS` und `deDE`. Externe Sections können bereits lokalisierte Texte, eine `locale`-Tabelle, `localeName` oder eine `localize`-Funktion liefern.
+
+## Beispiel einer Modul-Section
+
+```lua
+metadata.administration = {
+    {
+        id = "example-settings",
+        category = "modules",
+        order = 100,
+        titleKey = "ADMIN_TITLE",
+        descriptionKey = "ADMIN_DESCRIPTION",
+        localeName = "Holy_Storm_Example",
+        permission = "example-manage",
+        requires = { capability = "example.configure" },
+        build = function(parent, context)
+            local frame = CreateFrame("Frame", nil, parent)
+            -- Vollständige Modul-UI aufbauen.
+            return frame
+        end,
+        refresh = function(section, context)
+            -- Daten der bereits gebauten UI aktualisieren.
+        end,
+    },
+}
+```
+
+Das Beispiel ist ausschließlich Dokumentation und registriert keine Produktiv-Section.
