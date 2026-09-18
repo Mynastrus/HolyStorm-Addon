@@ -128,13 +128,21 @@ function State:ApplyChange(snapshot,change)
     local nextState=Core.Copy(snapshot); local action=change.action
     if action=="BASELINE" then nextState=Core.Copy(change.snapshot)
     elseif action=="GROUP_UPSERT" then nextState.groups[change.group.id]=Core.Copy(change.group)
-    elseif action=="GROUP_DELETE" then nextState.groups[change.groupId]=nil
+    elseif action=="GROUP_DELETE" then
+        nextState.groups[change.groupId]=nil
+        for _,group in pairs(nextState.groups) do
+            local managerGroupIds={}
+            for _,managerId in ipairs(group.managerGroupIds or {}) do
+                if managerId~=change.groupId then managerGroupIds[#managerGroupIds+1]=managerId end
+            end
+            group.managerGroupIds=managerGroupIds
+        end
     elseif action=="FILTER_UPSERT" then nextState.filters[change.filter.id]=Core.Copy(change.filter)
     elseif action=="FILTER_DELETE" then nextState.filters[change.filterId]=nil
     elseif action=="RULE_UPSERT" then nextState.rules[change.rule.id]=Core.Copy(change.rule)
     elseif action=="RULE_DELETE" then nextState.rules[change.ruleId]=nil
     elseif action=="MODULE_SET" then nextState.modules[change.moduleId]=change.enabled==true
-    elseif action=="RESET" then nextState.groups=self:GetDefaultGroups(); nextState.filters={}; nextState.rules={}; nextState.modules={}
+    elseif action=="RESET" then nextState.groups=self:GetDefaultGroups()
     else return nil,"UNKNOWN_ACTION" end
     return nextState
 end
@@ -147,13 +155,26 @@ function State:AuthorizeChange(state,change,actor)
     if action=="GROUP_UPSERT" then
         local incoming,current=change.group,groups[change.group.id]
         if current and current.system and (incoming.id~=current.id or incoming.system~=true or incoming.nameKey~=current.nameKey or incoming.systemRule~=current.systemRule) then return false,"SYSTEM_INVARIANT" end
-        local leadershipChanged=current and incoming.id==self.systemIds.LEADERSHIP and (not Core.Same(incoming.characterMembers,current.characterMembers) or not Core.Same(incoming.accountMembers,current.accountMembers) or not Core.Same(incoming.guildRanks,current.guildRanks) or not Core.Same(incoming.filterIds,current.filterIds) or not Core.Same(incoming.ruleIds,current.ruleIds) or incoming.filterOperator~=current.filterOperator)
-        if leadershipChanged and not self:IsActualGuildLeader(actor.accountUUID,actor.characterUUID) then return false,"GUILD_LEADER_REQUIRED" end
-        if not current then return self:HasPermissionInState(state,actor.accountUUID,actor.characterUUID,"groups-create"),"PERMISSION_DENIED" end
-        if not Core.Same(incoming.permissions,current.permissions) and not self:HasPermissionInState(state,actor.accountUUID,actor.characterUUID,"permissions-manage") then return false,"PERMISSION_DENIED" end
-        local membershipChanged=not Core.Same(incoming.characterMembers,current.characterMembers) or not Core.Same(incoming.accountMembers,current.accountMembers) or not Core.Same(incoming.guildRanks,current.guildRanks)
-        if membershipChanged and not (self:IsManagedBy(state,actor,incoming.id) or self:HasPermissionInState(state,actor.accountUUID,actor.characterUUID,"groups-manage-members")) then return false,"PERMISSION_DENIED" end
-        return self:CanManageGroup(actor.accountUUID,actor.characterUUID,incoming.id,state),"PERMISSION_DENIED"
+        if not current then
+            if incoming.system or incoming.systemRule or incoming.nameKey then return false,"SYSTEM_INVARIANT" end
+            if not self:HasPermissionInState(state,actor.accountUUID,actor.characterUUID,"groups-create") then return false,"PERMISSION_DENIED" end
+            if next(incoming.permissions or {}) and not self:HasPermissionInState(state,actor.accountUUID,actor.characterUUID,"permissions-manage") then return false,"PERMISSION_DENIED" end
+            local hasMemberships=next(incoming.characterMembers or {}) or next(incoming.accountMembers or {}) or next(incoming.guildRanks or {}) or #(incoming.filterIds or {})>0 or #(incoming.ruleIds or {})>0
+            if hasMemberships and not self:HasPermissionInState(state,actor.accountUUID,actor.characterUUID,"groups-manage-members") then return false,"PERMISSION_DENIED" end
+            if #(incoming.managerGroupIds or {})>0 and not self:HasPermissionInState(state,actor.accountUUID,actor.characterUUID,"groups-edit") then return false,"PERMISSION_DENIED" end
+            return true
+        end
+        local permissionChanged=not Core.Same(incoming.permissions,current.permissions)
+        local membershipChanged=not Core.Same(incoming.characterMembers,current.characterMembers) or not Core.Same(incoming.accountMembers,current.accountMembers) or not Core.Same(incoming.guildRanks,current.guildRanks) or not Core.Same(incoming.filterIds,current.filterIds) or not Core.Same(incoming.ruleIds,current.ruleIds) or incoming.filterOperator~=current.filterOperator
+        local metadataChanged=incoming.name~=current.name or incoming.description~=current.description or not Core.Same(incoming.managerGroupIds,current.managerGroupIds)
+        local managed=self:IsActualGuildLeader(actor.accountUUID,actor.characterUUID) or self:IsManagedBy(state,actor,incoming.id) or self:HasPermissionInState(state,actor.accountUUID,actor.characterUUID,"groups-edit")
+        if current.system and metadataChanged then return false,"SYSTEM_INVARIANT" end
+        if incoming.id==self.systemIds.LEADERSHIP and permissionChanged then return false,"FULL_ACCESS_GROUP" end
+        if incoming.id==self.systemIds.LEADERSHIP and membershipChanged and not self:IsActualGuildLeader(actor.accountUUID,actor.characterUUID) then return false,"GUILD_LEADER_REQUIRED" end
+        if permissionChanged and (not managed or not self:HasPermissionInState(state,actor.accountUUID,actor.characterUUID,"permissions-manage")) then return false,"PERMISSION_DENIED" end
+        if membershipChanged and incoming.id~=self.systemIds.LEADERSHIP and not (self:IsManagedBy(state,actor,incoming.id) or self:HasPermissionInState(state,actor.accountUUID,actor.characterUUID,"groups-manage-members")) then return false,"PERMISSION_DENIED" end
+        if metadataChanged and not managed then return false,"PERMISSION_DENIED" end
+        return true
     end
     if action=="FILTER_UPSERT" then local permission=state.filters[change.filter.id] and "filters-edit" or "filters-create"; return self:HasPermissionInState(state,actor.accountUUID,actor.characterUUID,permission),"PERMISSION_DENIED" end
     if action=="FILTER_DELETE" then return self:HasPermissionInState(state,actor.accountUUID,actor.characterUUID,"filters-delete"),"PERMISSION_DENIED" end

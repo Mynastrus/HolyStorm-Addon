@@ -64,7 +64,10 @@ for _,key in ipairs({
     "GROUP_GUILD_LEADERSHIP","GROUP_OFFICERS","GROUP_GUILD_MEMBER",
     "GROUP_DESC_GUILD_LEADERSHIP","GROUP_DESC_OFFICERS","GROUP_DESC_GUILD_MEMBER",
     "GENERAL","MEMBERS","PERMISSIONS","PERMISSION_MATRIX","RULES_FILTERS","MANAGERS","EFFECTIVE_MEMBERS","MODULE_SETTINGS","ANALYSIS","STATUS",
+    "PERMISSION_ID","DEFAULT_GROUPS","MATRIX_FULL_ACCESS","MATRIX_ASSIGNED","MATRIX_EMPTY","PERMISSION_DETAIL_FORMAT",
+    "MEMBERSHIP_MANUAL","MEMBERSHIP_SOURCE_FORMAT","CHARACTER_ID","EMPTY_MEMBERS","EMPTY_PERMISSIONS","GROUP_DELETE_IMPACT",
 })do requireKey(key,"dynamic policy UI lookup")end
+for _,value in ipairs({"SYSTEM","GUILD_RANK","MANUAL","FILTER","RULE","CHARACTER","ACCOUNT"})do requireKey("MEMBERSHIP_"..value,"membership source")end
 for _,value in ipairs({"VALID","CATCHING_UP","RECOVERY_REQUIRED","CONFLICT","UNINITIALIZED"})do requireKey("STATE_"..value,"policy state status")end
 for _,value in ipairs({"AND","OR","NOT"})do requireKey("LOGIC_"..value,"rule logic")end
 for _,value in ipairs({"=","!=",">",">=","<","<=","CONTAINS","NOT_CONTAINS","STARTS_WITH","ENDS_WITH","IN","NOT_IN","BETWEEN","NOT_BETWEEN","TRUE","FALSE","EXISTS","NOT_EXISTS"})do requireKey("OP_"..value,"rule operator")end

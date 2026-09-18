@@ -9,6 +9,16 @@ function UI:Button(parent,text,width,callback)local b=CreateFrame("Button",nil,p
 function UI:Edit(parent,width,onChanged)local e=CreateFrame("EditBox",nil,parent,"InputBoxTemplate");e:SetSize(width or 180,22);e:SetAutoFocus(false);if onChanged then e:SetScript("OnTextChanged",onChanged)end;return e end
 function UI:NewId(prefix)return string.format("%s-%08x-%04x",prefix,HolyStorm.Utils.Now()%0xffffffff,math.random(0,0xffff))end
 function UI:DisplayGroupName(group)return group and group.nameKey and L[group.nameKey]or group and group.name or"-"end
+function UI:MembershipSourceKey(reason)
+ local source=reason and(reason.source or reason.type)or"UNKNOWN"
+ if source=="CHARACTER"or source=="ACCOUNT"then source="MANUAL"end
+ return "MEMBERSHIP_"..source
+end
+function UI:DisplayMembershipReason(reason)
+ local source=L[self:MembershipSourceKey(reason)]or tostring(reason and(reason.source or reason.type)or L["UNKNOWN"])
+ local detail=reason and(reason.name or reason.id)
+ return detail~=nil and string.format(L["MEMBERSHIP_SOURCE_FORMAT"],source,tostring(detail))or source
+end
 function UI:Value(text)local n=tonumber(text);if n then return n end;if text=="true"then return true elseif text=="false"then return false elseif text:find(",",1,true)then local result={};for value in text:gmatch("[^,]+")do result[#result+1]=value:match("^%s*(.-)%s*$")end;return result end;return text end
 function UI:FlattenTrace(trace)local function label(entry)return entry.status=="UNKNOWN"and L["UNKNOWN"]or entry.result and L["PASSED"]or L["FAILED"]end;local lines={};for _,entry in ipairs(trace or{})do if entry.kind=="condition"then lines[#lines+1]=string.format("%s %s %s [%s -> %s]",entry.field or"?",entry.operator or"?",tostring(entry.expected),tostring(entry.actual),label(entry))elseif entry.kind=="group"then lines[#lines+1]=string.format("%s -> %s",entry.logic,label(entry))else lines[#lines+1]=tostring(entry.error).." ("..label(entry)..")"end end;return table.concat(lines,"\n")end
 function UI:CreateTextPanel(parent)local scroll=CreateFrame("ScrollFrame",nil,parent,"UIPanelScrollFrameTemplate");local content=CreateFrame("Frame",nil,scroll);content:SetSize(1,1);scroll:SetScrollChild(content);local text=self:Label(content,"","GameFontHighlightSmall");text:SetPoint("TOPLEFT",4,-4);text:SetPoint("RIGHT",-4,0);text:SetJustifyV("TOP");text:SetWordWrap(true);scroll:HookScript("OnSizeChanged",function(s)content:SetWidth(s:GetWidth());text:SetWidth(math.max(1,s:GetWidth()-8))end);return scroll,text,content end

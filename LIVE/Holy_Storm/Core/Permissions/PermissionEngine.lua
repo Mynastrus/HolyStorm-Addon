@@ -32,12 +32,12 @@ function Engine:GetMembershipReasonsForState(state,group,accountUUID,characterUU
     local reasons={}; if type(group)~="table" then return reasons end
     context=context or self:BuildContext(accountUUID,characterUUID); local member=context.member
     local characterMembers=type(group.characterMembers)=="table" and group.characterMembers or {}; local accountMembers=type(group.accountMembers)=="table" and group.accountMembers or {}; local guildRanks=type(group.guildRanks)=="table" and group.guildRanks or {}; local filterIds=type(group.filterIds)=="table" and group.filterIds or {}; local ruleIds=type(group.ruleIds)=="table" and group.ruleIds or {}
-    if group.id==self.systemIds.MEMBER and member then reasons[#reasons+1]={type="SYSTEM",id="GUILD_MEMBER",reason="SYSTEM:GUILD_MEMBER"} end
-    if group.id==self.systemIds.OFFICERS and member and member.rankIndex==1 then reasons[#reasons+1]={type="SYSTEM",id="OFFICER_RANK",reason="SYSTEM:OFFICER_RANK"} end
-    if group.id==self.systemIds.LEADERSHIP and member and member.rankIndex==0 then reasons[#reasons+1]={type="SYSTEM",id="GUILD_LEADER",reason="SYSTEM:GUILD_LEADER"} end
-    if characterUUID and characterMembers[characterUUID] then reasons[#reasons+1]={type="CHARACTER",id=characterUUID,reason="CHARACTER:"..characterUUID} end
-    if accountUUID and accountMembers[accountUUID] then reasons[#reasons+1]={type="ACCOUNT",id=accountUUID,reason="ACCOUNT:"..accountUUID} end
-    if member and guildRanks[member.rankIndex] then reasons[#reasons+1]={type="GUILD_RANK",id=member.rankIndex,name=member.rank,reason="GUILD_RANK:"..tostring(member.rankIndex)} end
+    if group.id==self.systemIds.MEMBER and member then reasons[#reasons+1]={type="SYSTEM",source="SYSTEM",id="GUILD_MEMBER",protected=true,reason="SYSTEM:GUILD_MEMBER"} end
+    if group.id==self.systemIds.OFFICERS and member and member.rankIndex==1 then reasons[#reasons+1]={type="GUILD_RANK",source="GUILD_RANK",id=1,name=member.rank,protected=true,reason="SYSTEM:OFFICER_RANK"} end
+    if group.id==self.systemIds.LEADERSHIP and member and member.rankIndex==0 then reasons[#reasons+1]={type="SYSTEM",source="SYSTEM",id="GUILD_LEADER",protected=true,reason="SYSTEM:GUILD_LEADER"} end
+    if characterUUID and characterMembers[characterUUID] then reasons[#reasons+1]={type="CHARACTER",source="MANUAL",id=characterUUID,reason="CHARACTER:"..characterUUID} end
+    if accountUUID and accountMembers[accountUUID] then reasons[#reasons+1]={type="ACCOUNT",source="MANUAL",id=accountUUID,reason="ACCOUNT:"..accountUUID} end
+    if member and guildRanks[member.rankIndex] then reasons[#reasons+1]={type="GUILD_RANK",source="GUILD_RANK",id=member.rankIndex,name=member.rank,reason="GUILD_RANK:"..tostring(member.rankIndex)} end
     if #filterIds>0 then
         local matched=group.filterOperator~="OR"; local traces={}
         for _,filterId in ipairs(filterIds) do
@@ -45,9 +45,9 @@ function Engine:GetMembershipReasonsForState(state,group,accountUUID,characterUU
             traces[#traces+1]={id=filterId,name=filter and filter.name,result=ok,status=status,trace=trace}
             if group.filterOperator=="OR" then matched=matched or ok elseif not ok then matched=false end
         end
-        if matched then for _,entry in ipairs(traces) do if entry.result then reasons[#reasons+1]={type="FILTER",id=entry.id,name=entry.name,trace=entry.trace,status=entry.status,reason="FILTER:"..entry.id} end end end
+        if matched then for _,entry in ipairs(traces) do if entry.result then reasons[#reasons+1]={type="FILTER",source="FILTER",id=entry.id,name=entry.name,trace=entry.trace,status=entry.status,reason="FILTER:"..entry.id} end end end
     end
-    for _,ruleId in ipairs(ruleIds) do local rule=state.rules[ruleId]; local matched,trace,status=rule and self:EvaluateRule(rule,context) or false; if matched then reasons[#reasons+1]={type="RULE",id=ruleId,name=rule.name,trace=trace,status=status,reason="RULE:"..ruleId} end end
+    for _,ruleId in ipairs(ruleIds) do local rule=state.rules[ruleId]; local matched,trace,status=rule and self:EvaluateRule(rule,context) or false; if matched then reasons[#reasons+1]={type="RULE",source="RULE",id=ruleId,name=rule.name,trace=trace,status=status,reason="RULE:"..ruleId} end end
     return reasons
 end
 function Engine:GetMembershipReasons(group,accountUUID,characterUUID,context)
@@ -131,8 +131,31 @@ end
 function Engine:GetGroupSummary(groupId) return self:GetGroupSummaries()[groupId] end
 function Engine:GetPermissionMatrix()
     local groups=self:GetGroups(); local groupIds=Core.TableKeys(groups); local rows={}
-    for permissionId,definition in pairs(HolyStorm.PermissionRegistry:GetPermissions()) do local grants={}; for _,groupId in ipairs(groupIds) do grants[groupId]=groupId==self.systemIds.LEADERSHIP or groups[groupId].permissions[permissionId]==true end; rows[#rows+1]={permissionId=permissionId,definition=definition,grants=grants} end
+    local aliases={[self.systemIds.LEADERSHIP]="leadership",[self.systemIds.OFFICERS]="officers",[self.systemIds.MEMBER]="member"}
+    for permissionId,definition in pairs(HolyStorm.PermissionRegistry:GetPermissions()) do
+        local grants,assignments={},{ }
+        for _,groupId in ipairs(groupIds) do
+            local direct=groups[groupId].permissions[permissionId]==true
+            local default=definition.defaults and (definition.defaults[groupId]==true or definition.defaults[aliases[groupId]]==true) or false
+            assignments[groupId]={direct=direct,effective=groupId==self.systemIds.LEADERSHIP or direct,default=default,protected=groupId==self.systemIds.LEADERSHIP}
+            grants[groupId]=assignments[groupId].effective
+        end
+        rows[#rows+1]={permissionId=permissionId,definition=definition,grants=grants,assignments=assignments}
+    end
     table.sort(rows,function(a,b) return a.permissionId<b.permissionId end); return {groups=groups,groupIds=groupIds,rows=rows}
+end
+function Engine:GetPermissionDetail(permissionId,accountUUID,characterUUID)
+    local definition=HolyStorm.PermissionRegistry:GetPermission(permissionId); if not definition then return nil end
+    local matrix=self:GetPermissionMatrix(); local row
+    for _,candidate in ipairs(matrix.rows) do if candidate.permissionId==definition.id then row=candidate; break end end
+    local defaults,direct,effective={},{},{}
+    for _,groupId in ipairs(matrix.groupIds) do
+        local assignment=row.assignments[groupId]
+        if assignment.default then defaults[#defaults+1]=groupId end
+        if assignment.direct then direct[#direct+1]=groupId end
+        if assignment.effective then effective[#effective+1]=groupId end
+    end
+    return {id=definition.id,definition=definition,registered=true,available=self:HasPermission(accountUUID,characterUUID,definition.id),defaultGroupIds=defaults,directGroupIds=direct,effectiveGroupIds=effective,groups=matrix.groups}
 end
 function Engine:Recalculate()
     local guild=HolyStorm.Data.GuildStore:GetCurrent(); for guid in pairs(guild and guild.roster or {}) do local account=HolyStorm.TwinkCore and HolyStorm.TwinkCore:GetAccountUUIDForCharacter(guid) or HolyStorm.Data.PlayerStore:GetCharacterOwner(guid) or guid; self:GetEffectiveGroups(account,guid,true) end

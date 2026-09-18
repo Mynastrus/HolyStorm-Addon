@@ -57,9 +57,9 @@ Der Core besitzt ausschließlich den Rule-Vertrag: Registry, Operatoren, Typ- un
 
 Quest- und Blizzard-Erfolgsbedarfe werden deklarativ durch `CharacterRuleData` gesammelt. Sowohl der Neuaufbau des Bedarfs als auch dessen Erfassung laufen als Tasks; die Erfassung verwendet WoW-APIs und schreibt ausschließlich über `CharacterStore`. Die RuleEngine startet keine Scans und persistiert weder Bedarfslisten noch Character-Snapshots.
 
-Die Systemgruppen sind `guild-leadership`, `officers` und `guild-member`. Rechte mehrerer Gruppen werden addiert. Leadership besitzt dynamisch alle registrierten Permissions. Manager-Gruppen dürfen eine Zielgruppe verwalten, erben aber weder Mitgliedschaft noch Rechte dieser Gruppe. Die tatsächliche Blizzard-Gildenleitung ist der Trust Anchor für geschützte Leadership-Mitgliedschaft und Snapshot-Recovery.
+Die Systemgruppen sind `guild-leadership`, `officers` und `guild-member`. Rechte mehrerer Gruppen werden addiert. Leadership besitzt dynamisch alle registrierten Permissions; ihre Permission-Menge und die Systemgruppen-Metadaten sind im Core unveränderlich. Manager-Gruppen dürfen eine Zielgruppe verwalten, erben aber weder Mitgliedschaft noch Rechte dieser Gruppe. Beim Löschen einer Custom-Gruppe werden eingehende Manager-Referenzen atomar bereinigt. Die tatsächliche Blizzard-Gildenleitung ist der Trust Anchor für geschützte Leadership-Mitgliedschaft und Snapshot-Recovery.
 
-Jede gildenweite Mutation erzeugt eine monotone Version mit neuer `revisionID`, korrekter `previousRevisionID`, `changedBy` und `changedAt`. Lücken lösen Catch-up/Recovery aus. Geschwisterrevisionen erzeugen `CONFLICT`; es gibt keinen automatischen Versionssieger. Factory Reset ist eine normale Revision und betrifft nur Gruppen, gildenweite Rules/Filter und Policy-/Modulkonfiguration.
+Jede gildenweite Mutation erzeugt eine monotone Version mit neuer `revisionID`, korrekter `previousRevisionID`, `changedBy` und `changedAt`. Lücken lösen Catch-up/Recovery aus. Geschwisterrevisionen erzeugen `CONFLICT`; es gibt keinen automatischen Versionssieger. Factory Reset ist eine normale Revision und ersetzt ausschließlich die Gruppen durch die drei Defaults; wiederverwendbare Rules/Filter, Modulkonfiguration und fachfremde Daten bleiben erhalten.
 
 ## Lokalisierung
 

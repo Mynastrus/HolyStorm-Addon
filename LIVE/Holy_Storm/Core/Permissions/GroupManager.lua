@@ -160,7 +160,20 @@ end
 function Groups:GetGroupUsage(id)
     local usage={}; for groupId,group in pairs(self:GetStore("groups") or {}) do for _,managerId in ipairs(group.managerGroupIds or {}) do if managerId==id then usage[#usage+1]={kind="manager",id=groupId} end end end; return usage
 end
-function Groups:DeleteGroup(id) if #self:GetGroupUsage(id)>0 then return false,"GROUP_IN_USE" end; local ok,result=self:CommitChange({action="GROUP_DELETE",groupId=id}); if ok then Core.Log("INFO","groups","Group deleted",{groupId=id}) end; return ok,result end
+function Groups:GetGroupDeletionImpact(id)
+    local group=self:GetGroup(id); if not group then return nil end
+    return {
+        groupId=id,
+        characterMembers=HolyStorm.Utils.TableCount(group.characterMembers),
+        accountMembers=HolyStorm.Utils.TableCount(group.accountMembers),
+        guildRanks=HolyStorm.Utils.TableCount(group.guildRanks),
+        filters=#(group.filterIds or {}),
+        rules=#(group.ruleIds or {}),
+        permissions=HolyStorm.Utils.TableCount(group.permissions),
+        managerReferences=self:GetGroupUsage(id),
+    }
+end
+function Groups:DeleteGroup(id) local impact=self:GetGroupDeletionImpact(id); local ok,result=self:CommitChange({action="GROUP_DELETE",groupId=id}); if ok then Core.Log("INFO","groups","Group deleted",{groupId=id,impact=impact}) end; return ok,result end
 function Groups:AddMembership(groupId,source,id)
     if source=="system" then return false,"SYSTEM_MEMBERSHIP" end
     if source=="filter" then return self:AttachFilter(groupId,id) end
@@ -181,7 +194,7 @@ end
 function Groups:AddCharacterMembership(groupId,id) return self:AddMembership(groupId,"character",id) end
 function Groups:AddAccountMembership(groupId,id) return self:AddMembership(groupId,"account",id) end
 function Groups:AddGuildRankMembership(groupId,id) return self:AddMembership(groupId,"guildRank",id) end
-function Groups:SetGroupPermissions(groupId,permissions) local group=self:GetGroup(groupId); if not group then return false,"NOT_FOUND" end; group.permissions=Core.NormalizeSet(permissions); return self:SaveGroup(group) end
+function Groups:SetGroupPermissions(groupId,permissions) if groupId==self.systemIds.LEADERSHIP then return false,"FULL_ACCESS_GROUP" end; local group=self:GetGroup(groupId); if not group then return false,"NOT_FOUND" end; group.permissions=Core.NormalizeSet(permissions); return self:SaveGroup(group) end
 function Groups:SetGroupManagers(groupId,managerIds) local group=self:GetGroup(groupId); if not group then return false,"NOT_FOUND" end; group.managerGroupIds=Core.NormalizeArray(managerIds); return self:SaveGroup(group) end
 function Groups:AddManagerGroup(groupId,managerId) local group=self:GetGroup(groupId); if not group then return false,"NOT_FOUND" end; if Core.ArrayContains(group.managerGroupIds,managerId) then return false,"UNCHANGED" end; group.managerGroupIds[#group.managerGroupIds+1]=managerId; return self:SaveGroup(group) end
 function Groups:RemoveManagerGroup(groupId,managerId) local group=self:GetGroup(groupId); if not group then return false,"NOT_FOUND" end; local nextIds={}; for _,id in ipairs(group.managerGroupIds) do if id~=managerId then nextIds[#nextIds+1]=id end end; if #nextIds==#group.managerGroupIds then return false,"UNCHANGED" end; group.managerGroupIds=nextIds; return self:SaveGroup(group) end

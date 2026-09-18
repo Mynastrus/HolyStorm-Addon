@@ -23,7 +23,7 @@ Die drei geschützten Systemgruppen sind:
 - `officers`: dynamische Systemmitgliedschaft über Blizzard-Gildenrang 1 sowie weitere konfigurierte Quellen.
 - `guild-member`: dynamische Mitgliedschaft aller sichtbaren Gildenmitglieder.
 
-Systemgruppen können nicht gelöscht werden. Geschützte Identität, Name-Key, Systemregel und Ersteller werden im Core validiert. Änderungen an zusätzlichen Leadership-Mitgliedschaften darf nur der tatsächlich aktuelle Blizzard-Gildenleiter vornehmen; die UI ist nicht die Sicherheitsgrenze.
+Systemgruppen können nicht gelöscht werden. Geschützte Identität, Name-Key, Systemregel, Ersteller, lokalisierte Metadaten und Manager-Grundstruktur werden im Core validiert. Die Permission-Menge von `guild-leadership` ist nicht editierbar; ihr Vollzugriff entsteht dynamisch aus der Registry. Änderungen an zusätzlichen Leadership-Mitgliedschaften darf nur der tatsächlich aktuelle Blizzard-Gildenleiter vornehmen; die UI ist nicht die Sicherheitsgrenze.
 
 ## Membership Sources
 
@@ -44,7 +44,9 @@ Rechte sind additiv: Die Vereinigungsmenge der Permissions aller effektiven Grup
 
 Modul-Defaults initialisieren eine Permission pro Gilden-State genau einmal. `PolicyState.permissionDefaults` merkt bekannte Permission-IDs; erneute Modulregistrierung, Login, Reload oder State-Upgrade wenden denselben Default nicht erneut an. Eine vom Administrator entfernte Zuweisung bleibt deshalb entfernt. Neue Gilden-States entstehen weiterhin aus den zu diesem Zeitpunkt registrierten Modul-Defaults.
 
-`managerGroupIds` bedeutet ausschließlich, dass Mitglieder der referenzierten Manager-Gruppen die Zielgruppe im Rahmen weiterer Core-Invarianten verwalten dürfen. Die Manager-Gruppe erhält weder Mitgliedschaft noch Permissions der Zielgruppe. Manager-Zyklen werden bei State-Validierung abgelehnt.
+`managerGroupIds` bedeutet ausschließlich, dass Mitglieder der referenzierten Manager-Gruppen die Zielgruppe im Rahmen weiterer Core-Invarianten verwalten dürfen. Die Manager-Gruppe erhält weder Mitgliedschaft noch Permissions der Zielgruppe. Manager-Zyklen werden bei State-Validierung abgelehnt. Wird eine Custom-Gruppe gelöscht, entfernt dieselbe `GROUP_DELETE`-Revision alle eingehenden Manager-Referenzen; Membership-, Filter-/Rule- und Permission-Zuweisungen der gelöschten Gruppe verschwinden mit ihr.
+
+`GROUP_UPSERT` klassifiziert Änderungen fachlich: Gruppenerstellung, Metadaten/Manager, Membership-Quellen und Permission-Zuweisungen besitzen getrennte Autorisierungsprüfungen. Eine reine `groups-create`-Berechtigung kann deshalb keine initialen Permissions oder Mitglieder einschleusen. Manager dürfen nur die von ihnen verwaltete Zielgruppe und nur die zusätzlich erforderlichen Operationsarten ändern.
 
 ## Rules und Filter
 
@@ -84,8 +86,8 @@ Die Administration zeigt Gilden-ID, Status, Version, Revision, Vorgänger, Last 
 
 - ersetzt die drei Systemgruppen durch Defaults und entfernt Custom-Gruppen,
 - entfernt manuelle Memberships, Manager-, Permission-, Filter- und Rule-Zuweisungen,
-- entfernt gildenweite Custom-Rules und Custom-Filter,
-- setzt den gildenweiten Modul-/Policy-Status zurück.
+- bewahrt wiederverwendbare gildenweite und persönliche Rules/Filter,
+- bewahrt den gildenweiten Modulstatus.
 
 Persönliche lokale Rules/Filter bleiben erhalten. Player-/Character-Daten, Snapshots, Equipment, Mythic+, Raid, Delves, Achievements, Content, POIs, Logs und Twink-Identität werden nicht verändert.
 
@@ -95,7 +97,7 @@ WoW-Addons besitzen keine kryptografische Identität, keine geheimen Schlüssel 
 
 ## Administration und Logging
 
-Die Administration greift direkt auf Registry, Engine, GroupManager, FilterManager, Rules und PolicyState zu. Mutationen erfolgen ausschließlich über Manager-/State-APIs. Group-, Membership-, Permission-, Rule-/Filter-, Reset-, Revisions-, Catch-up-, Recovery- und Konfliktaktionen verwenden den zentralen Logger und die bestehenden Events.
+Die Administration greift direkt auf Registry, Engine, GroupManager, FilterManager, Rules und PolicyState zu. Mutationen erfolgen ausschließlich über Manager-/State-APIs. Group-, Membership-, Permission-, Rule-/Filter-, Reset-, Revisions-, Catch-up-, Recovery- und Konfliktaktionen verwenden den zentralen Logger und die bestehenden Events. Die Gruppenansicht zeigt getrennte Membership-Quellen, Manager, Filter/Rules, effektive Mitglieder und Suchfilter. Die Registry-basierte Permission-Matrix zeigt Modul, Kategorie, Defaults, direkte Zuweisungen, effektive Grants und eine Detailansicht; unbekannte persistierte Permission-IDs bleiben erhalten, erscheinen aber erst nach Registrierung wieder als aktive Matrixzeile.
 
 ## Verbleibende Restschuld
 

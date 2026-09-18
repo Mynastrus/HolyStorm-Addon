@@ -66,6 +66,12 @@ Section-spezifische `events` markieren nicht eine zweite UI als zuständig, sond
 - `HS_ADMINISTRATION_NAVIGATION_UPDATED`
 - konsumiert: `HS_MODULE_AVAILABILITY_CHANGED`, `HS_CAPABILITY_REGISTERED`, `HS_CAPABILITY_UNREGISTERED` und die zentralen Permission-/Guild-Events
 
+## Gruppen- und Permission-Administration
+
+Die registrierte Section `permissions` verwendet keine eigene Fachlogik und keine SavedVariables-Zugriffe. Sie liest Gruppen aus `GroupManager`, effektive Mitgliedschaften und Rechte aus `PermissionEngine`, Definitionen aus `PermissionRegistry` sowie Rules/Filter aus `FilterManager`. Entwürfe werden ausschließlich über die Manager-/State-APIs committed; Stale-Revisionen werden vor dem Speichern verworfen und der Core wiederholt jede Autorisierungs- und Invariantenprüfung.
+
+Systemgruppen sind gesperrt und lokalisiert. Automatische System-/Gildenrangquellen, manuelle Character-/Accountquellen und Filter-/Rule-Quellen werden getrennt angezeigt. Die Permission-Matrix entsteht vollständig aus der aktiven Registry und enthält keine statische Feature-Permission-Liste. Factory Reset und Custom-Group-Löschung verwenden bestätigte, lokalisierte Dialoge und erzeugen normale Revisionen.
+
 ## Abhängigkeiten und Lokalisierung
 
 Der Host verwendet `UIManager`, `MainWindow`, `AceGUI-3.0`, `EventBus`, `PermissionEngine`, `PolicyState` und die ModuleRegistry. Die Host-Texte und Core-Kategorien liegen in `Holy_Storm_Policy` für `enUS` und `deDE`. Externe Sections können bereits lokalisierte Texte, eine `locale`-Tabelle, `localeName` oder eine `localize`-Funktion liefern.

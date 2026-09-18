@@ -75,9 +75,12 @@ local source=""
 for _,path in ipairs({"Permissions.lua","Rules.lua","Filters.lua","PolicyInspector.lua"})do
     local file=assert(io.open(root.."UI/Administration/"..path,"rb"));local text=file:read("*a");file:close();source=source..text
     assert(text:find("Administration:RegisterSection",1,true),path.." must register through the Administration host")
-    assert(text:find("category=",1,true),path.." must declare a category")
+    assert(text:find("category%s*="),path.." must declare a category")
 end
 assert(not source:find("HolyStorm%.Policy:")and not source:find("HolyStorm%.Permissions:"),"admin UI must use the component contracts")
+assert(source:find("Registry:GetPermissions",1,true),"permission administration must read the active registry")
+assert(not source:find('DEFAULT_PERMISSION,"news%-edit"')and not source:find('DEFAULT_PERMISSION%s*=%s*"news%-edit"'),"removed module permissions must not be recreated by a static inspector default")
+assert(not source:find("HolyStorm%.db")and not source:find("Database:GetRoot",1,true),"admin UI must not write SavedVariables directly")
 for _,name in ipairs({"PermissionRegistry","PermissionEngine","GroupManager","FilterManager","PolicyState"})do assert(source:find(name,1,true),name.." direct UI contract missing")end
 local registryFile=assert(io.open(root.."Core/Registry/ModuleRegistry.lua","rb"));local registrySource=registryFile:read("*a");registryFile:close()
 for _,contract in ipairs({"RegisterModuleAdministration","FlushAdministrationSections","IsModuleAvailable","IsCapabilityAvailable","HS_MODULE_AVAILABILITY_CHANGED"})do assert(registrySource:find(contract,1,true),"ModuleRegistry misses administration contract "..contract)end
