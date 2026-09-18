@@ -1,0 +1,20 @@
+package-as: Holy_Storm
+
+move-folders:
+  LIVE/Holy_Storm: Holy_Storm
+
+ignore:
+  - .github
+  - _ace3_source
+  - tools
+  - RELEASES
+  - .luarc.json
+  - ADMINISTRATION_ARCHITECTURE.md
+  - ARCHITECTURE.md
+  - CHANGELOG.md
+  - INGAME_TEST_CHECKLIST.md
+  - MODULE_ARCHITECTURE.md
+  - PERMISSION_ARCHITECTURE.md
+  - PROJECT_CONTEXT.md
+  - SYNC_ARCHITECTURE.md
+  - WoW Addon - Holy Storm.code-workspace
