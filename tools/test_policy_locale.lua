@@ -71,6 +71,10 @@ for _,value in ipairs({"SYSTEM","GUILD_RANK","MANUAL","FILTER","RULE","CHARACTER
 for _,value in ipairs({"VALID","CATCHING_UP","RECOVERY_REQUIRED","CONFLICT","UNINITIALIZED"})do requireKey("STATE_"..value,"policy state status")end
 for _,value in ipairs({"AND","OR","NOT"})do requireKey("LOGIC_"..value,"rule logic")end
 for _,value in ipairs({"=","!=",">",">=","<","<=","CONTAINS","NOT_CONTAINS","STARTS_WITH","ENDS_WITH","IN","NOT_IN","BETWEEN","NOT_BETWEEN","TRUE","FALSE","EXISTS","NOT_EXISTS"})do requireKey("OP_"..value,"rule operator")end
+for _,value in ipairs({"PASS","FAIL","UNKNOWN"})do requireKey("RESULT_"..value,"rule preview result")end
+requireKey("REFERENCE_GROUP","filter reference kind")
+requireKey("REFERENCE_CONTEXT","filter reference kind")
+requireKey("REFERENCE_MODULE","filter reference kind")
 
 GAME_LOCALE = activeLocale
 function GetLocale() return activeLocale end

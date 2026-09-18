@@ -45,6 +45,10 @@ Capabilities sind benannte, von Modulen registrierte Handler. Der Bootstrap verw
 
 ## Permissions, Gruppen, Rules und Filter
 
+Holy Storm besitzt eigenständige, wiederverwendbare Rule-Objekte neben Filter-Objekten. Beide enthalten denselben Expression Tree und werden ausschließlich von `RuleEngine` ausgewertet; es existiert keine zweite Rule- oder Filterauswertung in der Administration. Die ownergebundene Field Registry, die zentrale Operator-Registry, typabhängige Validierung und `PASS`/`FAIL`/`UNKNOWN` bleiben die fachliche Source of Truth.
+
+`FilterManager` verwaltet lokale und gildenweite Objekte, sichere Duplikation, nicht persistierende Preview sowie erweiterbare Referenz-Provider. Der eingebaute Gruppen-Provider ist nur ein Consumer dieses Vertrags; weitere Module können Referenzquellen registrieren. Die Administration koordiniert diese APIs und greift nicht direkt auf SavedVariables zu.
+
 - `PermissionRegistry`: bekannte Permission-Definitionen und Metadaten.
 - `PermissionEngine`: Kontext, Membership-Gründe, effektive Gruppen/Rechte, Matrix und Erklärungen.
 - `GroupManager`: System- und benutzerdefinierte Gruppen sowie Mitgliedschaften und Manager-Gruppen.

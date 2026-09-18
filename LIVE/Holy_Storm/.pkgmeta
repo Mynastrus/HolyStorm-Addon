@@ -1,0 +1,24 @@
+package-as: Holy_Storm
+
+manual-changelog:
+  filename: CHANGELOG.md
+  markup-type: markdown
+
+ignore:
+  - .github
+  - .luarc.json
+  - _ace3_source
+  - ADMINISTRATION_ARCHITECTURE.md
+  - ARCHITECTURE.md
+  - INGAME_TEST_CHECKLIST.md
+  - MODULE_ARCHITECTURE.md
+  - PERMISSION_ARCHITECTURE.md
+  - PROJECT_CONTEXT.md
+  - RELEASES
+  - SYNC_ARCHITECTURE.md
+  - tools
+  - WoW Addon - Holy Storm.code-workspace
+  - LIVE/Holy_Storm/.pkgmeta
+
+move-folders:
+  Holy_Storm/LIVE/Holy_Storm: Holy_Storm

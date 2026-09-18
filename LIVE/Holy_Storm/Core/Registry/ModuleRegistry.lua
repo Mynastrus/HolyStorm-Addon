@@ -272,7 +272,9 @@ function HolyStorm:ProtectModule(module)
                 if methodName=="OnEnable" then HolyStorm:RegisterModuleRuleFields(self.metadata) end
                 local ok,err=true
                 if original then ok,err=HolyStorm.Utils.SafeCall((self.metadata and self.metadata.internalName or self:GetName())..":"..methodName,original,self,...) end
-                if methodName=="OnDisable" and HolyStorm.Rules and self.metadata then HolyStorm.Rules:UnregisterOwner(self.metadata.id) end
+                if methodName=="OnDisable" and self.metadata then
+                    if HolyStorm.Rules then HolyStorm.Rules:UnregisterOwner(self.metadata.id) end
+                end
                 if (methodName=="OnEnable" or methodName=="OnDisable") and HolyStorm.Events then HolyStorm.Events:Emit("HS_MODULE_AVAILABILITY_CHANGED",self.metadata and self.metadata.id or self:GetName(),methodName=="OnEnable","lifecycle") end
                 if not ok then HolyStorm.Logger:ERROR("ModuleRegistry","%s failed in %s: %s",self:GetName(),methodName,tostring(err)); if methodName~="OnDisable" then self:SetEnabledState(false) end end
             end

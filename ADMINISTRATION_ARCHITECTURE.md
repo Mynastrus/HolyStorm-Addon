@@ -72,6 +72,14 @@ Die registrierte Section `permissions` verwendet keine eigene Fachlogik und kein
 
 Systemgruppen sind gesperrt und lokalisiert. Automatische System-/Gildenrangquellen, manuelle Character-/Accountquellen und Filter-/Rule-Quellen werden getrennt angezeigt. Die Permission-Matrix entsteht vollständig aus der aktiven Registry und enthält keine statische Feature-Permission-Liste. Factory Reset und Custom-Group-Löschung verwenden bestätigte, lokalisierte Dialoge und erzeugen normale Revisionen.
 
+## Rule- und Filter-Administration
+
+Holy Storm besitzt eigenständige wiederverwendbare Rule-Objekte und Filter-Objekte. Beide Seiten verwenden denselben `PolicyUI`-Rule-Tree-Editor und dieselbe `RuleEngine`; die UI implementiert weder Evaluator noch Operatorsemantik. Der Editor unterstützt Conditions, verschachtelte AND-/OR-/NOT-Gruppen, Hinzufügen, Entfernen, Hoch/Runter sowie Ein-/Ausrücken. Field-, Operator- und Value-Auswahl entstehen aus den aktiven Registries. Boolean-, Enum-, Character-, Account- und Mehrfachwerte verwenden strukturierte Auswahl, Number-/String- und Range-Werte typbezogene Eingaben.
+
+Die Listen zeigen Name, ID, Objektversion beziehungsweise Referenzanzahl und Availability. Suche umfasst Name, ID, Kategorie und beteiligte Provider. Details zeigen Auditmetadaten, Baum, Referenzen, Preview und CRUD-Aktionen. Leere Listen, fehlende Fields, fehlende Preview-Entities, unbekannte Felder und referenzgeschützte Löschungen besitzen lokalisierte Zustände. Globale Create/Edit/Delete-Aktionen werden mit den vorhandenen granularen Filter-Permissions beziehungsweise `rules-manage` gegated und im Core erneut autorisiert.
+
+Preview verwendet `FilterManager:Preview` und zeigt den von `RuleEngine` erzeugten Diagnose-Trace mit Actual/Expected Value, Provider und UNKNOWN-Grund. Sie persistiert nichts und ändert insbesondere keine Gruppenmitgliedschaft. Field-Provider-Diagnose liest `RuleEngine:GetFieldDiagnostics`. Registry-, Modul-, Character-, Roster-, Gruppen-, Referenz- und State-Events aktualisieren die Seiten ohne Polling.
+
 ## Abhängigkeiten und Lokalisierung
 
 Der Host verwendet `UIManager`, `MainWindow`, `AceGUI-3.0`, `EventBus`, `PermissionEngine`, `PolicyState` und die ModuleRegistry. Die Host-Texte und Core-Kategorien liegen in `Holy_Storm_Policy` für `enUS` und `deDE`. Externe Sections können bereits lokalisierte Texte, eine `locale`-Tabelle, `localeName` oder eine `localize`-Funktion liefern.

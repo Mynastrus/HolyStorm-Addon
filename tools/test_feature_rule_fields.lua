@@ -28,6 +28,7 @@ assert(not Rules:Validate({field="bad field",operator="=" ,value=1}))
 
 -- F/G: owners are independent and cleanup removes only one owner's fields/aliases.
 assert(Rules:RegisterField("module-b","example.flag",{type="boolean",resolver=function()return true end}))
+assert(not Rules:RegisterField("module-b","example.invalidOperators",{type="number",allowedOperators={"contains"},resolver=function()return 1 end}))
 assert(Rules:RegisterAlias("module-a","legacyScore","example.score"));assert(Rules:GetField("legacyScore").aliasOf=="example.score")
 assert(Rules:UnregisterOwner("module-a")==2);assert(not Rules:GetField("example.score")and not Rules:GetField("legacyScore"));assert(Rules:GetField("example.flag"))
 
@@ -36,6 +37,7 @@ assert(Rules:RegisterField("module-errors","example.error",{type="number",resolv
 local _,_,errorStatus=Rules:Evaluate({field="example.error",operator=">",value=1},{});assert(errorStatus==Rules.Result.UNKNOWN and #logs>0)
 assert(Rules:RegisterField("module-errors","example.unavailable",{type="number",availability=function()return false,"NOT_READY"end,resolver=function()return 5 end}))
 local _,availabilityReason=Rules:GetFieldValue("example.unavailable",{});assert(availabilityReason=="NOT_READY")
+local availabilityDiagnostics=Rules:GetFieldDiagnostics({});local unavailableDiagnostic;for _,entry in ipairs(availabilityDiagnostics)do if entry.id=="example.unavailable"then unavailableDiagnostic=entry end end;assert(unavailableDiagnostic and not unavailableDiagnostic.available and unavailableDiagnostic.reason=="NOT_READY")
 
 -- I: Kleene-style AND/OR/NOT semantics preserve or short-circuit UNKNOWN correctly.
 local unknownNode={field="optional.missing",operator="exists"}

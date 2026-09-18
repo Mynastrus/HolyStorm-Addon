@@ -125,4 +125,52 @@ local nested={logic="AND",children={{field="character.level",operator=">=",value
 assert(HolyStorm.PermissionRegistry:RegisterPermission({id="default-once",module="Test",category="Test",defaults={member=true}}));local defaultsMember=P:GetGroup(ids.MEMBER);assert(defaultsMember.permissions["default-once"]==true,"new permission default was not initialized");defaultsMember.permissions["default-once"]=nil;assert(P:SaveGroup(defaultsMember));assert(HolyStorm.PermissionRegistry:RegisterPermission({id="default-once",module="Test",category="Test",defaults={member=true}}));P:UpgradeState(state);assert(P:GetGroup(ids.MEMBER).permissions["default-once"]==nil,"module re-registration or upgrade overwrote an administrator change")
 local otherGuild=P:CreateState("realm:other");assert(next(otherGuild.filters)==nil and next(otherGuild.rules)==nil and HolyStorm.Utils.TableCount(otherGuild.groups)==3,"guild state leaked across guilds")
 assert(P:Recalculate(),"effective membership recalculation failed")
-print("Permission engine scenarios A-V passed")
+
+-- W: complete filter CRUD preserves metadata and duplication creates a fresh identity/audit record.
+assert(P:SaveFilter({id="admin-crud",name="Admin CRUD",description="Initial",category="Tests",root={field="character.level",operator=">=",value=70}},"global"))
+local crud=P:GetFilter("admin-crud","global");assert(crud.creator=="Maristi"and crud.createdAt==clock and crud.modifiedBy=="Maristi"and crud.version==1 and crud.scope=="global")
+clock=clock+1;crud.description="Changed";assert(P:SaveFilter(crud,"global"));crud=P:GetFilter("admin-crud","global");assert(crud.description=="Changed"and crud.version==2 and crud.modifiedAt==clock)
+clock=clock+1;local duplicated,duplicate=P:DuplicateFilter("admin-crud","global",{name="Admin CRUD Copy"});assert(duplicated,tostring(duplicate));assert(duplicate.id~="admin-crud"and duplicate.name=="Admin CRUD Copy"and duplicate.version==1 and duplicate.createdAt==clock)
+
+-- X: central reference providers protect deletion; providers can be added and removed without hardcoding consumers.
+assert(P:RegisterReferenceProvider("test-owner","test-consumer",function(kind,id)return kind=="filters"and id==duplicate.id and{{kind="module",id="consumer",name="Test consumer"}}or{}end))
+local refs=P:GetReferences("filters",duplicate.id,"global");assert(#refs==1 and refs[1].provider=="test-consumer"and refs[1].owner=="test-owner")
+local blocked,blockedReason,blockedRefs=P:DeleteFilter(duplicate.id,"global");assert(not blocked and blockedReason=="FILTER_IN_USE"and#blockedRefs==1)
+assert(P:UnregisterReferenceOwner("test-owner")==1);assert(P:DeleteFilter(duplicate.id,"global"))
+assert(P:CreateGroup({id="filter-reference",name="Filter Reference",permissions={}}));assert(P:AttachFilter("filter-reference","admin-crud"));local groupRefs=P:GetReferences("filters","admin-crud","global");assert(#groupRefs==1 and groupRefs[1].kind=="group"and groupRefs[1].id=="filter-reference");assert(not P:DeleteFilter("admin-crud","global"));assert(P:DetachFilter("filter-reference","admin-crud"));assert(P:DeleteFilter("admin-crud","global"))
+assert(P:SaveFilter({id="local-active",name="Local active",root={field="character.level",operator=">=",value=1}},"local"));assert(P:SetActiveFilters("test-context",{{id="local-active",scope="local"}}));local contextRefs=P:GetReferences("filters","local-active","local");assert(#contextRefs==1 and contextRefs[1].kind=="context");assert(not P:DeleteFilter("local-active","local"));assert(P:SetActiveFilters("test-context",{}));assert(P:DeleteFilter("local-active","local"))
+
+-- Y: rule-tree validation covers single conditions, nested AND/OR/NOT and type-specific operators/values.
+assert(R:RegisterField("test-types","test.enum",{type="enum",values={"A","B"},resolver=function(context)return context.enum end}))
+assert(R:RegisterField("test-types","test.boolean",{type="boolean",resolver=function(context)return context.boolean end}))
+assert(R:RegisterField("test-types","test.string",{type="string",resolver=function(context)return context.string end}))
+local typedTree={logic="AND",children={{field="character.level",operator=">=",value=70},{logic="OR",children={{field="test.string",operator="contains",value="storm"},{field="test.enum",operator="in",value={"A","B"}}}},{field="test.boolean",operator="true"}}}
+assert(R:Validate(typedTree));local typedStatus,typedTrace=R:EvaluateDetailed(typedTree,{character={level=80},string="Holy Storm",enum="A",boolean=true});assert(typedStatus==R.Result.PASS and#typedTrace==6)
+assert(not R:Validate({logic="AND",children={}}));assert(not R:Validate({field="character.level",operator="contains",value="80"}));assert(not R:Validate({field="character.level",operator=">=",value="not-a-number"}));assert(not R:Validate({field="test.boolean",operator="=",value="true"}));assert(R:Validate({field="test.enum",operator="not_in",value={"B"}}));assert(not R:Validate({field="test.enum",operator="=",value="C"}))
+local numberOperators=R:GetAllowedOperators("character.level");local hasGreater=false;for _,operator in ipairs(numberOperators)do if operator==">"then hasGreater=true end end;assert(hasGreater and R:GetOperator(">").types[1]=="number"and R:GetOperators().contains)
+
+-- Z: unavailable optional fields remain portable, evaluate UNKNOWN, and recover after owner re-registration.
+assert(R:RegisterField("optional-owner","optional.score",{type="number",resolver=function(context)return context.optionalScore end}))
+local optionalTree={field="optional.score",operator=">=",value=10};assert(R:EvaluateDetailed(optionalTree,{optionalScore=12})==R.Result.PASS);assert(R:UnregisterOwner("optional-owner")==1);assert(R:Validate(optionalTree));local missingStatus,missingTrace=R:EvaluateDetailed(optionalTree,{optionalScore=12});assert(missingStatus==R.Result.UNKNOWN and missingTrace[1].reason:match("UNKNOWN_FIELD"));assert(R:RegisterField("optional-owner","optional.score",{type="number",resolver=function(context)return context.optionalScore end}));assert(R:EvaluateDetailed(optionalTree,{optionalScore=12})==R.Result.PASS)
+
+-- AA: preview returns a structured trace with actual/expected/provider/reason and never changes revisions or objects.
+local previewSaved,previewSaveReason=P:SaveFilter({id="preview-filter",name="Preview",root={logic="OR",children={{field="character.level",operator=">=",value=80},{field="missing.preview",operator="exists"}}}},"global")
+assert(previewSaved,tostring(previewSaveReason))
+local previewRevision=P:GetPermissionStateStatus().revisionID
+local previewBefore=HolyStorm.Serializer:Serialize(P:GetFilter("preview-filter","global"))
+local previewOk,preview=P:Preview("filters","preview-filter",{guid="Anna"},"global")
+assert(previewOk,tostring(preview))
+assert(preview.status==R.Result.PASS,tostring(preview.status))
+assert(preview.trace[1].actual==80 and preview.trace[1].expected==80 and preview.trace[1].provider=="test-character")
+assert(preview.trace[2].reason:match("UNKNOWN_FIELD"))
+assert(P:GetPermissionStateStatus().revisionID==previewRevision and HolyStorm.Serializer:Serialize(P:GetFilter("preview-filter","global"))==previewBefore)
+
+-- AB: reusable rules are independent persisted objects, and mutation permissions are enforced in Core.
+assert(P:SaveRule({id="standalone-rule",name="Standalone",root={field="test.boolean",operator="true"}},"global"));assert(P:GetRule("standalone-rule","global")and P:GetFilter("standalone-rule","global")==nil)
+local filterCandidate=HolyStorm.Utils.DeepCopy(P:GetFilter("preview-filter","global"));filterCandidate.name="Denied edit";local actor={accountUUID="acct-klaus",characterUUID="Klaus"};assert(not P:AuthorizeChange(state,{action="FILTER_UPSERT",filter=filterCandidate},actor));assert(not P:AuthorizeChange(state,{action="FILTER_DELETE",filterId="preview-filter"},actor));local newCandidate={id="denied-create",name="Denied",root={field="test.boolean",operator="true"}};assert(not P:AuthorizeChange(state,{action="FILTER_UPSERT",filter=newCandidate},actor))
+currentGuid="Klaus";local localDenied,localDeniedReason=P:SaveFilter({id="denied-local",name="Denied local",root={field="test.boolean",operator="true"}},"local");assert(not localDenied and localDeniedReason=="PERMISSION_DENIED");currentGuid="Maristi"
+
+-- AC: invalid names/descriptions and unsafe rule references are rejected before persistence.
+assert(not P:SaveFilter({id="bad-name",name="   ",root={field="test.boolean",operator="true"}},"global"));assert(not P:SaveFilter({id="bad-description",name="Bad",description=string.rep("x",1025),root={field="test.boolean",operator="true"}},"global"));assert(P:CreateGroup({id="rule-reference",name="Rule Reference",permissions={}}));local ruleReference=P:GetGroup("rule-reference");ruleReference.ruleIds={"standalone-rule"};assert(P:SaveGroup(ruleReference));assert(not P:DeleteRule("standalone-rule","global"));ruleReference=P:GetGroup("rule-reference");ruleReference.ruleIds={};assert(P:SaveGroup(ruleReference));assert(P:DeleteRule("standalone-rule","global"))
+
+print("Permission engine scenarios A-AC passed")

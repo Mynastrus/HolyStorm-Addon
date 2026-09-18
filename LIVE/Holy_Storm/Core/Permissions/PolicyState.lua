@@ -119,8 +119,23 @@ function State:ValidateSnapshot(snapshot)
     for id,definition in pairs(defaults) do local group=snapshot.groups[id]; if not group or group.system~=true then return false,"MISSING_SYSTEM_GROUP" end; if group.systemRule~=definition.systemRule or group.nameKey~=definition.nameKey or group.creator~="System" then return false,"SYSTEM_INVARIANT" end end
     for id,group in pairs(snapshot.groups) do if group.system and not defaults[id] then return false,"UNKNOWN_SYSTEM_GROUP" end end
     if self:HasManagerCycle(snapshot.groups) then return false,"MANAGER_CYCLE" end
-    for id,filter in pairs(snapshot.filters) do if id~=filter.id or not Core.ValidId(id) then return false,"INVALID_FILTER" end; local ok,err=HolyStorm.Rules:Validate(filter.root or filter.rules); if not ok then return false,err end end
-    for id,rule in pairs(snapshot.rules) do if id~=rule.id or not Core.ValidId(id) then return false,"INVALID_RULE" end; local ok,err=HolyStorm.Rules:Validate(rule.root or rule.rules); if not ok then return false,err end end
+    local function validateObject(kind,id,object)
+        if id~=object.id or not Core.ValidId(id) then return false,"INVALID_"..kind end
+        if type(object.name)~="string" or not object.name:match("%S") or #object.name>128 then return false,"INVALID_OBJECT_NAME" end
+        if object.description~=nil and (type(object.description)~="string" or #object.description>1024) then return false,"INVALID_OBJECT_DESCRIPTION" end
+        if object.category~=nil and (type(object.category)~="string" or #object.category>96) then return false,"INVALID_OBJECT_CATEGORY" end
+        if object.scope~=nil and object.scope~="global" then return false,"INVALID_OBJECT_SCOPE" end
+        if object.version~=nil and (tonumber(object.version)==nil or tonumber(object.version)<0) then return false,"INVALID_OBJECT_VERSION" end
+        if object.creator~=nil and type(object.creator)~="string" then return false,"INVALID_OBJECT_CREATOR" end
+        if object.createdAt~=nil and tonumber(object.createdAt)==nil then return false,"INVALID_OBJECT_TIMESTAMP" end
+        if object.modifiedAt~=nil and tonumber(object.modifiedAt)==nil then return false,"INVALID_OBJECT_TIMESTAMP" end
+        if object.modifiedBy~=nil and type(object.modifiedBy)~="string" then return false,"INVALID_OBJECT_MODIFIER" end
+        local ok,err=HolyStorm.Rules:Validate(object.root or object.rules)
+        if not ok then return false,err end
+        return true
+    end
+    for id,filter in pairs(snapshot.filters) do local ok,err=validateObject("FILTER",id,filter);if not ok then return false,err end end
+    for id,rule in pairs(snapshot.rules) do local ok,err=validateObject("RULE",id,rule);if not ok then return false,err end end
     return true
 end
 
@@ -177,8 +192,19 @@ function State:AuthorizeChange(state,change,actor)
         return true
     end
     if action=="FILTER_UPSERT" then local permission=state.filters[change.filter.id] and "filters-edit" or "filters-create"; return self:HasPermissionInState(state,actor.accountUUID,actor.characterUUID,permission),"PERMISSION_DENIED" end
-    if action=="FILTER_DELETE" then return self:HasPermissionInState(state,actor.accountUUID,actor.characterUUID,"filters-delete"),"PERMISSION_DENIED" end
-    if action=="RULE_UPSERT" or action=="RULE_DELETE" then return self:HasPermissionInState(state,actor.accountUUID,actor.characterUUID,"rules-manage"),"PERMISSION_DENIED" end
+    if action=="FILTER_DELETE" then
+        if not self:HasPermissionInState(state,actor.accountUUID,actor.characterUUID,"filters-delete")then return false,"PERMISSION_DENIED"end
+        local references=HolyStorm.FilterManager and HolyStorm.FilterManager:GetReferences("filters",change.filterId,"global",state)or{}
+        if #references>0 then return false,"FILTER_IN_USE"end
+        return true
+    end
+    if action=="RULE_DELETE" then
+        if not self:HasPermissionInState(state,actor.accountUUID,actor.characterUUID,"rules-manage")then return false,"PERMISSION_DENIED"end
+        local references=HolyStorm.FilterManager and HolyStorm.FilterManager:GetReferences("rules",change.ruleId,"global",state)or{}
+        if #references>0 then return false,"RULE_IN_USE"end
+        return true
+    end
+    if action=="RULE_UPSERT" then return self:HasPermissionInState(state,actor.accountUUID,actor.characterUUID,"rules-manage"),"PERMISSION_DENIED" end
     if action=="MODULE_SET" then return self:HasPermissionInState(state,actor.accountUUID,actor.characterUUID,"modules-manage"),"PERMISSION_DENIED" end
     return false,"UNKNOWN_ACTION"
 end

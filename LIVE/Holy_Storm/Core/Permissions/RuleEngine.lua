@@ -7,6 +7,7 @@ local Rules = {
     aliases = {},
     owners = {},
     operators = {},
+    operatorDefinitions = {},
     maxDepth = 8,
     maxChildren = 32,
     maxListValues = 100,
@@ -24,44 +25,78 @@ local function inList(actual,values)
     return false
 end
 local function validId(value) return type(value)=="string" and value:match("^[%w%._%-]+$")~=nil end
+local function validOperatorId(value) return type(value)=="string" and #value>0 and #value<=32 and value:match("^[%w_<>!=%-]+$")~=nil end
 local function copy(value) return HolyStorm.Utils.DeepCopy(value) end
 local function log(level,category,message,context)
     if HolyStorm.Logger and HolyStorm.Logger.Write then HolyStorm.Logger:Write(level,"Rules",category,message,context) end
 end
 
-Rules.operators["="] = equals
-Rules.operators["!="] = function(a,b) return not equals(a,b) end
-Rules.operators[">"] = function(a,b) return tonumber(a) and tonumber(b) and tonumber(a)>tonumber(b) or false end
-Rules.operators[">="] = function(a,b) return tonumber(a) and tonumber(b) and tonumber(a)>=tonumber(b) or false end
-Rules.operators["<"] = function(a,b) return tonumber(a) and tonumber(b) and tonumber(a)<tonumber(b) or false end
-Rules.operators["<="] = function(a,b) return tonumber(a) and tonumber(b) and tonumber(a)<=tonumber(b) or false end
-Rules.operators.between = function(a,b)
+function Rules:RegisterOperator(id,definition,evaluator)
+    if type(definition)=="function" and evaluator==nil then evaluator=definition;definition={} end
+    if not validOperatorId(id) or type(definition)~="table" or type(evaluator)~="function" then return false,"INVALID_OPERATOR" end
+    local normalized=copy(definition)
+    normalized.id=id
+    normalized.types=type(normalized.types)=="table" and copy(normalized.types) or {"any"}
+    normalized.requiresValue=normalized.requiresValue~=false
+    normalized.multiple=normalized.multiple==true
+    self.operators[id]=evaluator
+    self.operatorDefinitions[id]=normalized
+    if HolyStorm.Events then HolyStorm.Events:Emit("HS_RULE_OPERATOR_REGISTERED",id) end
+    return true
+end
+
+function Rules:GetOperator(id)
+    local definition=self.operatorDefinitions[id]
+    return definition and copy(definition) or nil
+end
+
+function Rules:GetOperators()
+    local result={}
+    for id,definition in pairs(self.operatorDefinitions) do result[id]=copy(definition) end
+    return result
+end
+
+local builtinOperators={
+    ["="]={{"any"},function(a,b)return equals(a,b)end},
+    ["!="]={{"any"},function(a,b)return not equals(a,b)end},
+    [">"]={{"number"},function(a,b)return tonumber(a) and tonumber(b) and tonumber(a)>tonumber(b) or false end},
+    [">="]={{"number"},function(a,b)return tonumber(a) and tonumber(b) and tonumber(a)>=tonumber(b) or false end},
+    ["<"]={{"number"},function(a,b)return tonumber(a) and tonumber(b) and tonumber(a)<tonumber(b) or false end},
+    ["<="]={{"number"},function(a,b)return tonumber(a) and tonumber(b) and tonumber(a)<=tonumber(b) or false end},
+}
+for id,entry in pairs(builtinOperators) do Rules:RegisterOperator(id,{types=entry[1]},entry[2]) end
+Rules:RegisterOperator("between",{types={"number"},multiple=true,valueCount=2},function(a,b)
     local low,high=type(b)=="table" and tonumber(b[1]),type(b)=="table" and tonumber(b[2])
     return tonumber(a) and low and high and tonumber(a)>=low and tonumber(a)<=high or false
-end
-Rules.operators.not_between = function(a,b) return not Rules.operators.between(a,b) end
-Rules.operators.contains = function(a,b) return lower(a):find(lower(b),1,true)~=nil end
-Rules.operators.not_contains = function(a,b) return not Rules.operators.contains(a,b) end
-Rules.operators.starts_with = function(a,b) return lower(a):sub(1,#lower(b))==lower(b) end
-Rules.operators.ends_with = function(a,b) local x,y=lower(a),lower(b);return y=="" or x:sub(-#y)==y end
-Rules.operators["in"] = inList
-Rules.operators.not_in = function(a,b) return not inList(a,b) end
-Rules.operators["true"] = function(a) return a==true end
-Rules.operators["false"] = function(a) return a==false end
-Rules.operators.exists = function(a) return a~=nil end
-Rules.operators.not_exists = function(a) return a==nil end
+end)
+Rules:RegisterOperator("not_between",{types={"number"},multiple=true,valueCount=2},function(a,b)return not Rules.operators.between(a,b)end)
+Rules:RegisterOperator("contains",{types={"string"}},function(a,b)return lower(a):find(lower(b),1,true)~=nil end)
+Rules:RegisterOperator("not_contains",{types={"string"}},function(a,b)return not Rules.operators.contains(a,b)end)
+Rules:RegisterOperator("starts_with",{types={"string"}},function(a,b)return lower(a):sub(1,#lower(b))==lower(b)end)
+Rules:RegisterOperator("ends_with",{types={"string"}},function(a,b)local x,y=lower(a),lower(b);return y==""or x:sub(-#y)==y end)
+Rules:RegisterOperator("in",{types={"string","enum","character","account"},multiple=true},inList)
+Rules:RegisterOperator("not_in",{types={"string","enum","character","account"},multiple=true},function(a,b)return not inList(a,b)end)
+Rules:RegisterOperator("true",{types={"boolean"},requiresValue=false},function(a)return a==true end)
+Rules:RegisterOperator("false",{types={"boolean"},requiresValue=false},function(a)return a==false end)
+Rules:RegisterOperator("exists",{types={"any"},requiresValue=false},function(a)return a~=nil end)
+Rules:RegisterOperator("not_exists",{types={"any"},requiresValue=false},function(a)return a==nil end)
 Rules.operators.range=Rules.operators.between
 Rules.operators.in_list=Rules.operators["in"]
 Rules.operators.not_in_list=Rules.operators.not_in
 Rules.operators.is_true=Rules.operators["true"]
 Rules.operators.is_false=Rules.operators["false"]
+Rules.operatorDefinitions.range=copy(Rules.operatorDefinitions.between);Rules.operatorDefinitions.range.id="range"
+Rules.operatorDefinitions.in_list=copy(Rules.operatorDefinitions["in"]);Rules.operatorDefinitions.in_list.id="in_list"
+Rules.operatorDefinitions.not_in_list=copy(Rules.operatorDefinitions.not_in);Rules.operatorDefinitions.not_in_list.id="not_in_list"
+Rules.operatorDefinitions.is_true=copy(Rules.operatorDefinitions["true"]);Rules.operatorDefinitions.is_true.id="is_true"
+Rules.operatorDefinitions.is_false=copy(Rules.operatorDefinitions["false"]);Rules.operatorDefinitions.is_false.id="is_false"
 
 local defaultOperators = {
     boolean={"=","!=","true","false","exists","not_exists"},
     number={"=","!=",">",">=","<","<=","between","not_between","exists","not_exists"},
     string={"=","!=","contains","not_contains","starts_with","ends_with","in","not_in","exists","not_exists"},
 }
-defaultOperators.enum=defaultOperators.string
+defaultOperators.enum={"=","!=","in","not_in","exists","not_exists"}
 defaultOperators.character=defaultOperators.string
 defaultOperators.account=defaultOperators.string
 defaultOperators.any={"=","!=","exists","not_exists"}
@@ -78,7 +113,12 @@ local function normalizeAllowedOperators(definition)
     local list,set={},{}
     for key,value in pairs(source) do
         local operator=type(key)=="number" and value or value==true and key or nil
-        if type(operator)=="string" and Rules.operators[operator] and not set[operator] then set[operator]=true;list[#list+1]=operator end
+        local operatorDefinition=type(operator)=="string"and Rules.operatorDefinitions[operator]
+        local supported=false
+        for _,kind in ipairs(operatorDefinition and operatorDefinition.types or{})do
+            if kind=="any"or kind==definition.type or kind=="string"and(definition.type=="character"or definition.type=="account")then supported=true;break end
+        end
+        if supported and Rules.operators[operator] and not set[operator] then set[operator]=true;list[#list+1]=operator end
     end
     return list,set
 end
@@ -92,10 +132,13 @@ function Rules:RegisterField(owner,fieldID,definition)
     local normalized=copy(definition)
     normalized.id,normalized.owner,normalized.module=fieldID,owner,definition.module or owner
     normalized.type=definition.type or "any"
+    normalized.name=definition.name or fieldID
+    normalized.description=definition.description or normalized.name
     normalized.resolver=resolver
     normalized.get=normalized.resolver -- Compatibility for existing consumers.
     normalized.dependencies=type(definition.dependencies)=="table" and copy(definition.dependencies) or {}
     normalized.allowedOperators,normalized._allowedOperatorSet=normalizeAllowedOperators(normalized)
+    if #normalized.allowedOperators==0 then return false,"INVALID_FIELD_OPERATORS" end
     self.fields[fieldID]=normalized
     self.owners[owner]=self.owners[owner] or {fields={},aliases={}}
     self.owners[owner].fields[fieldID]=true
@@ -144,6 +187,31 @@ function Rules:GetFieldsByOwner(owner)
     for id in pairs(owned and owned.fields or {}) do if self.fields[id] then result[id]=copy(self.fields[id]) end end
     for id in pairs(owned and owned.aliases or {}) do if self.aliases[id] then result[id]=self:GetField(id) end end
     return result
+end
+
+function Rules:GetFieldDiagnostics(context)
+    local result={}
+    for id,definition in pairs(self.fields) do
+        local available,reason=self:GetFieldAvailability(id,context)
+        result[#result+1]={id=id,name=definition.name,nameKey=definition.nameKey,description=definition.description,descriptionKey=definition.descriptionKey,owner=definition.owner,module=definition.module,type=definition.type,category=definition.category,operators=copy(definition.allowedOperators),available=available,reason=reason}
+    end
+    table.sort(result,function(a,b)return tostring(a.category or"")<tostring(b.category or"")or a.category==b.category and tostring(a.name or a.id)<tostring(b.name or b.id)end)
+    return result
+end
+
+function Rules:GetFieldAvailability(fieldID,context,node)
+    local field,resolvedID=self:_ResolveField(fieldID)
+    if not field then return false,"UNKNOWN_FIELD:"..tostring(fieldID)end
+    if not field.availability then return true end
+    local resolverContext={}
+    for key,value in pairs(context or{})do resolverContext[key]=value end
+    resolverContext.accountUUID=resolverContext.accountUUID or resolverContext.playerId
+    resolverContext.characterUUID=resolverContext.characterUUID or resolverContext.guid
+    resolverContext.argument=node and(node.argument~=nil and node.argument or node.value)
+    local ok,available,reason=HolyStorm.Utils.SafeCall("rule.availability:"..resolvedID,field.availability,resolverContext,node)
+    if not ok then log("WARN","availability","Rule field availability failed",{field=fieldID,owner=field.owner,error=tostring(available)});return false,"AVAILABILITY_ERROR:"..fieldID end
+    if not available then return false,reason or"FIELD_UNAVAILABLE:"..fieldID end
+    return true
 end
 
 function Rules:UnregisterField(owner,fieldID)
@@ -202,11 +270,8 @@ function Rules:GetFieldValue(fieldID,context,node)
     resolverContext.accountUUID=context.accountUUID or context.playerId
     resolverContext.characterUUID=context.characterUUID or context.guid
     resolverContext.argument=node and (node.argument~=nil and node.argument or node.value)
-    if field.availability then
-        local ok,available,reason=HolyStorm.Utils.SafeCall("rule.availability:"..resolvedID,field.availability,resolverContext,node)
-        if not ok then log("WARN","availability","Rule field availability failed",{field=fieldID,owner=field.owner,error=tostring(available)});return nil,"AVAILABILITY_ERROR:"..fieldID end
-        if not available then return nil,reason or "FIELD_UNAVAILABLE:"..fieldID end
-    end
+    local available,availabilityReason=self:GetFieldAvailability(fieldID,resolverContext,node)
+    if not available then return nil,availabilityReason end
     local ok,value,reason=HolyStorm.Utils.SafeCall("rule.field:"..resolvedID,field.resolver,resolverContext,node)
     if not ok then log("ERROR","resolver","Rule field resolver failed",{field=fieldID,owner=field.owner,error=tostring(value)});return nil,"RESOLVER_ERROR:"..fieldID end
     if value==nil then return nil,reason or "MISSING_DATA:"..fieldID end
@@ -244,7 +309,8 @@ function Rules:_Validate(node,depth,count,portableOnly)
     if not validId(node.field) then return false,"INVALID_FIELD" end
     local operator=node.operator or "="
     if not self.operators[operator] then return false,"UNKNOWN_OPERATOR:"..tostring(operator) end
-    if operator~="true" and operator~="false" and operator~="exists" and operator~="not_exists" and node.value==nil then return false,"MISSING_VALUE" end
+    local operatorDefinition=self.operatorDefinitions[operator]
+    if (not operatorDefinition or operatorDefinition.requiresValue~=false) and node.value==nil then return false,"MISSING_VALUE" end
     if operator=="between" or operator=="not_between" or operator=="in" or operator=="not_in" then
         if type(node.value)~="table" or #node.value==0 or #node.value>self.maxListValues then return false,"INVALID_VALUE" end
         if (operator=="between" or operator=="not_between") and (#node.value~=2 or tonumber(node.value[1])==nil or tonumber(node.value[2])==nil) then return false,"INVALID_VALUE" end
@@ -257,6 +323,17 @@ function Rules:_Validate(node,depth,count,portableOnly)
         if type(node.value)=="table" then for _,value in ipairs(node.value) do if tonumber(value)==nil then return false,"INVALID_VALUE_TYPE:number" end end
         elseif tonumber(node.value)==nil then return false,"INVALID_VALUE_TYPE:number" end
     elseif field.type=="boolean" and (operator=="=" or operator=="!=") and type(node.value)~="boolean" then return false,"INVALID_VALUE_TYPE:boolean" end
+    if operatorDefinition and operatorDefinition.requiresValue~=false and field.type~="number" and field.type~="any" then
+        local values=type(node.value)=="table"and node.value or{node.value}
+        for _,value in ipairs(values)do if not valueMatchesType(field.type,value)then return false,"INVALID_VALUE_TYPE:"..field.type end end
+        if field.type=="enum"and type(field.values)=="table"and#field.values>0 then
+            for _,value in ipairs(values)do
+                local found=false
+                for _,candidate in ipairs(field.values)do local allowed=type(candidate)=="table"and(candidate.value~=nil and candidate.value or candidate.id)or candidate;if equals(value,allowed)then found=true;break end end
+                if not found then return false,"INVALID_ENUM_VALUE:"..tostring(value)end
+            end
+        end
+    end
     return true
 end
 
@@ -269,17 +346,19 @@ function Rules:EvaluateDetailed(node,context,trace)
     local PASS,FAIL,UNKNOWN=self.Result.PASS,self.Result.FAIL,self.Result.UNKNOWN
     local valid,validationError=self:Validate(node)
     if not valid then trace[#trace+1]={kind="error",error=validationError,status=UNKNOWN,result=false};log("WARN","validation","Invalid rule",{error=validationError});return UNKNOWN,trace end
-    local function evaluate(current)
+    local function evaluate(current,depth)
+        depth=depth or 0
         if current.logic then
             local logic=string.upper(current.logic);local status
-            if logic=="NOT" then local child=evaluate(current.children[1]);status=child==PASS and FAIL or child==FAIL and PASS or UNKNOWN
-            elseif logic=="OR" then status=FAIL;for _,childNode in ipairs(current.children) do local child=evaluate(childNode);if child==PASS then status=PASS elseif child==UNKNOWN and status~=PASS then status=UNKNOWN end end
-            else status=PASS;for _,childNode in ipairs(current.children) do local child=evaluate(childNode);if child==FAIL then status=FAIL elseif child==UNKNOWN and status~=FAIL then status=UNKNOWN end end end
-            trace[#trace+1]={kind="group",logic=logic,status=status,result=status==PASS};return status
+            if logic=="NOT" then local child=evaluate(current.children[1],depth+1);status=child==PASS and FAIL or child==FAIL and PASS or UNKNOWN
+            elseif logic=="OR" then status=FAIL;for _,childNode in ipairs(current.children) do local child=evaluate(childNode,depth+1);if child==PASS then status=PASS elseif child==UNKNOWN and status~=PASS then status=UNKNOWN end end
+            else status=PASS;for _,childNode in ipairs(current.children) do local child=evaluate(childNode,depth+1);if child==FAIL then status=FAIL elseif child==UNKNOWN and status~=FAIL then status=UNKNOWN end end end
+            trace[#trace+1]={kind="group",logic=logic,status=status,result=status==PASS,depth=depth};return status
         end
         local actual,reason=self:GetFieldValue(current.field,context,current)
         local status=reason and UNKNOWN or (self.operators[current.operator or "="](actual,current.value) and PASS or FAIL)
-        trace[#trace+1]={kind="condition",field=current.field,operator=current.operator or "=",expected=current.value,actual=actual,status=status,result=status==PASS,error=reason}
+        local field=self:_ResolveField(current.field)
+        trace[#trace+1]={kind="condition",field=current.field,operator=current.operator or "=",expected=copy(current.value),actual=copy(actual),status=status,result=status==PASS,error=reason,reason=reason,provider=field and field.owner,module=field and field.module,valueType=field and field.type,depth=depth}
         return status
     end
     local ok,status=HolyStorm.Utils.SafeCall("rule.evaluate",evaluate,node)
