@@ -17,9 +17,31 @@ HolyStorm:RegisterModule(metadata, function(Events)
         return time({ year = event.year, month = event.month, day = event.monthDay, hour = event.hour, min = event.minute })
     end
 
-    local function HasStatus(status, name)
+    local UNKNOWN_STATUS = "UNKNOWN"
+    local calendarStatusNames = { "Invited", "Available", "Declined", "Confirmed", "Out", "Standby", "Signedup", "NotSignedup", "Tentative" }
+
+    -- Calendar invite fields can be Secret Values in restricted WoW 12.x states.
+    -- Normalize while access is known to be legal; inaccessible values never leave
+    -- this boundary and therefore cannot reach UI comparisons or persisted fingerprints.
+    local function NormalizeCalendarStatus(status)
+        local isSecretValue, canAccessValue = _G.issecretvalue, _G.canaccessvalue
+        if type(isSecretValue) == "function" and isSecretValue(status) then
+            if type(canAccessValue) ~= "function" or canAccessValue(status) ~= true then return UNKNOWN_STATUS end
+        elseif type(canAccessValue) == "function" and canAccessValue(status) ~= true then
+            return UNKNOWN_STATUS
+        end
+        if status == nil then return UNKNOWN_STATUS end
         local calendarStatus = _G.Enum and _G.Enum.CalendarStatus
-        return status == (calendarStatus and calendarStatus[name]) or status == string.upper(name)
+        for _, name in ipairs(calendarStatusNames) do
+            if status == (calendarStatus and calendarStatus[name]) or status == string.upper(name) then
+                return string.upper(name)
+            end
+        end
+        return UNKNOWN_STATUS
+    end
+
+    local function HasStatus(status, name)
+        return NormalizeCalendarStatus(status) == string.upper(name)
     end
 
     local function IsSignedUp(invite)
@@ -36,13 +58,29 @@ HolyStorm:RegisterModule(metadata, function(Events)
     end
 
     local function GetStatusLabel(status)
-        if HasStatus(status, "Confirmed") then return L["STATUS_CONFIRMED"] end
-        if HasStatus(status, "Signedup") then return L["STATUS_SIGNEDUP"] end
-        if HasStatus(status, "Tentative") then return L["STATUS_TENTATIVE"] end
-        if HasStatus(status, "Standby") then return L["STATUS_STANDBY"] end
-        if HasStatus(status, "Declined") or HasStatus(status, "Out") then return L["STATUS_NOT_ATTENDING"] end
+        local normalized = NormalizeCalendarStatus(status)
+        if normalized == "CONFIRMED" then return L["STATUS_CONFIRMED"] end
+        if normalized == "SIGNEDUP" then return L["STATUS_SIGNEDUP"] end
+        if normalized == "TENTATIVE" then return L["STATUS_TENTATIVE"] end
+        if normalized == "STANDBY" then return L["STATUS_STANDBY"] end
+        if normalized == "DECLINED" or normalized == "OUT" then return L["STATUS_NOT_ATTENDING"] end
+        if normalized == UNKNOWN_STATUS then return L["STATUS_UNKNOWN"] end
         return "-"
     end
+
+    local function GetStatusColor(status)
+        local normalized = NormalizeCalendarStatus(status)
+        if normalized == UNKNOWN_STATUS then return "|cffb3b3b3", 0.7, 0.7, 0.7 end
+        if normalized == "CONFIRMED" or normalized == "SIGNEDUP" then return "|cff40ff40", 0.25, 1, 0.25 end
+        if normalized == "TENTATIVE" or normalized == "STANDBY" then return "|cffffa619", 1, 0.65, 0.1 end
+        return "|cffff4d4d", 1, 0.3, 0.3
+    end
+
+    function Events:NormalizeCalendarStatus(status) return NormalizeCalendarStatus(status) end
+    function Events:HasStatus(status, name) return HasStatus(status, name) end
+    function Events:IsSignedUp(invite) return IsSignedUp(invite) end
+    function Events:IsActiveParticipant(invite) return IsActiveParticipant(invite) end
+    function Events:GetStatusLabel(status) return GetStatusLabel(status) end
 
     local function GetShortDescription(event)
         local description = (event.description or L["NO_DESCRIPTION"]):gsub("[\r\n]+", " ")
@@ -89,7 +127,9 @@ HolyStorm:RegisterModule(metadata, function(Events)
 
     function Events:GetFingerprint(event)
         local attendees = {}
-        for _, invite in ipairs(event.allInvites or {}) do table.insert(attendees, table.concat({ invite.name or "", tostring(invite.inviteStatus or ""), invite.classFilename or "" }, "\031")) end
+        for _, invite in ipairs(event.allInvites or {}) do
+            table.insert(attendees, table.concat({ invite.name or "", NormalizeCalendarStatus(invite.inviteStatus), invite.classFilename or "" }, "\031"))
+        end
         table.sort(attendees)
         return table.concat({ event.title or "", tostring(event.year), tostring(event.month), tostring(event.monthDay), tostring(event.hour), tostring(event.minute), event.description or "", table.concat(attendees, "\030") }, "\029")
     end
@@ -128,8 +168,6 @@ HolyStorm:RegisterModule(metadata, function(Events)
         if selectedEventId then
             for _, event in ipairs(events) do if event.eventID == selectedEventId then self:ShowDetails(event); break end end
         end
-        if self.closeCalendarAfterRefresh and _G.CalendarFrame and _G.CalendarFrame:IsShown() then HideUIPanel(_G.CalendarFrame) end
-        self.closeCalendarAfterRefresh = false
     end
 
     function Events:CanAutoRefresh()
@@ -278,7 +316,7 @@ HolyStorm:RegisterModule(metadata, function(Events)
             local name = invite.name or (member and member.name) or L["UNKNOWN_PLAYER"]; local nameColor = color and string.format("|cff%02x%02x%02x", math.floor(color.r * 255), math.floor(color.g * 255), math.floor(color.b * 255)) or "|cffffffff"
             row:AddChild(Label(nameColor .. name .. "|r", 0.29))
             row:AddChild(Label(self:GetRaidProgress(invite, event), 0.19))
-            local statusColor = (HasStatus(invite.inviteStatus, "Confirmed") or HasStatus(invite.inviteStatus, "Signedup")) and "|cff40ff40" or ((HasStatus(invite.inviteStatus, "Tentative") or HasStatus(invite.inviteStatus, "Standby")) and "|cffffa619" or "|cffff4d4d")
+            local statusColor = GetStatusColor(invite.inviteStatus)
             row:AddChild(Label(statusColor .. GetStatusLabel(invite.inviteStatus) .. "|r", 0.18))
             if event.canEdit then
                 local canManage = not IsEventLocked(event)
@@ -307,7 +345,8 @@ HolyStorm:RegisterModule(metadata, function(Events)
             row.online:SetTexture(member and member.online and "Interface\\FriendsFrame\\StatusIcon-Online" or "Interface\\FriendsFrame\\StatusIcon-Offline")
             local classCoords = classFile and CLASS_ICON_TCOORDS and CLASS_ICON_TCOORDS[classFile]; if classCoords then row.classIcon:SetTexCoord(unpack(classCoords)); row.classIcon:Show() else row.classIcon:Hide() end
             local roleCoordsForPlayer = roleCoords[self:GetRole(invite)]; if roleCoordsForPlayer then row.roleIcon:SetTexCoord(unpack(roleCoordsForPlayer)); row.roleIcon:Show() else row.roleIcon:Hide() end
-            row.raid:SetText(self:GetRaidProgress(invite, event)); row.status:SetText(GetStatusLabel(invite.inviteStatus)); if HasStatus(invite.inviteStatus, "Confirmed") or HasStatus(invite.inviteStatus, "Signedup") then row.status:SetTextColor(0.25, 1, 0.25) elseif HasStatus(invite.inviteStatus, "Tentative") or HasStatus(invite.inviteStatus, "Standby") then row.status:SetTextColor(1, 0.65, 0.1) else row.status:SetTextColor(1, 0.3, 0.3) end
+            local _, statusR, statusG, statusB = GetStatusColor(invite.inviteStatus)
+            row.raid:SetText(self:GetRaidProgress(invite, event)); row.status:SetText(GetStatusLabel(invite.inviteStatus)); row.status:SetTextColor(statusR, statusG, statusB)
             local canManage = event.canEdit and not IsEventLocked(event)
             row.status:ClearAllPoints(); row.status:SetPoint("RIGHT", row, "RIGHT", event.canEdit and -92 or 0, 0)
             row.confirm:SetShown(event.canEdit); row.standby:SetShown(event.canEdit); row.decline:SetShown(event.canEdit)
@@ -422,10 +461,10 @@ HolyStorm:RegisterModule(metadata, function(Events)
                 for inviteIndex = 1, calendar.GetNumInvites() do
                     local invite = calendar.EventGetInvite(inviteIndex)
                     if invite then
-                        local entry = { index = inviteIndex, name = invite.name, level = invite.level, className = invite.className, classFilename = invite.classFilename, inviteStatus = invite.inviteStatus, inviteIsMine = invite.inviteIsMine, guid = invite.guid }
+                        local entry = { index = inviteIndex, name = invite.name, level = invite.level, className = invite.className, classFilename = invite.classFilename, inviteStatus = NormalizeCalendarStatus(invite.inviteStatus), inviteIsMine = invite.inviteIsMine, guid = invite.guid }
                         table.insert(event.allInvites, entry)
                         if IsActiveParticipant(entry) then event.signupCount = event.signupCount + 1 end
-                        if IsSignedUp(entry) then table.insert(event.invites, entry) end
+                        if IsSignedUp(entry) or entry.inviteStatus == UNKNOWN_STATUS then table.insert(event.invites, entry) end
                     end
                 end
             end
@@ -440,14 +479,13 @@ HolyStorm:RegisterModule(metadata, function(Events)
         if self.isRefreshing then return end
         if automatic and not self:CanAutoRefresh() then return end
         self.isRefreshing, self.markReadAfterRefresh = true, markRead or false
-        self.closeCalendarAfterRefresh = automatic
         self:SetLoading(true)
         if not automatic and self.page:IsShown() and not self.detail:IsShown() then self:ShowList() end
         local calendar = _G.C_Calendar
-        if not calendar or not calendar.OpenCalendar then self.isRefreshing, self.closeCalendarAfterRefresh = false, false; self:SetLoading(false); return end
+        if not calendar or not calendar.OpenCalendar then self.isRefreshing = false; self:SetLoading(false); return end
         calendar.OpenCalendar()
         HolyStorm.Tasks:Enqueue("calendar.open", function()
-            if not Events:IsEnabled() or not calendar.GetNumGuildEvents or not calendar.GetGuildEventInfo then Events.isRefreshing, Events.closeCalendarAfterRefresh = false, false; Events:SetLoading(false); return end
+            if not Events:IsEnabled() or not calendar.GetNumGuildEvents or not calendar.GetGuildEventInfo then Events.isRefreshing = false; Events:SetLoading(false); return end
             local events = {}
             for index = 1, calendar.GetNumGuildEvents() do
                 local event = calendar.GetGuildEventInfo(index)
