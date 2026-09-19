@@ -19,7 +19,13 @@ function Snapshots:Register(id)
 end
 function Snapshots:Queue(id,scanner,validator,commit,options)
  if type(id)~="string"or type(scanner)~="function"or type(validator)~="function"or type(commit)~="function"then return false end;options=options or{};self:Register(id)
- local workflowId=HolyStorm.Workflows:Request("SNAPSHOT_"..string.upper(id),{priority=options.priority or 50,debounce=options.delay or options.debounce or 1,triggerSource=options.triggerSource or(HolyStorm.Events and HolyStorm.Events.currentEvent)or options.source or id,context={scanner=scanner,validator=validator,commit=commit,options=HolyStorm.Utils.DeepCopy(options)}});return workflowId~=nil,workflowId
+local function startupActive() return HolyStorm.Tasks and type(HolyStorm.Tasks.IsStartupActive)=="function" and HolyStorm.Tasks:IsStartupActive() or false end
+local function startupPhase(id)
+	if id=="equipment" or id=="raids" then return 2 end
+	if id=="mythicplus" or id=="stats" or id=="delves" or id=="professions" then return 3 end
+	return 4
+end
+ local workflowId=HolyStorm.Workflows:Request("SNAPSHOT_"..string.upper(id),{priority=options.priority or 50,debounce=options.delay or options.debounce or 1,startupPhase=options.startupPhase or(startupActive() and startupPhase(id)or nil),triggerSource=options.triggerSource or(HolyStorm.Events and HolyStorm.Events.currentEvent)or options.source or id,context={scanner=scanner,validator=validator,commit=commit,options=HolyStorm.Utils.DeepCopy(options)}});return workflowId~=nil,workflowId
 end
 function Snapshots:Cancel(id)local workflowId=HolyStorm.Workflows.activeByType["SNAPSHOT_"..string.upper(tostring(id))];return workflowId and HolyStorm.Workflows:Cancel(workflowId,"MODULE_DISABLED")or false end
 HolyStorm.Snapshots=Snapshots

@@ -14,7 +14,7 @@ HolyStorm.Data, HolyStorm.Modules = {}, {}
 function HolyStorm:OnInitialize()
     self.Database:Initialize()
     self.Logger:Initialize(self.Database:Get("debug", "profile") == true)
-    self.Events:Initialize(); self.State:Initialize(); self.Tasks:Initialize(); self.Workflows:Initialize(); self.Actions:Initialize()
+    self.Events:Initialize(); self.State:Initialize(); self.Tasks:Initialize(); self.Tasks:BeginStartup("INITIALIZE"); self.Workflows:Initialize(); self.Actions:Initialize()
     self.PlayerData:Initialize(); self.Data.PlayerStore:Initialize(); self.Data.CharacterStore:Initialize(); self.Data.GuildStore:Initialize()
     self.Comms:Initialize(); self.Sync:Initialize()
     self.Rules:RegisterField("core","holystorm.version",{type="string",name=L["RULE_FIELD_ADDON_VERSION"],nameKey="RULE_FIELD_ADDON_VERSION",description=L["RULE_FIELD_ADDON_VERSION_DESC"],descriptionKey="RULE_FIELD_ADDON_VERSION_DESC",category=L["CORE_DISPLAY_NAME"],dependencies={"addon"},resolver=function(context)return context.character and context.character.addon and context.character.addon.version end})
@@ -42,6 +42,7 @@ function HolyStorm:OnInitialize()
 end
 
 function HolyStorm:OnEnable()
+    self.Tasks:BeginStartup("LOGIN")
     local function register(event, callback) self.Events:Register(event, "bootstrap", callback) end
     register("PLAYER_LOGIN", function() self.State:Set("playerLoggedIn", true); self:QueueInitialCollection() end)
     register("PLAYER_LEAVING_WORLD", function() self.State:Set("playerReady", false); self.State:Set("loading", true); self.State:Set("zoning", true) end)
@@ -58,17 +59,17 @@ function HolyStorm:QueueInitialCollection()
     self.Tasks:Enqueue("character.identity", function()
         local character = self.Data.CharacterStore:CaptureCurrent()
         if character then self.Data.PlayerStore:LinkLocalCharacter(character.guid) end
-    end, { priority = 1, debounce = 0.2 })
-    self.Tasks:Enqueue("character.equipment", function() self:CallCapability("character.scan.equipment", false) end, { priority = 2, debounce = 0.5 })
-    self.Tasks:Enqueue("character.raids", function() self:CallCapability("character.scan.raids", false) end, { priority = 3, debounce = 1 })
-    self.Tasks:Enqueue("character.mythicplus", function() self:CallCapability("character.scan.mythicplus", false) end, { priority = 4, debounce = 1.5 })
-    self.Tasks:Enqueue("character.additional", function() self:CallCapability("character.scan.additional", false) end, { priority = 5, debounce = 2 })
+    end, { priority = 1, debounce = 0.2, startupPhase = 1 })
+    self.Tasks:Enqueue("character.equipment", function() self:CallCapability("character.scan.equipment", false) end, { priority = 2, debounce = 0.5, startupPhase = 2, dependencies = { "character.identity" } })
+    self.Tasks:Enqueue("character.raids", function() self:CallCapability("character.scan.raids", false) end, { priority = 3, debounce = 1, startupPhase = 2, dependencies = { "character.identity" } })
+    self.Tasks:Enqueue("character.mythicplus", function() self:CallCapability("character.scan.mythicplus", false) end, { priority = 4, debounce = 1.5, startupPhase = 3, dependencies = { "character.identity" } })
+    self.Tasks:Enqueue("character.additional", function() self:CallCapability("character.scan.additional", false) end, { priority = 5, debounce = 2, startupPhase = 3, dependencies = { "character.identity" } })
     self:QueueGuildCollection(true)
 end
 
 function HolyStorm:QueueGuildCollection(requestRoster)
     if requestRoster then self.Data.GuildStore:RequestRoster() end
-    self.Tasks:Enqueue("guild.roster", function() self.Data.GuildStore:RefreshFromBlizzard() end, { priority = 6, debounce = 1, cooldown = 5 })
+    self.Tasks:Enqueue("guild.roster", function() self.Data.GuildStore:RefreshFromBlizzard() end, { priority = 6, debounce = 0.5, cooldown = 5, startupPhase = 2, conditions = { "PLAYER_LOGGED_IN", "PLAYER_READY", "NOT_LOADING", "NOT_ZONING" } })
 end
 
 function HolyStorm:OnDisable() self.Events:UnregisterOwner("bootstrap"); if self.Chat then self.Chat:Shutdown() end; self.Tasks:CancelAll(); self.Comms:Shutdown() end

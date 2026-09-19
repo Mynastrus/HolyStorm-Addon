@@ -10,7 +10,8 @@ local Tasks = {
     version=addonVersion, registry={}, queue={}, tasks={}, mergeIndex={}, history={},
     recurring={}, performance={}, eventHistory={}, lastRun={}, sequence=0, runtimeSequence=0,
     paused=false, runningTaskId=nil, timer=nil, timerDue=nil, maxHistory=250,
-    maxEventHistory=300, maxTriggerHistory=20,
+    maxEventHistory=300, maxTriggerHistory=20, maxTasksPerProcess=1,
+    startup={active=false,startedAt=nil,coreReadyAt=nil,backgroundReadyAt=nil,peakQueue=0,merged=0,executed=0,phaseOffsets={ [1]=0, [2]=.5, [3]=1, [4]=2 }},
 }
 Tasks.ExecutionMode={UNIQUE="UNIQUE",MERGE="UNIQUE",MULTI="MULTI",MERGE_BY_KEY="MERGE_BY_KEY"}
 Tasks.Status={REGISTERED="REGISTERED",QUEUED="QUEUED",WAITING="WAITING",BLOCKED="BLOCKED",READY="READY",RUNNING="RUNNING",WAITING_ASYNC="WAITING_ASYNC",COMPLETED="COMPLETED",FAILED="FAILED",CANCELLED="CANCELLED"}
@@ -39,6 +40,9 @@ function Tasks:Initialize()
  HolyStorm.Events:Register("PLAYER_REGEN_ENABLED","task-manager",function()Tasks:Wake("PLAYER_REGEN_ENABLED")end)
  HolyStorm.Events:Register("HS_STATE_CHANGED","task-manager",function()Tasks:Wake("HS_STATE_CHANGED")end)
 end
+function Tasks:BeginStartup(reason)self.startup.active=true;self.startup.startedAt=clock();self.startup.coreReadyAt=nil;self.startup.backgroundReadyAt=nil;self.startup.peakQueue=0;self.startup.merged=0;self.startup.executed=0;self.startup.reason=reason end
+function Tasks:IsStartupActive()return self.startup.active==true end
+function Tasks:GetStartupMetrics()local result=copy(self.startup);result.queueSize=#self.queue;return result end
 
 -- DE/EN Public API: definitions are contracts identified by stable registry IDs.
 function Tasks:RegisterTaskType(id,d)
@@ -59,13 +63,13 @@ function Tasks:Queue(id,o)
  local index=mergeId(id,mode,key);local existing=index and self.tasks[self.mergeIndex[index]]
  if existing and(existing.status=="QUEUED"or existing.status=="WAITING"or existing.status=="BLOCKED"or existing.status=="READY")then
   trigger(self,existing,o.triggerSource,o.triggerMetadata);if o.debounce~=nil or o.delay~=nil then existing.notBefore=clock()+math.max(0,tonumber(o.debounce or o.delay)or 0)end
-  local p=self.performance[id]or{runs=0,totalDuration=0,maxDuration=0,errors=0,merges=0,triggers=0};p.merges=p.merges+1;self.performance[id]=p
+  local p=self.performance[id]or{runs=0,totalDuration=0,maxDuration=0,errors=0,merges=0,triggers=0};p.merges=p.merges+1;self.performance[id]=p;self.startup.merged=self.startup.merged+1
   HolyStorm.Logger:Write("DEBUG",existing.module,"task","Task merged: "..id,taskContext(existing,{triggerCount=existing.triggerCount,triggerSource=o.triggerSource}),existing.workflowId or existing.uniqueId);if o.triggerSource then self:RecordEvent(o.triggerSource,existing.module,{taskId=existing.uniqueId,workflowId=existing.workflowId,triggeredTask=id})end;HolyStorm.Events:Emit("HS_TASK_MERGED",existing);self:Schedule();return existing.uniqueId,"MERGED"
  end
  self.runtimeSequence=self.runtimeSequence+1;self.sequence=self.sequence+1;local n,ts=clock(),wall();local uid=string.format("task_%08X_%04X",ts%0xFFFFFFFF,self.runtimeSequence%0xFFFF)
- local notBefore=n+math.max(0,tonumber(o.delay or o.debounce)or 0);local cooldown=math.max(0,tonumber(o.cooldown)or 0);if self.lastRun[id]then notBefore=math.max(notBefore,self.lastRun[id]+cooldown)end
- local task={uniqueId=uid,taskType=id,registryId=id,name=d.name,localizedNameKey=d.localizedNameKey,module=o.module or d.module,workflowId=o.workflowId,workflowStep=o.workflowStep,priority=tonumber(o.priority)or d.priority,status="QUEUED",createdAt=ts,queuedAt=ts,createdClock=n,queuedClock=n,startedAt=nil,finishedAt=nil,triggerCount=0,triggerSources={},triggerHistory={},conditions=copy(o.conditions or d.conditions),dependencies=copy(o.dependencies or d.dependencies),executionMode=mode,mergeKey=key,retryCount=tonumber(o.retryCount)or 0,maxRetries=tonumber(o.maxRetries)or d.maxRetries,metadata=copy(o.metadata or d.metadata),lastError=nil,blockReason=nil,notBefore=notBefore,cooldown=cooldown,sequence=self.sequence,callback=o.execute or d.execute,result=nil,indexKey=index}
- trigger(self,task,o.triggerSource,o.triggerMetadata);self.tasks[uid]=task;self.queue[#self.queue+1]=task;if index then self.mergeIndex[index]=uid end;table.sort(self.queue,sortQueue)
+ local notBefore=n+math.max(0,tonumber(o.delay or o.debounce)or 0);local startupPhase=tonumber(o.startupPhase);if startupPhase and self.startup.active then notBefore=math.max(notBefore,self.startup.startedAt+(self.startup.phaseOffsets[startupPhase]or 0))end;local cooldown=math.max(0,tonumber(o.cooldown)or 0);if self.lastRun[id]then notBefore=math.max(notBefore,self.lastRun[id]+cooldown)end
+ local task={uniqueId=uid,taskType=id,registryId=id,name=d.name,localizedNameKey=d.localizedNameKey,module=o.module or d.module,workflowId=o.workflowId,workflowStep=o.workflowStep,priority=tonumber(o.priority)or d.priority,status="QUEUED",createdAt=ts,queuedAt=ts,createdClock=n,queuedClock=n,startedAt=nil,finishedAt=nil,triggerCount=0,triggerSources={},triggerHistory={},conditions=copy(o.conditions or d.conditions),dependencies=copy(o.dependencies or d.dependencies),executionMode=mode,mergeKey=key,startupPhase=startupPhase,retryCount=tonumber(o.retryCount)or 0,maxRetries=tonumber(o.maxRetries)or d.maxRetries,metadata=copy(o.metadata or d.metadata),lastError=nil,blockReason=nil,notBefore=notBefore,cooldown=cooldown,sequence=self.sequence,callback=o.execute or d.execute,result=nil,indexKey=index}
+ trigger(self,task,o.triggerSource,o.triggerMetadata);self.tasks[uid]=task;self.queue[#self.queue+1]=task;if index then self.mergeIndex[index]=uid end;self.startup.peakQueue=math.max(self.startup.peakQueue,#self.queue);table.sort(self.queue,sortQueue)
   HolyStorm.Logger:Write("DEBUG",task.module,"task","Task requested: "..id,taskContext(task,{triggerSource=o.triggerSource}),task.workflowId or uid);if o.triggerSource then self:RecordEvent(o.triggerSource,task.module,{taskId=uid,workflowId=task.workflowId,triggeredTask=id})end;HolyStorm.Events:Emit("HS_TASK_QUEUED",task);self:Schedule();return uid,"QUEUED"
 end
 
@@ -77,7 +81,7 @@ function Tasks:Enqueue(id,callback,o)o=o or{};if not self.registry[id]then local
 -- errors. The scheduler proceeds to inspect other tasks.
 function Tasks:CheckConditions(task)
  if task.cooldown and task.cooldown>0 and self.lastRun[task.registryId]then task.notBefore=math.max(task.notBefore,self.lastRun[task.registryId]+task.cooldown)end
- if task.notBefore>clock()then return false,"DEBOUNCE"end
+ if task.notBefore>clock()then return false,task.startupPhase and self.startup.active and "STARTUP_PHASE:PHASE_"..tostring(task.startupPhase)or"DEBOUNCE"end
  for _,c in ipairs(task.conditions or{})do local kind,expected,fn;if type(c)=="string"then kind,expected=c,true elseif type(c)=="function"then fn=c elseif type(c)=="table"then kind,expected,fn=c.type or c.state,c.expected~=false,c.check end;local ok,value,reason=true,true,nil
   if fn then ok,value,reason=HolyStorm.Utils.SafeCall("task.condition:"..task.registryId,fn,task)
   elseif kind=="NOT_IN_COMBAT"then value=not(InCombatLockdown and InCombatLockdown())
@@ -104,7 +108,7 @@ end
 function Tasks:SelectRunnable()
  table.sort(self.queue,sortQueue);local earliest
  for _,task in ipairs(self.queue)do local ok,reason=self:CheckConditions(task);if ok then ok,reason=self:CheckDependencies(task)end;if ok then task.status,task.blockReason="READY",nil;return task end
-  local newStatus=reason=="DEBOUNCE"and"WAITING"or"BLOCKED";local changed=task.status~=newStatus or task.blockReason~=reason;task.status,task.blockReason=newStatus,reason;if reason=="DEBOUNCE"then earliest=earliest and math.min(earliest,task.notBefore)or task.notBefore end;if changed then HolyStorm.Events:Emit(newStatus=="BLOCKED"and"HS_TASK_BLOCKED"or"HS_TASK_WAITING",task,reason)end
+  local startupWaiting=type(reason)=="string"and reason:match("^STARTUP_PHASE:")~=nil;local newStatus=(reason=="DEBOUNCE"or startupWaiting)and"WAITING"or"BLOCKED";local changed=task.status~=newStatus or task.blockReason~=reason;task.status,task.blockReason=newStatus,reason;if task.notBefore>clock()then earliest=earliest and math.min(earliest,task.notBefore)or task.notBefore end;if changed then HolyStorm.Events:Emit(newStatus=="BLOCKED"and"HS_TASK_BLOCKED"or"HS_TASK_WAITING",task,reason)end
  end return nil,earliest
 end
 function Tasks:RemoveQueued(task)for i,x in ipairs(self.queue)do if x==task then table.remove(self.queue,i);return end end end
@@ -115,7 +119,7 @@ function Tasks:Wake(source)HolyStorm.Logger:Write("DEBUG","TaskManager","schedul
 -- EN: Conservatively, exactly one task runs. ASYNC releases the UI thread at once;
 -- the owner later finishes it through Complete(runtimeId,...).
 function Tasks:Process()
- if self.paused or self.runningTaskId then return end;local task,earliest=self:SelectRunnable();if not task then if earliest then self:Schedule(earliest)end return end;self:RemoveQueued(task);self.runningTaskId=task.uniqueId;task.status,task.startedAt,task.startedClock="RUNNING",wall(),clock();HolyStorm.Events:Emit("HS_TASK_STARTED",task);HolyStorm.Logger:Write("DEBUG",task.module,"task","Task started: "..task.registryId,taskContext(task),task.workflowId or task.uniqueId)
+ if self.paused or self.runningTaskId then return end;if self.startup.active and clock()-self.startup.startedAt>=4 then self.startup.active=false;self.startup.backgroundReadyAt=clock()end;local task,earliest=self:SelectRunnable();if not task then if earliest then self:Schedule(earliest)end return end;self:RemoveQueued(task);self.runningTaskId=task.uniqueId;task.status,task.startedAt,task.startedClock="RUNNING",wall(),clock();self.startup.executed=self.startup.executed+1;if task.startupPhase==1 and not self.startup.coreReadyAt then self.startup.coreReadyAt=clock()end;HolyStorm.Events:Emit("HS_TASK_STARTED",task);HolyStorm.Logger:Write("DEBUG",task.module,"task","Task started: "..task.registryId,taskContext(task),task.workflowId or task.uniqueId)
  local ok,result,extra=HolyStorm.Utils.SafeCall("task:"..task.registryId,task.callback,task);if ok and result==self.ASYNC then task.status="WAITING_ASYNC";HolyStorm.Events:Emit("HS_TASK_WAITING",task,"ASYNC");return end;self:Complete(task.uniqueId,ok,result,extra)
 end
 function Tasks:Complete(uid,success,result,extra)
