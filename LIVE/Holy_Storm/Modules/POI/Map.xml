@@ -1,5 +1,5 @@
 <Ui xmlns="http://www.blizzard.com/wow/ui/">
-  <Button name="HolyStormPOIPinTemplate" inherits="MapCanvasPinTemplate" mixin="HolyStormPOIPinMixin" virtual="true">
+  <Button name="HolyStormPOIPinTemplate" mixin="MapCanvasPinMixin,HolyStormPOIPinMixin" virtual="true">
     <Layers>
       <Layer level="BACKGROUND">
         <Texture parentKey="glow" file="Interface\Buttons\UI-ActionButton-Border" alphaMode="ADD"/>

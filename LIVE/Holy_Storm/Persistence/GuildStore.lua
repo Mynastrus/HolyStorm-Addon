@@ -1,9 +1,19 @@
 local addonVersion = "1.1.1"
 local HolyStorm = LibStub("AceAddon-3.0"):GetAddon("Holy_Storm")
 local Store = { version=addonVersion, currentId = nil }
+local function validateGuildData(data)
+    return type(data) == "table" and type(data.roster) == "table" and type(data.ranks) == "table"
+end
+
+HolyStorm.DataManager:RegisterSchema({
+    id="guild-roster", owner="GuildStore", version=1, versionField=false, validate=validateGuildData,
+    storage={backend="database", scope="global", path={"data", "guilds"}},
+})
+
 function Store:Initialize() local data=HolyStorm.db.global.data; data.guilds=type(data.guilds)=="table" and data.guilds or {}; for id,guild in pairs(data.guilds) do if type(id)~="string" or type(guild)~="table" then data.guilds[id]=nil else guild.id=id; guild.roster=type(guild.roster)=="table" and guild.roster or {}; guild.ranks=type(guild.ranks)=="table" and guild.ranks or {}; guild.version=tonumber(guild.version)or 0 end end end
-function Store:GetAll() return HolyStorm.db.global.data.guilds end
-function Store:Get(id) return id and self:GetAll()[id] or nil end
+function Store:_GetAllLive() return HolyStorm.db.global.data.guilds end
+function Store:GetAll() return HolyStorm.DataManager:SafeCopy(self:_GetAllLive()) end
+function Store:Get(id) return id and HolyStorm.DataManager:Get("guild-roster", id) or nil end
 function Store:GetCurrent() return self:Get(self.currentId) end
 function Store:ResolveSenderGuid(sender)
     if type(sender)~="string" then return nil end; local full,short=string.lower(sender),string.lower(sender:match("^[^-]+")or sender); local qualified=sender:find("-",1,true)~=nil
@@ -36,7 +46,7 @@ function Store:RefreshFromBlizzard()
     local record = self:Get(id) or { id=id, version=0, createdAt=HolyStorm.Utils.Now() }
     record.name, record.realm, record.playerRank, record.playerRankIndex = guildName, realm, rankName, rankIndex
     record.roster, record.ranks, record.updatedAt, record.updatedBy, record.version = roster, ranks, HolyStorm.Utils.Now(), UnitGUID("player"), (record.version or 0) + 1
-    self:GetAll()[id], self.currentId = record, id
+    self:_GetAllLive()[id], self.currentId = record, id
     HolyStorm.State:Set("guildRosterReady", true); HolyStorm.Events:Emit("HS_GUILD_UPDATED", id, record); HolyStorm.Events:Emit("HS_ROSTER_UPDATED", id, roster); return true
 end
 HolyStorm.Data.GuildStore = Store

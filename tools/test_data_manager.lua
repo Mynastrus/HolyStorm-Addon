@@ -174,6 +174,19 @@ local cyclic = {}; cyclic.self = cyclic
 local cycleCopy, cycleResult = DataManager:SafeCopy(cyclic)
 assert(cycleCopy == nil and cycleResult.errorCode == "COPY_CYCLE", "cycles explicitly rejected")
 
+-- A realistic roster read copies only the requested subtree, not its persistence root.
+local roster = { schemaVersion=1, guild={roster={}, ranks={ [1]="Member" }} }
+for index = 1, 250 do
+    roster.guild.roster["Player-" .. index] = { guid="Player-" .. index, name="Member-" .. index, identity={class="PALADIN", level=80}, history={lastSeen=index, flags={online=index % 2 == 0}} }
+end
+roster.unrelated = { large={ nested={ value=true } } }
+HolyStorm.db.global.phase1Roster = roster
+assert(DataManager:RegisterSchema({ id="phase1.roster", owner="DataManagerTest", version=1, validate=function(data) return type(data)=="table" and type(data.roster)=="table" end, storage={scope="global",path="phase1Roster"} }).ok)
+local rosterRead, rosterResult = DataManager:Get("phase1.roster", {"guild", "roster"})
+assert(rosterResult.ok and rosterResult.exists and rosterRead["Player-250"].history.flags.online == true, "large roster subtree safe read")
+rosterRead["Player-1"].identity.level = 1
+assert(roster.guild.roster["Player-1"].identity.level == 80 and rosterRead.unrelated == nil, "roster read is detached and scoped")
+
 assert(#logEntries >= 7, "structured failures must be logged")
 for _, entry in ipairs(logEntries) do
     assert(entry.source == "DataManager" and entry.category == "persistence" and type(entry.context) == "table" and entry.context.operation and entry.context.errorCode, "structured logging contract")
