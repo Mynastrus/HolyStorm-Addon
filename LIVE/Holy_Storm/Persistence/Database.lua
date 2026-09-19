@@ -96,12 +96,18 @@ local maxCopyDepth = 128
 local allowedCopyTypes = { ["nil"]=true, boolean=true, number=true, string=true }
 local allowedKeyTypes = { boolean=true, number=true, string=true }
 
-local function copyValue(value, copies, active, depth, maxDepth, path)
+local function copyPath(path, length)
+    local parts={"$root"}
+    for index=1,length do parts[#parts+1]=tostring(path[index]) end
+    return table.concat(parts,".")
+end
+
+local function copyValue(value, copies, active, depth, maxDepth, path, pathLength)
     local valueType = type(value)
     if allowedCopyTypes[valueType] then return value end
-    if valueType ~= "table" then return nil, "COPY_UNSUPPORTED_TYPE", path .. " contains " .. valueType end
-    if depth > maxDepth then return nil, "COPY_DEPTH_EXCEEDED", path end
-    if active[value] then return nil, "COPY_CYCLE", path end
+    if valueType ~= "table" then return nil, "COPY_UNSUPPORTED_TYPE", copyPath(path,pathLength) .. " contains " .. valueType end
+    if depth > maxDepth then return nil, "COPY_DEPTH_EXCEEDED", copyPath(path,pathLength) end
+    if active[value] then return nil, "COPY_CYCLE", copyPath(path,pathLength) end
     if copies[value] then return copies[value] end
     local result = {}
     copies[value] = result
@@ -110,9 +116,11 @@ local function copyValue(value, copies, active, depth, maxDepth, path)
         local keyType = type(key)
         if not allowedKeyTypes[keyType] then
             active[value] = nil
-            return nil, "COPY_UNSUPPORTED_KEY", path .. " contains " .. keyType .. " key"
+            return nil, "COPY_UNSUPPORTED_KEY", copyPath(path,pathLength) .. " contains " .. keyType .. " key"
         end
-        local childCopy, errorCode, detail = copyValue(child, copies, active, depth + 1, maxDepth, path .. "." .. tostring(key))
+        pathLength=pathLength+1;path[pathLength]=key
+        local childCopy, errorCode, detail = copyValue(child, copies, active, depth + 1, maxDepth, path, pathLength)
+        path[pathLength]=nil;pathLength=pathLength-1
         if errorCode then active[value] = nil; return nil, errorCode, detail end
         result[key] = childCopy
     end
@@ -174,13 +182,13 @@ function DataManager:_Success(schema, operation, changed, fields)
 end
 
 function DataManager:SafeCopy(value)
-    local copied, errorCode, detail = copyValue(value, {}, {}, 0, maxCopyDepth, "$root")
+    local copied, errorCode, detail = copyValue(value, {}, {}, 0, maxCopyDepth, {}, 0)
     if errorCode then return nil, self:_Failure(nil, nil, "copy", errorCode, detail) end
     return copied, resultFor(nil, nil, "copy", true, false)
 end
 
 function DataManager:_Copy(value, schema, operation)
-    local copied, errorCode, detail = copyValue(value, {}, {}, 0, maxCopyDepth, "$root")
+    local copied, errorCode, detail = copyValue(value, {}, {}, 0, maxCopyDepth, {}, 0)
     if errorCode then return nil, self:_Failure(schema, schema and schema.id, operation, errorCode, detail, nil, "WARN") end
     return copied
 end

@@ -8,6 +8,16 @@ function Store:GetAll() return HolyStorm.PlayerData:GetCharacters() end
 function Store:Get(guid) return HolyStorm.PlayerData:GetCharacter(guid) end
 function Store:GetOrCreate(guid) return HolyStorm.PlayerData:GetOrCreateCharacter(guid) end
 function Store:GetBlock(guid,blockId) return HolyStorm.PlayerData:GetBlock(guid,blockId) end
+function Store:GetProjection(guid,blocks)
+    local projection={guid=guid}
+    for _,blockId in ipairs(blocks or{}) do
+        local block=self:GetBlock(guid,blockId)
+        if block~=nil then
+            if blockId=="identity" then for key,value in pairs(block) do projection[key]=value end else projection[blockId]=block end
+        end
+    end
+    return projection
+end
 function Store:GetBlockMetadata(guid,blockId) return HolyStorm.PlayerData:GetMetadata(guid,blockId) end
 function Store:RequestRefresh(guid,blocks) return HolyStorm.PlayerData:RequestRefresh(guid,blocks) end
 
@@ -40,7 +50,8 @@ end
 function Store:CaptureCurrent()
     local guid=UnitGUID("player");if not guid then return nil end;local localizedClass,classFile=UnitClass("player");local race,raceFile=UnitRace("player");local guildName=GetGuildInfo("player")
     HolyStorm.PlayerData:WriteOwnedBlock(guid,"identity",{name=GetUnitName("player",true),realm=GetNormalizedRealmName and GetNormalizedRealmName()or GetRealmName(),class=localizedClass,classFile=classFile,race=race,raceFile=raceFile,sex=UnitSex("player"),level=UnitLevel("player"),faction=UnitFactionGroup("player"),guild=guildName,lastSeen=HolyStorm.Utils.Now()},"blizzard")
-    return self:Get(guid)
+    local identity=self:GetBlock(guid,"identity")
+    return {guid=guid,identity=identity}
 end
 function Store:GetEquipment(guid)local r=self:GetOrCreate(guid or UnitGUID("player"));return r and r.equipment end
 function Store:GetRaidLockouts(guid)local r=self:GetOrCreate(guid or UnitGUID("player"));return r and r.raidLockouts end

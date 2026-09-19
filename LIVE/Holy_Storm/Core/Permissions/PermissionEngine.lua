@@ -3,13 +3,14 @@ local HolyStorm = LibStub("AceAddon-3.0"):GetAddon("Holy_Storm")
 local Core = HolyStorm.PermissionCore
 local Engine = { version=addonVersion, permissionCache={}, membershipCache={}, generation=0 }
 
-function Engine:BuildContext(accountUUID,characterUUID,target)
+function Engine:BuildContext(accountUUID,characterUUID,target,projection)
     local localAccount=(HolyStorm.TwinkCore and HolyStorm.TwinkCore:GetLocalAccountUUID()) or HolyStorm.Data.PlayerStore:GetLocalPlayerId()
     accountUUID=accountUUID or localAccount
     characterUUID=characterUUID or (accountUUID==localAccount and UnitGUID("player"))
-    local character=characterUUID and HolyStorm.Data.CharacterStore:Get(characterUUID)
-    local guild=HolyStorm.Data.GuildStore:GetCurrent(); local member=characterUUID and guild and guild.roster and guild.roster[characterUUID]
-    return {accountUUID=accountUUID,playerId=accountUUID,characterUUID=characterUUID,guid=characterUUID,player=accountUUID and HolyStorm.Data.PlayerStore:Get(accountUUID),character=character,guild=guild,member=member,target=target}
+    projection=projection or{}
+    local character=projection.character or(characterUUID and HolyStorm.Data.CharacterStore:Get(characterUUID))
+    local guild=projection.guild or HolyStorm.Data.GuildStore:GetCurrent();local member=characterUUID and guild and guild.roster and guild.roster[characterUUID]
+    return {accountUUID=accountUUID,playerId=accountUUID,characterUUID=characterUUID,guid=characterUUID,player=projection.player,character=character,guild=guild,member=member,target=target}
 end
 function Engine:Actor(accountUUID,characterUUID)
     return {accountUUID=accountUUID or (HolyStorm.TwinkCore and HolyStorm.TwinkCore:GetLocalAccountUUID()) or HolyStorm.Data.PlayerStore:GetLocalPlayerId(),characterUUID=characterUUID or UnitGUID("player")}
@@ -53,8 +54,8 @@ end
 function Engine:GetMembershipReasons(group,accountUUID,characterUUID,context)
     local state=self:GetState(); return state and self:GetMembershipReasonsForState(state,group,accountUUID,characterUUID,context) or {}
 end
-function Engine:GetEffectiveGroupsForState(state,accountUUID,characterUUID)
-    local groups={}; local context=self:BuildContext(accountUUID,characterUUID)
+function Engine:GetEffectiveGroupsForState(state,accountUUID,characterUUID,context)
+    local groups={};context=context or self:BuildContext(accountUUID,characterUUID)
     for id,group in pairs(state and state.groups or {}) do local reasons=self:GetMembershipReasonsForState(state,group,context.accountUUID,context.characterUUID,context); if #reasons>0 then groups[id]={id=id,name=group.name,nameKey=group.nameKey,reasons=reasons,permissions=Core.Copy(type(group.permissions)=="table" and group.permissions or {})} end end
     return groups
 end
@@ -158,7 +159,26 @@ function Engine:GetPermissionDetail(permissionId,accountUUID,characterUUID)
     return {id=definition.id,definition=definition,registered=true,available=self:HasPermission(accountUUID,characterUUID,definition.id),defaultGroupIds=defaults,directGroupIds=direct,effectiveGroupIds=effective,groups=matrix.groups}
 end
 function Engine:Recalculate()
-    local guild=HolyStorm.Data.GuildStore:GetCurrent(); for guid in pairs(guild and guild.roster or {}) do local account=HolyStorm.TwinkCore and HolyStorm.TwinkCore:GetAccountUUIDForCharacter(guid) or HolyStorm.Data.PlayerStore:GetCharacterOwner(guid) or guid; self:GetEffectiveGroups(account,guid,true) end
+    local state=self:GetState();local guild=HolyStorm.Data.GuildStore.GetCurrentRosterSummary and HolyStorm.Data.GuildStore:GetCurrentRosterSummary() or HolyStorm.Data.GuildStore:GetCurrent()
+    if not state then return false end
+    local blocks={}
+    local function addDependencies(object)
+        local root=object and(object.root or object.rules or object)
+        for _,dependency in ipairs(HolyStorm.Rules:GetDependencies(root)) do
+            if dependency=="identity"or dependency=="equipment"or dependency=="mythicPlus"or dependency=="raid"or dependency=="delves"or dependency=="stats"or dependency=="profile"or dependency=="professions"or dependency=="addon"or dependency=="demands" then blocks[dependency]=true end
+        end
+    end
+    for _,group in pairs(state.groups or{}) do
+        for _,filterId in ipairs(group.filterIds or{}) do addDependencies(state.filters and state.filters[filterId]) end
+        for _,ruleId in ipairs(group.ruleIds or{}) do addDependencies(state.rules and state.rules[ruleId]) end
+    end
+    local blockList={};for blockId in pairs(blocks)do blockList[#blockList+1]=blockId end;table.sort(blockList)
+    for guid in pairs(guild and guild.roster or{})do
+        local account=HolyStorm.TwinkCore and HolyStorm.TwinkCore:GetAccountUUIDForCharacter(guid)or HolyStorm.Data.PlayerStore:GetCharacterOwner(guid)or guid
+        local character=HolyStorm.Data.CharacterStore.GetProjection and HolyStorm.Data.CharacterStore:GetProjection(guid,blockList)or HolyStorm.Data.CharacterStore:Get(guid)
+        local context=self:BuildContext(account,guid,nil,{guild=guild,character=character})
+        local groups=self:GetEffectiveGroupsForState(state,account,guid,context);local key=tostring(account).."\031"..tostring(guid);self.membershipCache[key]=groups
+    end
     HolyStorm.Events:Emit("HS_EFFECTIVE_MEMBERSHIP_CHANGED"); return true
 end
 
