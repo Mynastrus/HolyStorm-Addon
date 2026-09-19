@@ -35,12 +35,16 @@ function TwinkCore:TouchOwner(account,reason)
  if not account or account.accountUUID~=self.localAccountUUID then return false,"NOT_LOCAL_ACCOUNT"end;account.ownerVersion=(account.ownerVersion or 0)+1;account.version=account.ownerVersion;account.updatedAt=now();account.issuedBy=UnitGUID("player");account.relayable=true
  HolyStorm.Events:Emit("HS_ACCOUNT_UPDATED",account.accountUUID,reason);HolyStorm.Events:Emit("HS_TWINKS_UPDATED",account.accountUUID);if HolyStorm.Sync:GetDomain("twinks")then HolyStorm.Sync:Publish("twinks",account.accountUUID,reason or"ACCOUNT_UPDATED")end;return true
 end
-local identityKeys={"name","realm","fullName","normalizedFullName","classFile","level","guildId","guildRankIndex"}
-local function identityChanged(left,right)for _,key in ipairs(identityKeys)do if left[key]~=right[key]then return true end end;return false end
+local identityKeys={"characterUUID"}
+local function identityChanged(left,right)
+ for _,key in ipairs(identityKeys)do if left[key]~=right[key]then return true end end
+ local leftRelationship=left.relationship and left.relationship.source;local rightRelationship=right.relationship and right.relationship.source
+ return leftRelationship~=rightRelationship
+end
 function TwinkCore:ConfirmLocalCharacter(characterUUID)
- if not validId(characterUUID)or characterUUID~=UnitGUID("player")then return false,"NOT_CURRENT_CHARACTER"end;local account=self:EnsureAccount(self.localAccountUUID);local fresh=self:CompactIdentity(characterUUID,self.sources.OWNER);local oldAccountUUID=self.relationships[characterUUID];local oldAccount=oldAccountUUID and self.accounts[oldAccountUUID];local old=account.characters[characterUUID];local changed=not old or old.relationship.source~=self.sources.OWNER or identityChanged(old,fresh)
+ if not validId(characterUUID)or characterUUID~=UnitGUID("player")then return false,"NOT_CURRENT_CHARACTER"end;local account=self:EnsureAccount(self.localAccountUUID);local fresh=self:CompactIdentity(characterUUID,self.sources.OWNER);local oldAccountUUID=self.relationships[characterUUID];local oldAccount=oldAccountUUID and self.accounts[oldAccountUUID];local old=account.characters[characterUUID];local changed=not old or oldAccountUUID~=self.localAccountUUID or old.relationship.source~=self.sources.OWNER or identityChanged(old,fresh)
  if oldAccount and oldAccount~=account then local previous=oldAccount.characters[characterUUID];if previous then oldAccount.characters[characterUUID]=nil;oldAccount.relayable=false;log("INFO","Character relationship conflict resolved by owner proof",{characterUUID=characterUUID,fromAccount=oldAccountUUID,toAccount=account.accountUUID,previousSource=previous.relationship and previous.relationship.source})end end
- fresh.relationship.confirmedAt=now();account.characters[characterUUID]=fresh;self.relationships[characterUUID]=account.accountUUID;HolyStorm.PlayerData:GetOwners()[characterUUID]=account.accountUUID;HolyStorm.PlayerData:GetOrCreateCharacter(characterUUID).playerId=account.accountUUID
+ fresh.relationship.confirmedAt=changed and now()or old.relationship.confirmedAt;account.characters[characterUUID]=fresh;self.relationships[characterUUID]=account.accountUUID;HolyStorm.PlayerData:GetOwners()[characterUUID]=account.accountUUID;HolyStorm.PlayerData:GetOrCreateCharacter(characterUUID).playerId=account.accountUUID
  if changed then self:TouchOwner(account,old and"OWNER_RELATIONSHIP_CONFIRMED"or"CHARACTER_DISCOVERED");HolyStorm.Events:Emit("HS_CHARACTER_RELATIONSHIP_UPDATED",characterUUID,account.accountUUID,self.sources.OWNER);log("INFO",old and"Owner-confirmed relationship received"or"Character discovered for account",{accountUUID=account.accountUUID,characterUUID=characterUUID})else log("DEBUG","Character already known for account",{accountUUID=account.accountUUID,characterUUID=characterUUID})end;return true,changed
 end
 local function candidateSort(left,right)

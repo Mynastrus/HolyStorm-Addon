@@ -70,4 +70,19 @@ local removed,reason,message=core:RemoveAdministrativeAssignment(klausAccount,da
 -- J: the central metadata comparator rejects an older owner version before import.
 local stale={accountUUID=klausAccount,characters={[ka]=ownerEntry(ka),[da]=ownerEntry(da)},visibility=core.visibility.ALL,ownerVersion=1,updatedAt=900,issuedBy=ka}
 assert(not HolyStorm.Sync:OnPayload("twinks",{objectId=klausAccount,metadata={objectId=klausAccount,owner=ka,version=1,updatedAt=900},payload=stale},ka));assert(core:GetAccount(klausAccount).ownerVersion==2)
+
+-- K2: relationship confirmation is idempotent across roster availability, guild identity, rank and level changes.
+local originalPublish=HolyStorm.Sync.Publish;local publishCount=0;HolyStorm.Sync.Publish=function(self,domain,id,reason)if domain=="twinks"then publishCount=publishCount+1 end;return originalPublish(self,domain,id,reason)end
+local function countEvent(eventName)local count=0;for _,event in ipairs(HolyStorm.Events.emitted)do if event==eventName then count=count+1 end end;return count end
+local repeatGuid="Repeat-Character";characterData[repeatGuid]={guid=repeatGuid,name="Repeat",realm="Realm",classFile="PALADIN",level=80,guild="Character Guild"};currentGuid=repeatGuid;guild.id="Internal Guild ID";guild.roster[repeatGuid]=nil
+local repeatAccount=core:GetAccount(accountUUID);local repeatVersion=repeatAccount.ownerVersion;local repeatEvents=countEvent("HS_CHARACTER_RELATIONSHIP_UPDATED");local repeatPublishes=publishCount
+assert(core:ConfirmLocalCharacter(repeatGuid));local firstVersion=core:GetAccount(accountUUID).ownerVersion;assert(firstVersion==repeatVersion+1,"new owner-confirmed character must create one relationship revision")
+local _,sameChanged=core:ConfirmLocalCharacter(repeatGuid);assert(sameChanged==false and core:GetAccount(accountUUID).ownerVersion==firstVersion,"identical confirmation changed the owner relationship")
+guild.roster[repeatGuid]={rankIndex=4,classFile="PALADIN"};assert(select(2,core:ConfirmLocalCharacter(repeatGuid))==false,"roster availability changed the relationship")
+guild.roster[repeatGuid].rankIndex=1;assert(select(2,core:ConfirmLocalCharacter(repeatGuid))==false,"guild rank changed the relationship")
+characterData[repeatGuid].level=81;assert(select(2,core:ConfirmLocalCharacter(repeatGuid))==false,"level metadata changed the relationship")
+characterData[repeatGuid].guild="Another Character Guild";guild.id="Different Internal Guild ID";for _=1,100 do assert(select(2,core:ConfirmLocalCharacter(repeatGuid))==false)end
+assert(countEvent("HS_CHARACTER_RELATIONSHIP_UPDATED")==repeatEvents+1 and publishCount==repeatPublishes+1,"100 identical confirmations caused relationship events or publishes")
+local switchGuid="Switched-Character";characterData[switchGuid]={guid=switchGuid,name="Switched",realm="Realm",classFile="MAGE",level=80};local otherAccount="account-previous-owner";core.accounts[otherAccount]={accountUUID=otherAccount,characters={[switchGuid]=core:CompactIdentity(switchGuid,core.sources.OWNER,{id="old",roster={}})},visibility=core.visibility.ALL,ownerVersion=1,version=1};core.relationships[switchGuid]=otherAccount;currentGuid=switchGuid;local switchVersion=core:GetAccount(accountUUID).ownerVersion;local _,switchChanged=core:ConfirmLocalCharacter(switchGuid);assert(switchChanged and core.relationships[switchGuid]==accountUUID and not core.accounts[otherAccount].characters[switchGuid],"real character-to-account switch was not revised")
+HolyStorm.Sync.Publish=originalPublish
 print("TwinkCore scenarios A-J passed")
