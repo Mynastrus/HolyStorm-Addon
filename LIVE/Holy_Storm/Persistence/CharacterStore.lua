@@ -30,7 +30,7 @@ function Store:Upsert(guid,changes,source,metadata)
     end
     local identity={};local hasIdentity=false;for field in pairs(identityFields)do if changes[field]~=nil then identity[field]=changes[field];hasIdentity=true end end
     local changed=false
-    if hasIdentity then if HolyStorm.PlayerData:IsLocallyOwned(guid)then changed=HolyStorm.PlayerData:WriteOwnedBlock(guid,"identity",identity,source or"local")or changed else changed=HolyStorm.PlayerData:ObserveIdentity(guid,identity,source)or changed end end
+    if hasIdentity and HolyStorm.PlayerData:IsLocallyOwned(guid)then changed=HolyStorm.PlayerData:WriteOwnedBlock(guid,"identity",identity,source or"local")or changed end
     local processed={};for field,value in pairs(changes)do
         local blockId=HolyStorm.PlayerData.fieldToBlock[field]
         if blockId and blockId~="identity"and not processed[blockId]then processed[blockId]=true;local data;if #HolyStorm.PlayerData.blocks[blockId].fields==1 then data=value else data={};for _,name in ipairs(HolyStorm.PlayerData.blocks[blockId].fields)do data[name]=changes[name]end end;changed=HolyStorm.PlayerData:WriteOwnedBlock(guid,blockId,data,source or"local")or changed end

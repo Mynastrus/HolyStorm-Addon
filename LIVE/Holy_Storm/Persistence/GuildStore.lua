@@ -12,9 +12,18 @@ HolyStorm.DataManager:RegisterSchema({
 
 function Store:Initialize() local data=HolyStorm.db.global.data; data.guilds=type(data.guilds)=="table" and data.guilds or {}; for id,guild in pairs(data.guilds) do if type(id)~="string" or type(guild)~="table" then data.guilds[id]=nil else guild.id=id; guild.roster=type(guild.roster)=="table" and guild.roster or {}; guild.ranks=type(guild.ranks)=="table" and guild.ranks or {}; guild.version=tonumber(guild.version)or 0 end end end
 function Store:_GetAllLive() return HolyStorm.db.global.data.guilds end
+function Store:_GetLive(id) return id and self:_GetAllLive()[id] or nil end
 function Store:GetAll() return HolyStorm.DataManager:SafeCopy(self:_GetAllLive()) end
 function Store:Get(id) return id and HolyStorm.DataManager:Get("guild-roster", id) or nil end
 function Store:GetCurrent() return self:Get(self.currentId) end
+function Store:GetCurrentRosterSummary()
+    local guild=self:_GetLive(self.currentId);if not guild then return nil end
+    local summary={id=guild.id,roster={}}
+    for guid,member in pairs(type(guild.roster)=="table" and guild.roster or{})do
+        if type(member)=="table" then summary.roster[guid]={rankIndex=member.rankIndex,classFile=member.classFile,level=member.level} end
+    end
+    return summary
+end
 function Store:ResolveSenderGuid(sender)
     if type(sender)~="string" then return nil end; local full,short=string.lower(sender),string.lower(sender:match("^[^-]+")or sender); local qualified=sender:find("-",1,true)~=nil
     local guild=self:GetCurrent(); for guid,member in pairs(guild and guild.roster or {}) do local name=member.name; if name then local candidateFull,candidateShort=string.lower(name),string.lower(name:match("^[^-]+")or name); if candidateFull==full or (not qualified and candidateShort==short) then return guid end end end
@@ -43,7 +52,7 @@ function Store:RefreshFromBlizzard()
             HolyStorm.Data.CharacterStore:Upsert(guid, { name=name, realm=name and name:match("%-([^%-]+)$") or realm, class=class, classFile=classFile, level=level, guild=guildName, guildRank=rank, guildRankIndex=memberRankIndex, lastSeen=online and HolyStorm.Utils.Now() or nil }, "blizzard")
         end
     end
-    local record = self:Get(id) or { id=id, version=0, createdAt=HolyStorm.Utils.Now() }
+    local record = self:_GetLive(id) or { id=id, version=0, createdAt=HolyStorm.Utils.Now() }
     record.name, record.realm, record.playerRank, record.playerRankIndex = guildName, realm, rankName, rankIndex
     record.roster, record.ranks, record.updatedAt, record.updatedBy, record.version = roster, ranks, HolyStorm.Utils.Now(), UnitGUID("player"), (record.version or 0) + 1
     self:_GetAllLive()[id], self.currentId = record, id

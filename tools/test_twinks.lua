@@ -21,7 +21,8 @@ local characterData={
 }
 HolyStorm.Data.CharacterStore={Get=function(_,guid)return characterData[guid]end}
 local guild={id="guild-1",roster={}}
-HolyStorm.Data.GuildStore={GetCurrent=function()return guild end,ResolveSenderGuid=function(_,sender)return sender end}
+local guildSummaryReads=0
+HolyStorm.Data.GuildStore={GetCurrent=function()return guild end,GetCurrentRosterSummary=function()guildSummaryReads=guildSummaryReads+1;local summary={id=guild.id,roster={}};for guid,member in pairs(guild.roster)do summary.roster[guid]={rankIndex=member.rankIndex,classFile=member.classFile,level=member.level}end;return summary end,ResolveSenderGuid=function(_,sender)return sender end}
 HolyStorm.Tasks={types={},queued={}}
 function HolyStorm.Tasks:RegisterTaskType(id,d)self.types[id]=d;return true end
 function HolyStorm.Tasks:Queue(id,o)self.queued[#self.queued+1]={id=id,options=o};return"task"end
@@ -45,6 +46,10 @@ guild.roster={Marithiel={rankIndex=4},Daniel={rankIndex=2}};local guildMain,shad
 guild.roster.Maristi={rankIndex=9};guildMain,shadow=core:GetGuildMain(accountUUID,guild);assert(guildMain=="Maristi" and shadow==false)
 -- E: guild-only keeps the main reference visible, hides other outsiders, but exports all.
 guild.roster.Maristi=nil;assert(core:SetVisibility(core.visibility.GUILD_ONLY));local visible=core:GetVisibleCharactersForViewer(accountUUID,guild);local shown={};for _,entry in ipairs(visible)do shown[entry.characterUUID]=true end;assert(shown.Maristi and shown.Marithiel and shown.Daniel and not shown.Klaus);local exported=core:ExportOwnerSnapshot(accountUUID);assert(exported.characters.Maristi and exported.characters.Marithiel and exported.characters.Daniel and exported.characters.Klaus)
+
+-- K: one compact guild read serves a large recalculation without a full GuildStore record.
+for index=1,250 do local guid="Roster-"..index;guild.roster[guid]={rankIndex=index};core.accounts["account-roster-"..index]={accountUUID="account-roster-"..index,characters={[guid]={characterUUID=guid,fullName=guid,normalizedFullName=string.lower(guid),relationship={source=core.sources.ADMIN}}},visibility=core.visibility.ALL,ownerVersion=0,version=0} end
+local rosterRankBefore=guild.roster["Roster-250"].rankIndex;guildSummaryReads=0;local originalGetCurrent=HolyStorm.Data.GuildStore.GetCurrent;HolyStorm.Data.GuildStore.GetCurrent=function()error("full GuildStore read is forbidden in TwinkCore recalculation")end;assert(core:RecalculateGuildMains());HolyStorm.Data.GuildStore.GetCurrent=originalGetCurrent;assert(guildSummaryReads==1,"recalculation performs exactly one compact guild read");assert(core:GetGuildMain("account-roster-250",guild)=="Roster-250","recalculation preserves correct guild main selection");assert(guild.roster["Roster-250"].rankIndex==rosterRankBefore,"recalculation does not mutate the persistent roster")
 
 -- F: an owner snapshot that mentions only its owner does not delete unrelated admin facts.
 local adminAccount,ma,mi,da="account-maristi-admin","Maristi-Admin","Marithiel-Admin","Daniel-Admin"

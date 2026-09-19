@@ -140,9 +140,8 @@ function PlayerData:AcceptRemoteBlock(guid,blockId,data,meta,senderGuid,sender)
     return ok,reason
 end
 function PlayerData:ObserveIdentity(guid,data,source)
-    if not validId(guid)or type(data)~="table"then return false end;local record=self:GetOrCreateCharacter(guid);local changed=false
-    for _,field in ipairs(self.blocks.identity.fields)do if data[field]~=nil and record[field]~=data[field]then record[field]=copy(data[field]);changed=true end end
-    if changed then local current=record.blockMeta.identity or{};record.blockMeta.identity={owner=guid,version=tonumber(current.version)or 0,updatedAt=now(),source=source or"observation",receivedFrom=nil,direct=self:IsLocallyOwned(guid)};HolyStorm.Events:Emit("HS_PLAYERDATA_UPDATED",guid,"identity",copy(record.blockMeta.identity),"observation");HolyStorm.Events:Emit("HS_CHARACTER_UPDATED",guid,record,source or"observation")end;return changed
+    if not validId(guid)or type(data)~="table"or not self:IsLocallyOwned(guid)then return false end
+    return self:WriteOwnedBlock(guid,"identity",data,source or"observation")
 end
 function PlayerData:IsStale(guid,blockId)
     local definition=self.blocks[blockId];local meta=self:GetMetadata(guid,blockId);return not meta or now()-(tonumber(meta.updatedAt)or 0)>(definition and definition.staleAfter or 21600)
