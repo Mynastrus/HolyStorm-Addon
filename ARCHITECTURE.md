@@ -16,7 +16,21 @@ Der produktive Addon-Baum liegt in `LIVE/Holy_Storm`. `Core` enthält gemeinsam 
 
 ## Persistence und Datenzugriff
 
-`Persistence/Schema.lua`, `Migrations.lua` und `Database.lua` definieren und initialisieren AceDB-Daten. `DataManager` und `ConfigManager` sind Compatibility-/Komfortzugriffe auf den Database-Adapter. Fachliche persistente Zugriffe erfolgen über Stores:
+`Persistence/Schema.lua`, `Migrations.lua` und `Database.lua` definieren und initialisieren AceDB-Daten. `Database` bleibt während der schrittweisen Migration das Low-Level-Backend für AceDB und die drei vorhandenen SavedVariables. Der in `Database.lua` vorhandene `HolyStorm.DataManager` ist seit Contract-Version 1 die technische Zielgrenze für neue Persistence-Integrationen; es gibt keine zweite DataManager-Datei oder parallele Datenbankinstanz. `ConfigManager` und noch nicht migrierte Stores verwenden weiterhin die bestehende Database-/SavedVariable-Infrastruktur.
+
+Der DataManager-Vertrag besteht aus:
+
+- `RegisterSchema`: stabile ID, Owner, aktuelle ganzzahlige Version, Validator, Storage-Binding sowie optional Default Factory, Metadaten, Event und initiale Migrationen. Registrierung liest oder verändert keine Live-Daten.
+- `RegisterMigration` und `RunMigrations`: ausschließlich eindeutige Vorwärtsschritte `n → n+1`; der Runner arbeitet auf einer vollständig entkoppelten Kopie, validiert den Zielstand und ersetzt erst danach den Schema-Root in einem In-Memory-Swap. Fehler lassen den bisherigen Root unverändert.
+- `Get`, `GetCopy`, `Exists` und `GetMetadata`: öffentliche Reads liefern defensive Kopien beziehungsweise kopierte Schema-Metadaten. Defaults werden beim Lesen nicht materialisiert.
+- `Commit`, `Update` und `Transaction`: Copy-on-write, Mutator auf dem Draft, Schema-/Versionsvalidierung, atomarer Ersatz und optionales schemaeigenes Event erst nach Erfolg. Ergebnisse folgen `{ok, changed, operation, schema, version, errorCode, error, ...}`.
+- `SafeCopy`: SavedVariable-kompatible primitive Werte, Arrays, Maps, gemischte und gemeinsam referenzierte azyklische Tabellen; Metatables werden nicht übernommen. Funktionen, Threads, Userdata, Tabellenschlüssel und Zyklen werden mit stabilen Fehlercodes abgelehnt.
+
+Die eingebauten Bindings `database`, `player` und `guildLog` bilden die künftige Backend-Grenze für `HolyStormDB`, `HS_Player_DB` und `HS_GuildLog_DB`. In Phase 1 registriert noch kein produktiver Store ein Schema; dadurch startet Laden beziehungsweise Schema-Registrierung weder Migrationen noch Änderungen an SavedVariables. Bestehende `Database`, `ConfigManager`- und Store-APIs bleiben kompatibel. Die frühere `DataManager:GetArea`-Kompatibilitätsoberfläche liefert nun eine Kopie und erzeugt bei einem Read keine fehlenden Defaults; ihr Legacy-Write-Pendant bleibt bis zur späteren Area-Migration bestehen.
+
+Fachliche Revisionen bleiben außerhalb dieses technischen Vertrags: Character-Owner-Versionen gehören weiterhin `PlayerDataStore`, die Policy Revision Chain weiterhin `PolicyState`. Der DataManager erzeugt oder ersetzt keine dieser Revisionen. Das vollständige Ist-Inventar, die verbleibenden Live-Getter und die Phasenfolge stehen in `PERSISTENCE_ARCHITECTURE_AUDIT.md`.
+
+Fachliche persistente Zugriffe erfolgen derzeit weiterhin über Stores:
 
 - `PlayerDataStore`, `PlayerStore`, `CharacterStore`, `GuildStore`
 - `ContentStore`, `POIStore`, `AchievementStore`
