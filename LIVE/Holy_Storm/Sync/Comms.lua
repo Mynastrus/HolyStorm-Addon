@@ -1,7 +1,7 @@
-local addonVersion="2.1.0"
+local addonVersion="2.2.0"
 local HolyStorm=LibStub("AceAddon-3.0"):GetAddon("Holy_Storm")
 local L=LibStub("AceLocale-3.0"):GetLocale("Holy_Storm")
-local Comms={version=addonVersion,prefix="HolyStormSync",protocol="HSC1",chunkSize=220,maxQueue=300,incoming={},serial=0,pendingPackets=0,available=false}
+local Comms={version=addonVersion,prefix="HolyStormSync",protocol="HSC1",chunkSize=220,maxQueue=300,incoming={},serial=0,pendingPackets=0,available=false,fragmentTimeout=30,cleanupTimer=nil,cleanupDue=nil,cleanupTaskId=nil,eventFrame=nil}
 local function playerName()return GetUnitName and GetUnitName("player",true)or UnitName and UnitName("player")or"Player"end
 local function audience(channel,target)if target and target~=""then return target end;local labels={GUILD="Guild",RAID="Raid",PARTY="Party",INSTANCE_CHAT="Instance"};return labels[channel]or"Broadcast"end
 local function receiver(channel)return channel=="WHISPER"and playerName()or audience(channel)end
@@ -11,7 +11,24 @@ function Comms:Initialize()
  if C_ChatInfo.RegisterAddonMessagePrefix(self.prefix)==false then HolyStorm.Logger:WARN("Comms","Addon prefix registration failed");return false end
  -- DE/EN: Network throttling uses MULTI tasks in the central queue, never a private packet queue.
  HolyStorm.Tasks:RegisterTaskType("Comms.SendPacket",{name=L["TASK_COMMS_SEND"],localizedNameKey="TASK_COMMS_SEND",module="Comms",priority=50,executionMode="MULTI",execute=function(task)local p=task.metadata.packet;if p and Comms.available then C_ChatInfo.SendAddonMessage(Comms.prefix,p.message,p.channel,p.target);local d=p.diagnostics or{};HolyStorm.Logger:Write("DEBUG","Comms","send","Packet sent",d,d.correlationId or d.transmissionId)end;Comms.pendingPackets=math.max(0,Comms.pendingPackets-1);return true end})
- HolyStorm.Events:Register("CHAT_MSG_ADDON","comms",function(_,...)Comms:OnMessage(...)end);HolyStorm.Events:Register("HS_TASK_CANCELLED","comms-task",function(_,task)if task and task.registryId=="Comms.SendPacket"then Comms.pendingPackets=math.max(0,Comms.pendingPackets-1)end end);HolyStorm.Tasks:ScheduleRecurring("comms.cleanup",5,function()Comms:Cleanup()end,{priority=100,cooldown=5,module="Comms"});self.available=true;return true
+ HolyStorm.Tasks:RegisterTaskType("Comms.Cleanup",{name="Comms cleanup",module="Comms",priority=100,executionMode="UNIQUE",execute=function()Comms.cleanupTaskId=nil;return Comms:Cleanup()end})
+ self.eventFrame=self.eventFrame or CreateFrame("Frame");self.eventFrame:SetScript("OnEvent",function(_,_,prefix,message,channel,sender)if prefix==Comms.prefix then Comms:OnMessage(prefix,message,channel,sender)end end);self.eventFrame:RegisterEvent("CHAT_MSG_ADDON")
+ HolyStorm.Events:Register("HS_TASK_CANCELLED","comms-task",function(_,task)if task and task.registryId=="Comms.SendPacket"then Comms.pendingPackets=math.max(0,Comms.pendingPackets-1)elseif task and task.uniqueId==Comms.cleanupTaskId then Comms.cleanupTaskId=nil;Comms:ScheduleCleanup()end end);self.available=true;return true
+end
+function Comms:GetNextCleanupAt()
+ local due;for _,packet in pairs(self.incoming)do local expiresAt=(tonumber(packet.receivedAt)or 0)+self.fragmentTimeout;if not due or expiresAt<due then due=expiresAt end end;return due
+end
+function Comms:CancelCleanupTimer()
+ if self.cleanupTimer then self.cleanupTimer:Cancel()end;self.cleanupTimer,self.cleanupDue=nil,nil
+end
+function Comms:ScheduleCleanup()
+ local due=self:GetNextCleanupAt();if not due then self:CancelCleanupTimer();if self.cleanupTaskId then HolyStorm.Tasks:Cancel(self.cleanupTaskId,"COMMS_STATE_CLEARED");self.cleanupTaskId=nil end;return false end
+ if self.cleanupTaskId then return true end
+ if self.cleanupTimer and self.cleanupDue==due then return true end
+ self:CancelCleanupTimer();self.cleanupDue=due;self.cleanupTimer=C_Timer.NewTimer(math.max(0,due-HolyStorm.Utils.Now()),function()
+  Comms.cleanupTimer,Comms.cleanupDue=nil,nil;local nextDue=Comms:GetNextCleanupAt()
+  if nextDue and nextDue<=HolyStorm.Utils.Now()then Comms.cleanupTaskId=HolyStorm.Tasks:Queue("Comms.Cleanup",{priority=100,triggerSource="COMMS_FRAGMENT_EXPIRY"})else Comms:ScheduleCleanup()end
+ end);return true
 end
 function Comms:ResolveChannel(preferred,target)if target and target~=""then return"WHISPER",target end;if preferred=="RAID"and IsInRaid()then return"RAID"end;if preferred=="PARTY"and IsInGroup()and not IsInRaid()then return"PARTY"end;if preferred=="GUILD"and IsInGuild()then return"GUILD"end;if IsInRaid()then return"RAID"elseif IsInGroup()then return"PARTY"elseif IsInGuild()then return"GUILD"end end
 function Comms:Send(payload,preferred,target,priority,diagnostics)
@@ -21,8 +38,8 @@ function Comms:Send(payload,preferred,target,priority,diagnostics)
 end
 function Comms:OnMessage(prefix,message,channel,sender)
  if prefix~=self.prefix or type(message)~="string"or type(sender)~="string"then return end;local protocol,id,part,total,chunk=message:match("^([^|]+)|([^|]+)|(%d+)|(%d+)|(.*)$");part,total=tonumber(part),tonumber(total);if protocol~=self.protocol or not part or not total or total<1 or total>1500 or part<1 or part>total then return end
- local context={direction="RECEIVE",from=sender,to=receiver(channel),channel=channel,transmissionId=id,packetPart=part,packetTotal=total,bytes=#chunk,correlationId=id};HolyStorm.Logger:Write("DEBUG","Comms","receive","Packet received",context,id);local key=sender.."\031"..id;local packet=self.incoming[key];if not packet then packet={parts={},total=total,receivedAt=HolyStorm.Utils.Now(),channel=channel,sender=sender};self.incoming[key]=packet elseif packet.total~=total then self.incoming[key]=nil;return end;packet.parts[part]=chunk;for i=1,total do if packet.parts[i]==nil then return end end;self.incoming[key]=nil;local payload=table.concat(packet.parts);if#payload<=HolyStorm.Serializer.limits.bytes then HolyStorm.Events:Emit("HS_COMMS_MESSAGE",payload,sender,channel,{direction="RECEIVE",from=sender,to=receiver(channel),channel=channel,transmissionId=id,packetTotal=total,bytes=#payload,correlationId=id})end
+ local context={direction="RECEIVE",from=sender,to=receiver(channel),channel=channel,transmissionId=id,packetPart=part,packetTotal=total,bytes=#chunk,correlationId=id};HolyStorm.Logger:Write("DEBUG","Comms","receive","Packet received",context,id);local key=sender.."\031"..id;local packet=self.incoming[key];if not packet then packet={parts={},total=total,receivedAt=HolyStorm.Utils.Now(),channel=channel,sender=sender};self.incoming[key]=packet elseif packet.total~=total then self.incoming[key]=nil;self:ScheduleCleanup();return end;packet.parts[part]=chunk;self:ScheduleCleanup();for i=1,total do if packet.parts[i]==nil then return end end;self.incoming[key]=nil;self:ScheduleCleanup();local payload=table.concat(packet.parts);if#payload<=HolyStorm.Serializer.limits.bytes then HolyStorm.Events:Emit("HS_COMMS_MESSAGE",payload,sender,channel,{direction="RECEIVE",from=sender,to=receiver(channel),channel=channel,transmissionId=id,packetTotal=total,bytes=#payload,correlationId=id})end
 end
-function Comms:Cleanup()local n=HolyStorm.Utils.Now();for key,p in pairs(self.incoming)do if n-p.receivedAt>30 then local received=0;for _ in pairs(p.parts)do received=received+1 end;HolyStorm.Logger:Write("WARN","Comms","receive","Incomplete transmission expired",{direction="RECEIVE",from=p.sender,to=audience(p.channel),channel=p.channel,transmissionId=key:match("\031(.+)$"),packetPart=received,packetTotal=p.total,reason="TIMEOUT"},key:match("\031(.+)$"));self.incoming[key]=nil end end end
-function Comms:Shutdown()HolyStorm.Events:Unregister("CHAT_MSG_ADDON","comms");HolyStorm.Tasks:CancelRecurring("comms.cleanup");for _,task in ipairs(HolyStorm.Tasks:GetLiveTasks())do if task.registryId=="Comms.SendPacket"then HolyStorm.Tasks:Cancel(task.uniqueId,"COMMS_SHUTDOWN")end end;HolyStorm.Events:UnregisterOwner("comms-task");self.pendingPackets=0;self.incoming={};self.available=false end
+function Comms:Cleanup()local n=HolyStorm.Utils.Now();for key,p in pairs(self.incoming)do if n-(tonumber(p.receivedAt)or 0)>=self.fragmentTimeout then local received=0;for _ in pairs(p.parts)do received=received+1 end;HolyStorm.Logger:Write("WARN","Comms","receive","Incomplete transmission expired",{direction="RECEIVE",from=p.sender,to=audience(p.channel),channel=p.channel,transmissionId=key:match("\031(.+)$"),packetPart=received,packetTotal=p.total,reason="TIMEOUT"},key:match("\031(.+)$"));self.incoming[key]=nil end end;self:ScheduleCleanup();return true end
+function Comms:Shutdown()self.available=false;if self.eventFrame then self.eventFrame:UnregisterEvent("CHAT_MSG_ADDON");self.eventFrame:SetScript("OnEvent",nil)end;self:CancelCleanupTimer();if self.cleanupTaskId then HolyStorm.Tasks:Cancel(self.cleanupTaskId,"COMMS_SHUTDOWN");self.cleanupTaskId=nil end;for _,task in ipairs(HolyStorm.Tasks:GetLiveTasks())do if task.registryId=="Comms.SendPacket"then HolyStorm.Tasks:Cancel(task.uniqueId,"COMMS_SHUTDOWN")end end;HolyStorm.Events:UnregisterOwner("comms-task");self.pendingPackets=0;self.incoming={} end
 HolyStorm.Comms=Comms

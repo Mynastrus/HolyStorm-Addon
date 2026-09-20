@@ -43,4 +43,4 @@ function HolyStorm:OnEnable()
     self.Commands:AnnounceLoaded()
 end
 
-function HolyStorm:OnDisable() self.Events:UnregisterOwner("bootstrap"); self.AddonLoader:Shutdown(); if self.Chat then self.Chat:Shutdown() end; self.Tasks:CancelAll(); self.Comms:Shutdown() end
+function HolyStorm:OnDisable() self.Events:UnregisterOwner("bootstrap"); self.AddonLoader:Shutdown(); if self.Chat then self.Chat:Shutdown() end; self.Sync:Shutdown(); self.Comms:Shutdown(); self.Tasks:CancelAll() end

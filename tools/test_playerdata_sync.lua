@@ -1,8 +1,10 @@
 -- Offline contracts for the canonical PlayerData store and metadata-first sync.
 local root=(arg[0]:gsub("tools[/\\]test_playerdata_sync.lua$","")).."LIVE/Holy_Storm/"
 local clock=1000
+local timers={}
 unpack=unpack or table.unpack
 function time()return clock end;function GetTime()return clock end;function UnitGUID()return"Player-Local"end;function IsInGuild()return true end
+C_Timer={NewTimer=function(delay,callback)local timer={delay=delay,callback=callback,cancelled=false};function timer:Cancel()self.cancelled=true end;timers[#timers+1]=timer;return timer end}
 local HolyStorm={db={global={localPlayerId="account-local",installId="install",data={characters={},players={},characterOwners={}}}},Data={},State={Set=function()end}}
 function HolyStorm:GetAddon()return self end
 local locale=setmetatable({}, {__index=function(_,key)return key end})
@@ -62,8 +64,9 @@ HolyStorm.Data.GuildStore={ResolveSenderGuid=function(_,sender)return sender=="F
 HolyStorm.Comms={available=true,Send=function(self,payload,channel,target,priority,diagnostics)self.lastPayload,self.lastChannel,self.lastTarget,self.lastPriority,self.lastDiagnostics=payload,channel,target,priority,diagnostics;return true,"tx-sync-test"end};HolyStorm.Tasks={types={},queued={}}
 function HolyStorm.Tasks:RegisterTaskType(id,d)self.types[id]=d;return true end
 function HolyStorm.Tasks:Queue(id,o)self.queued[#self.queued+1]={id=id,options=o};return"task"end
-function HolyStorm.Tasks:ScheduleRecurring()return true end
-assert(loadfile(root.."Sync/SyncManager.lua"))();HolyStorm.Sync:Initialize()
+function HolyStorm.Tasks:Cancel()return true end
+function HolyStorm.Tasks:ScheduleRecurring()error("Sync must not register an idle recurring cleanup")end
+assert(loadfile(root.."Sync/SyncManager.lua"))();HolyStorm.Sync:Initialize();assert(#timers==0,"Sync initialization must not schedule cleanup without expirable state")
 assert(HolyStorm.Sync:Publish("character",foreign.."\031equipment","TEST"))
 local publish=HolyStorm.Tasks.queued[#HolyStorm.Tasks.queued];assert(publish.id=="Sync.Publish");HolyStorm.Sync:RunPublish({metadata=publish.options.metadata,priority=65})
 local announce=HolyStorm.Tasks.queued[#HolyStorm.Tasks.queued];assert(announce.id=="Sync.Send"and announce.options.metadata.envelope.kind=="ANNOUNCE");assert(announce.options.metadata.envelope.data.offers[1].data==nil)
