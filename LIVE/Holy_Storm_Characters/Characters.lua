@@ -59,6 +59,7 @@ function Twinks:InitializeUI()
 end
 function Twinks:OnInitialize()
  HolyStorm.TwinkCore:Initialize();HolyStorm.CharacterActions:Initialize();registerRichLinkTypes();HolyStorm.Chat:Initialize()
+ HolyStorm.ChatOptions:RegisterExtension()
  HolyStorm:RegisterUIExtension("Twinks",{id="characters.twinks",order=5,initialize=function()Twinks:InitializeUI()end})
 end
 function Twinks:QueueCollection(trigger)

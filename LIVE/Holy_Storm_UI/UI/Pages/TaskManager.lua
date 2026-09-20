@@ -21,7 +21,17 @@ local function elapsed(started,finished)if not started then return"-"end;return 
 local function stamp(value)return value and date("%H:%M:%S",value)or"-"end
 local function yes(value)return value and L["TRUE"]or L["FALSE"]end
 local function status(value)return L["STATUS_"..tostring(value)]or tostring(value or"-")end
-local function reason(value)if not value then return"-"end;local kind,id=tostring(value):match("^([A-Z_]+):(.*)$");if kind and L["REASON_"..kind]then return string.format(L["REASON_"..kind],id)end;return L["REASON_"..tostring(value)]or tostring(value)end
+local reasonLabels={
+ DEBOUNCE=L["REASON_DEBOUNCE"],NOT_IN_COMBAT=L["REASON_NOT_IN_COMBAT"],PLAYER_LOGGED_IN=L["REASON_PLAYER_LOGGED_IN"],PLAYER_READY=L["REASON_PLAYER_READY"],GUILD_AVAILABLE=L["REASON_GUILD_AVAILABLE"],NOT_LOADING=L["REASON_NOT_LOADING"],NOT_ZONING=L["REASON_NOT_ZONING"],ASYNC=L["REASON_ASYNC"],
+}
+local reasonTemplates={STARTUP_PHASE=L["REASON_STARTUP_PHASE"],DEPENDENCY_WAITING=L["REASON_DEPENDENCY_WAITING"],DEPENDENCY_MISSING=L["REASON_DEPENDENCY_MISSING"],UNKNOWN_CONDITION=L["REASON_UNKNOWN_CONDITION"]}
+function Page:FormatReason(value)
+ if value==nil then return"-"end;if type(value)~="string"then return tostring(value)end
+ local label=reasonLabels[value];if label then return label end
+ local kind,id=value:match("^([A-Z_]+):(.*)$");local template=kind and reasonTemplates[kind];if template then return string.format(template,id)end
+ return value
+end
+local function reason(value)return Page:FormatReason(value)end
 local function flatten(value,depth,seen)
  if type(value)~="table"then return tostring(value==nil and"-"or value)end;depth=depth or 0;seen=seen or{};if seen[value]then return"<"..L["CYCLE"]..">"end;if depth>=4 then return"<"..L["NESTED_TRUNCATED"]..">"end;seen[value]=true;local out={};for k,v in pairs(value)do out[#out+1]=tostring(k).."="..flatten(v,depth+1,seen)end;seen[value]=nil;table.sort(out);return"{"..table.concat(out,", ").."}"
 end
