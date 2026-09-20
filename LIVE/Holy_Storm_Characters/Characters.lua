@@ -1,6 +1,7 @@
 local addonVersion = "2.2.0"
 local HolyStorm = LibStub("AceAddon-3.0"):GetAddon("Holy_Storm")
 local L = LibStub("AceLocale-3.0"):GetLocale("Holy_Storm_Twinks")
+if HolyStorm.PermissionRegistry then HolyStorm.PermissionRegistry:RegisterLegacyAlias("twinks.assign","twinks-assign");HolyStorm.PermissionRegistry:RegisterLegacyAlias("twinks.remove","twinks-remove")end
 if HolyStorm.PlayerData then
  HolyStorm.PlayerData:RegisterBlock("stats",{fields={"stats"},event="HS_STATS_UPDATED",staleAfter=21600})
  HolyStorm.PlayerData:RegisterBlock("profile",{fields={"profile"},event="HS_PROFILE_UPDATED",staleAfter=604800})
@@ -18,7 +19,7 @@ end
 HolyStorm:RegisterModule({
  id="Twinks",name="Twinks",displayName=L["DISPLAY_NAME"],internalName="twinks",version=addonVersion,
  moduleType="feature",category="feature",description=L["DESCRIPTION"],
- permissions={"player-read","savedvariables-write",{id="twinks-assign",category="Characters"},{id="twinks-remove",category="Characters"}},dependencies={"core","ui"},
+ permissions={"player-read","savedvariables-write",{id="twinks-assign",category="Characters"},{id="twinks-remove",category="Characters"}},dependencies={"core"},
  ui={page="twinks",navigation=true},data={stores={"PlayerDataStore","CharacterStore","GuildStore"}},
  sync={domains={"twinks","twinkAdmin"}},enabledByDefault=true,
  ruleFields={
@@ -48,8 +49,7 @@ end
 function Twinks:CreateVisibilityRadio(parent,label,value,anchor,x)
  local check=CreateFrame("CheckButton",nil,parent,"UIRadioButtonTemplate");check:SetPoint("TOPLEFT",anchor,"BOTTOMLEFT",x,-8);check.text:SetText(label);check:SetScript("OnClick",function()HolyStorm.TwinkCore:SetVisibility(value);Twinks:Refresh()end);return check
 end
-function Twinks:OnInitialize()
- HolyStorm.TwinkCore:Initialize();HolyStorm.CharacterActions:Initialize();registerRichLinkTypes()
+function Twinks:InitializeUI()
  local UI=HolyStorm:GetModule("UI",true);local page=CreateFrame("Frame",nil,UI.content);local heading=page:CreateFontString(nil,"OVERLAY","GameFontHighlightLarge");heading:SetPoint("TOPLEFT",page,"TOPLEFT",20,-20);heading:SetText(L["HEADING"]);heading:SetTextColor(.25,.78,.92)
  local count=page:CreateFontString(nil,"OVERLAY","GameFontHighlight");count:SetPoint("TOPLEFT",heading,"BOTTOMLEFT",0,-8);local visibility=page:CreateFontString(nil,"OVERLAY","GameFontNormal");visibility:SetPoint("TOPLEFT",count,"BOTTOMLEFT",0,-10);visibility:SetText(L["VISIBILITY"])
  self.allRadio=self:CreateVisibilityRadio(page,L["VISIBILITY_ALL"],HolyStorm.TwinkCore.visibility.ALL,visibility,0);self.guildRadio=self:CreateVisibilityRadio(page,L["VISIBILITY_GUILD_ONLY"],HolyStorm.TwinkCore.visibility.GUILD_ONLY,visibility,190)
@@ -57,8 +57,17 @@ function Twinks:OnInitialize()
  local scroll=CreateFrame("ScrollFrame",nil,page,"UIPanelScrollFrameTemplate");scroll:SetPoint("TOPLEFT",page,"TOPLEFT",0,-140);scroll:SetPoint("BOTTOMRIGHT",page,"BOTTOMRIGHT",-28,16);local content=CreateFrame("Frame",nil,scroll);content:SetSize(1,1);scroll:SetScrollChild(content);scroll:SetScript("OnSizeChanged",function(frame)content:SetWidth(frame:GetWidth())end)
  self.page,self.count,self.content,self.rows=page,count,content,{};HolyStorm.UI:RegisterPage("twinks",page,L["WINDOW_TITLE"],function()Twinks:Refresh()end,{"HS_CHARACTER_UPDATED","HS_ROSTER_UPDATED","HS_TWINKS_UPDATED","HS_ACCOUNT_MAIN_CHANGED","HS_GUILD_MAIN_CHANGED","HS_TWINK_VISIBILITY_CHANGED"});HolyStorm.UI:AddNavigation("twinks",5,"Interface\\Icons\\INV_Misc_GroupLooking",L["NAVIGATION_TITLE"],L["NAVIGATION_DESCRIPTION"],function()Twinks:RequestAndRefresh();HolyStorm.UI:ShowPage("twinks")end)
 end
-function Twinks:OnEnable()HolyStorm.Events:Register("PLAYER_LOGIN","characters",function()Twinks:StoreCurrentCharacter()end);HolyStorm.Events:Register("PLAYER_ENTERING_WORLD","characters",function()Twinks:StoreCurrentCharacter()end);if IsLoggedIn()then self:StoreCurrentCharacter()end end
-function Twinks:OnDisable()HolyStorm.Events:UnregisterOwner("characters")end
+function Twinks:OnInitialize()
+ HolyStorm.TwinkCore:Initialize();HolyStorm.CharacterActions:Initialize();registerRichLinkTypes();HolyStorm.Chat:Initialize()
+ HolyStorm:RegisterUIExtension("Twinks",{id="characters.twinks",order=5,initialize=function()Twinks:InitializeUI()end})
+end
+function Twinks:QueueCollection(trigger)
+ HolyStorm.Tasks:Enqueue("character.identity",function()local character=Twinks:StoreCurrentCharacter();if character then HolyStorm.Data.PlayerStore:LinkLocalCharacter(character.guid)end end,{priority=1,debounce=.2})
+ local capabilities={};for capability in pairs(HolyStorm.moduleCapabilities or{})do if capability:match("^character%.scan%.")then capabilities[#capabilities+1]=capability end end;table.sort(capabilities)
+ for index,capability in ipairs(capabilities)do local current=capability;HolyStorm.Tasks:Enqueue("capability."..current,function()HolyStorm:CallCapability(current,false)end,{priority=index+1,debounce=.5+(index*.25),dependencies={"character.identity"},triggerSource=trigger})end
+end
+function Twinks:OnEnable()HolyStorm.Events:Register("PLAYER_LOGIN","characters",function(event)Twinks:QueueCollection(event)end);HolyStorm.Events:Register("PLAYER_ENTERING_WORLD","characters",function(event)Twinks:QueueCollection(event)end);if IsLoggedIn()then self:QueueCollection("CHARACTERS_ENABLE")end end
+function Twinks:OnDisable()HolyStorm.Events:UnregisterOwner("characters");if HolyStorm.Chat then HolyStorm.Chat:Shutdown()end end
 function Twinks:RequestAndRefresh()self:StoreCurrentCharacter();if _G.GuildRoster then _G.GuildRoster()end;self:Refresh()end
 function Twinks:Refresh()
  local core,accountUUID=HolyStorm.TwinkCore,HolyStorm.TwinkCore:GetLocalAccountUUID();local guild=HolyStorm.Data.GuildStore:GetCurrent();local visibility=core:GetVisibility(accountUUID);self.allRadio:SetChecked(visibility==core.visibility.ALL);self.guildRadio:SetChecked(visibility==core.visibility.GUILD_ONLY)

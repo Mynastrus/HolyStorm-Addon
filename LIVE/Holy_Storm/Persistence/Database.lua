@@ -1,14 +1,13 @@
 local addonVersion = "1.1.0"
 local HolyStorm = LibStub("AceAddon-3.0"):GetAddon("Holy_Storm")
 
-local Database = { version=addonVersion, areas = {}, initialized = false }
+local Database = { version=addonVersion, areas = {}, diagnosticSources = {}, initialized = false }
 
 function Database:Initialize()
     self.initialized = false
     local legacy = type(HolyStormDB) == "table" and HolyStormDB.profiles == nil and HolyStorm.Utils.DeepCopy(HolyStormDB) or nil
     HolyStorm.db = LibStub("AceDB-3.0"):New("HolyStormDB", HolyStorm.Data.Schema.defaults, true)
     HS_Player_DB = type(HS_Player_DB) == "table" and HS_Player_DB or {}
-    HS_GuildLog_DB = type(HS_GuildLog_DB) == "table" and HS_GuildLog_DB or { entries = {}, snapshot = nil }
     if legacy then
         if legacy.enabled ~= nil then HolyStorm.db.profile.enabled = legacy.enabled == true end
         if type(legacy.optionalModules) == "table" then HolyStorm.db.profile.optionalModules = HolyStorm.Utils.ApplyDefaults(legacy.optionalModules, HolyStorm.Data.Schema.defaults.profile.optionalModules) end
@@ -16,9 +15,23 @@ function Database:Initialize()
     local ok, err = HolyStorm.Data.Migrations:Run(HolyStorm.db.global, HolyStorm.db.global.schemaVersion, legacy)
     if not ok then error("Holy Storm database: " .. tostring(err)) end
     self.initialized = true
+    self:RegisterDiagnosticSource("HolyStormDB",function()return HolyStorm.db end)
+    self:RegisterDiagnosticSource("HS_Player_DB",function()return HS_Player_DB end)
 end
 
 function Database:IsInitialized() return self.initialized == true and type(HolyStorm.db) == "table" end
+function Database:GetHandle() return self:IsInitialized() and HolyStorm.db or nil end
+function Database:RegisterDiagnosticSource(id, getter)
+    if type(id)~="string"or id==""or type(getter)~="function"then return false end
+    self.diagnosticSources[id]=getter;return true
+end
+function Database:GetDiagnosticSources()
+    local ids={};for id in pairs(self.diagnosticSources)do ids[#ids+1]=id end;table.sort(ids);return ids
+end
+function Database:GetDiagnosticSource(id)
+    local getter=self.diagnosticSources[id];if not getter then return nil end
+    local ok,value=pcall(getter);return ok and value or nil
+end
 
 function Database:GetRoot(scope)
     if not self:IsInitialized() then return nil end
@@ -202,7 +215,7 @@ end
 function DataManager:_ValidateStorage(storage)
     if type(storage) ~= "table" then return nil, "INVALID_SCHEMA_STORAGE" end
     local backend = storage.backend or "database"
-    if backend ~= "database" and backend ~= "player" and backend ~= "guildLog" then return nil, "INVALID_SCHEMA_BACKEND" end
+    if backend ~= "database" and backend ~= "player" then return nil, "INVALID_SCHEMA_BACKEND" end
     local scope = storage.scope
     if backend == "database" then
         scope = scope or "global"
@@ -276,10 +289,6 @@ function DataManager:_BackendRoot(storage)
         if type(HS_Player_DB) ~= "table" then return nil, "DATABASE_NOT_INITIALIZED" end
         return HS_Player_DB
     end
-    if storage.backend == "guildLog" then
-        if type(HS_GuildLog_DB) ~= "table" then return nil, "DATABASE_NOT_INITIALIZED" end
-        return HS_GuildLog_DB
-    end
     return nil, "INVALID_SCHEMA_BACKEND"
 end
 
@@ -298,7 +307,6 @@ function DataManager:_ReplaceLive(schema, value)
     local storage = schema.storage
     if #storage.path == 0 then
         if storage.backend == "player" then HS_Player_DB = value; return true end
-        if storage.backend == "guildLog" then HS_GuildLog_DB = value; return true end
         return false, "ROOT_REPLACE_UNSUPPORTED"
     end
     local root, rootError = self:_BackendRoot(storage)

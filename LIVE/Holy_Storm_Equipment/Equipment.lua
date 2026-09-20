@@ -1,8 +1,9 @@
 local addonVersion="6.3.0"
 local HolyStorm=LibStub("AceAddon-3.0"):GetAddon("Holy_Storm")
 local L=LibStub("AceLocale-3.0"):GetLocale("Holy_Storm_Equipment")
+if HolyStorm.PermissionRegistry then HolyStorm.PermissionRegistry:RegisterLegacyAlias("equipment.read","equipment-read")end
 if HolyStorm.PlayerData then HolyStorm.PlayerData:RegisterBlock("equipment",{fields={"equipment","itemLevel"},event="HS_EQUIPMENT_UPDATED",staleAfter=21600})end
-local metadata={id="equipment",name="Equipment",displayName=L["DISPLAY_NAME"],description=L["DESCRIPTION"],version=addonVersion,moduleType="feature",category="feature",permissions={{id="equipment-read",category="Equipment",defaults={member=true}},"sync-send","sync-receive"},dependencies={"core","synchronization","ui"},capabilities={"character.scan.equipment"},ui={characterTab="equipment"},data={block="equipment",snapshotType="equipment",schemaVersion=4,capability="character.scan.equipment"},sync={domains={"character"}},enabledByDefault=true,ruleFields={{id="equipment.itemLevel",aliases={"itemLevel"},type="number",name=L["RULE_FIELD_ITEM_LEVEL"],nameKey="RULE_FIELD_ITEM_LEVEL",description=L["RULE_FIELD_ITEM_LEVEL_DESC"],descriptionKey="RULE_FIELD_ITEM_LEVEL_DESC",category=L["DISPLAY_NAME"],dependencies={"equipment"},unit="itemLevel",resolver=function(context)local block=context.character and context.character.equipment or HolyStorm.Data.CharacterStore:GetBlock(context.characterUUID,"equipment");return block and tonumber(block.itemLevel)or nil end}}}
+local metadata={id="equipment",name="Equipment",displayName=L["DISPLAY_NAME"],description=L["DESCRIPTION"],version=addonVersion,moduleType="feature",category="feature",permissions={{id="equipment-read",category="Equipment",defaults={member=true}},"sync-send","sync-receive"},dependencies={"core","synchronization"},capabilities={"character.scan.equipment"},ui={characterTab="equipment"},data={block="equipment",snapshotType="equipment",schemaVersion=4,capability="character.scan.equipment"},sync={domains={"character"}},enabledByDefault=true,ruleFields={{id="equipment.itemLevel",aliases={"itemLevel"},type="number",name=L["RULE_FIELD_ITEM_LEVEL"],nameKey="RULE_FIELD_ITEM_LEVEL",description=L["RULE_FIELD_ITEM_LEVEL_DESC"],descriptionKey="RULE_FIELD_ITEM_LEVEL_DESC",category=L["DISPLAY_NAME"],dependencies={"equipment"},unit="itemLevel",resolver=function(context)local block=context.character and context.character.equipment or HolyStorm.Data.CharacterStore:GetBlock(context.characterUUID,"equipment");return block and tonumber(block.itemLevel)or nil end}}}
 local SLOTS={INVSLOT_HEAD,INVSLOT_NECK,INVSLOT_SHOULDER,INVSLOT_CHEST,INVSLOT_WAIST,INVSLOT_LEGS,INVSLOT_FEET,INVSLOT_WRIST,INVSLOT_HAND,INVSLOT_FINGER1,INVSLOT_FINGER2,INVSLOT_TRINKET1,INVSLOT_TRINKET2,INVSLOT_BACK,INVSLOT_MAINHAND,INVSLOT_OFFHAND}
 local WORKFLOW="EQUIPMENT_UPDATE"
 local function runtime(task)local w=HolyStorm.Workflows.workflows[task.workflowId];return w,w and w.context end
@@ -44,7 +45,7 @@ end
 
 HolyStorm:RegisterModule(metadata,function(Module)
  HolyStorm:ApplyModuleMetadata(Module,metadata)
- function Module:GetCharacterSnapshot(guid)return HolyStorm.Data.CharacterStore:GetEquipment(guid),HolyStorm.Data.CharacterStore:GetBlockMetadata(guid,"equipment")end
+ function Module:GetCharacterSnapshot(guid)local record=HolyStorm.Data.CharacterStore:Get(guid or UnitGUID("player"));return record and record.equipment,HolyStorm.Data.CharacterStore:GetBlockMetadata(guid,"equipment")end
  function Module:Collect()
   local snapshot={slots={},updatedAt=HolyStorm.Utils.Now(),snapshotVersion=4};local count=0
   for _,slot in ipairs(SLOTS)do local item,reason=captureItem(slot);if reason then snapshot.pending=reason end;snapshot.slots[slot]=item or false;if item then count=count+1 end end
@@ -59,7 +60,7 @@ HolyStorm:RegisterModule(metadata,function(Module)
  end
  function Module:Store(snapshot)
   local guid=UnitGUID("player")
-  local changed=HolyStorm.Data.CharacterStore:SetEquipment(guid,snapshot,snapshot.itemLevel,{updatedAt=snapshot.updatedAt,updatedBy=guid},"blizzard")
+  local changed=HolyStorm.PlayerData:WriteOwnedBlock(guid,"equipment",{equipment=snapshot,itemLevel=snapshot.itemLevel},"blizzard")
   return changed
  end
  function Module:RegisterWorkflow()
@@ -86,6 +87,7 @@ HolyStorm:RegisterModule(metadata,function(Module)
  end
  function Module:OnEnable()
   for _,event in ipairs({"PLAYER_EQUIPMENT_CHANGED","UNIT_INVENTORY_CHANGED","SOCKET_INFO_UPDATE"})do local eventName=event;HolyStorm.Events:Register(eventName,"equipment",function(_,firstArgument)if eventName~="UNIT_INVENTORY_CHANGED"or firstArgument=="player"then Module:Request(true,eventName,1)end end)end
+  local context=self.loadContext;if context and context.reason=="event"then self:Request(true,context.trigger,0)end
  end
  function Module:OnDisable()HolyStorm.Events:UnregisterOwner("equipment");local id=HolyStorm.Workflows.activeByType[WORKFLOW];if id then HolyStorm.Workflows:Cancel(id,"MODULE_DISABLED")end end
 end)

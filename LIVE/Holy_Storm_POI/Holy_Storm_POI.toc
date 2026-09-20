@@ -6,7 +6,9 @@
 ## Category: Holy Storm
 ## DefaultState: enabled
 ## Version: @project-version@
-## RequiredDeps: Holy_Storm
+## RequiredDeps: Holy_Storm, Blizzard_MapCanvas
+## X-HolyStorm-ID: poi
+## X-HolyStorm-Requires: synchronization
 
 Locales\enUS.lua
 Locales\deDE.lua

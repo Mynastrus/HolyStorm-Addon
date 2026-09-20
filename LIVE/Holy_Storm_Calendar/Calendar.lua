@@ -1,7 +1,8 @@
 local addonVersion = "2.0.0"
 local HolyStorm = LibStub("AceAddon-3.0"):GetAddon("Holy_Storm")
 local L = LibStub("AceLocale-3.0"):GetLocale("Holy_Storm_GuildEvents")
-local metadata = { id = "GuildEvents", name = "Calendar", internalName = "guildEvents", displayName = L["DISPLAY_NAME"], description = L["DESCRIPTION"], version = addonVersion, moduleType = "feature", category="feature", permissions = {{id="calendar-read",category="Calendar",defaults={member=true}}}, dependencies = { "core", "ui" }, ui = { page = "guildEvents", navigation = true }, enabledByDefault = false, ruleFields={
+if HolyStorm.PermissionRegistry then HolyStorm.PermissionRegistry:RegisterLegacyAlias("calendar.read","calendar-read");HolyStorm.PermissionRegistry:RegisterLegacyAlias("calendar.manage","calendar-manage")end
+local metadata = { id = "GuildEvents", name = "Calendar", internalName = "guildEvents", displayName = L["DISPLAY_NAME"], description = L["DESCRIPTION"], version = addonVersion, moduleType = "feature", category="feature", permissions = {{id="calendar-read",category="Calendar",defaults={member=true}}}, dependencies = { "core" }, ui = { page = "guildEvents", navigation = true }, enabledByDefault = false, ruleFields={
     {id="calendar.title",type="string",name=L["RULE_FIELD_TITLE"],nameKey="RULE_FIELD_TITLE",description=L["RULE_FIELD_TITLE_DESC"],descriptionKey="RULE_FIELD_TITLE_DESC",category=L["DISPLAY_NAME"],resolver=function(context)return context.target and context.target.calendarEvent and context.target.calendarEvent.title end},
     {id="calendar.description",type="string",name=L["RULE_FIELD_DESCRIPTION"],nameKey="RULE_FIELD_DESCRIPTION",description=L["RULE_FIELD_DESCRIPTION_DESC"],descriptionKey="RULE_FIELD_DESCRIPTION_DESC",category=L["DISPLAY_NAME"],resolver=function(context)return context.target and context.target.calendarEvent and context.target.calendarEvent.description end},
 } }
@@ -496,7 +497,7 @@ HolyStorm:RegisterModule(metadata, function(Events)
         end, { priority=3, debounce=1, combat="defer" })
     end
 
-    function Events:OnInitialize()
+    function Events:InitializeUI()
         local UI = HolyStorm:GetModule("UI", true); local aceGUI = LibStub("AceGUI-3.0"); local page = CreateFrame("Frame", nil, UI.content)
         local heading = page:CreateFontString(nil, "OVERLAY", "GameFontHighlightLarge"); heading:SetPoint("TOPLEFT", page, "TOPLEFT", 18, -18); heading:SetText(L["HEADING"])
         local filterBar=HolyStorm.PolicyUI:CreateFilterBar(page,"calendar",function()Events:Render()end);filterBar:SetPoint("TOPLEFT",14,-42);filterBar:SetPoint("TOPRIGHT",-20,-42)
@@ -539,6 +540,10 @@ HolyStorm:RegisterModule(metadata, function(Events)
         HolyStorm.Events:Register("CALENDAR_UPDATE_GUILD_EVENTS","calendar",onCalendarEvent); HolyStorm.Events:Register("PLAYER_LOGIN","calendar",onCalendarEvent); HolyStorm.Events:Register("PLAYER_ENTERING_WORLD","calendar",onCalendarEvent)
         HolyStorm.Tasks:ScheduleRecurring("calendar.periodic",300,function() if Events:IsEnabled() then Events:QueueAutomaticRefresh() end end,{priority=10,cooldown=300})
         self:UpdateNotification()
+    end
+    function Events:OnInitialize()
+        if type(HolyStorm.Database:Get("guildEvents","global"))~="table"then HolyStorm.Database:Set("guildEvents",{unread=false},"global")end
+        HolyStorm:RegisterUIExtension("GuildEvents",{id="calendar.page",order=6,initialize=function()Events:InitializeUI()end})
     end
     function Events:OnDisable() HolyStorm.Events:UnregisterOwner("calendar"); HolyStorm.Tasks:Cancel("calendar.auto-refresh"); HolyStorm.Tasks:CancelRecurring("calendar.periodic") end
 end)

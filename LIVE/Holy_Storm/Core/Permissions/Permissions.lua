@@ -23,7 +23,7 @@ function Permissions:Has(permission,playerId,guid) return HolyStorm.Policy:HasPe
 Permissions.HasPermission = Permissions.Has
 function Permissions:IsAuthorizedSender(sender,permission)
     local guid=HolyStorm.Data.GuildStore:ResolveSenderGuid(sender)
-    return guid and self:Has(permission,HolyStorm.TwinkCore and HolyStorm.TwinkCore:GetAccountUUIDForCharacter(guid) or guid,guid) or false
+    return guid and self:Has(permission,HolyStorm.Accounts and HolyStorm.Accounts:GetAccountUUIDForCharacter(guid) or guid,guid) or false
 end
 function Permissions:GetRoles() return HolyStorm.Policy:GetGroups() end
 function Permissions:CanManage() return self:Has("permissions-manage") end

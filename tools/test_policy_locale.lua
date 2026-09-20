@@ -2,6 +2,7 @@ local activeLocale = arg[1] or "enUS"
 local scriptPath = arg[0]:gsub("\\", "/")
 local workspace = scriptPath:match("^(.*)/tools/[^/]+$") or "."
 local addonRoot = workspace .. "/LIVE/Holy_Storm/"
+local uiRoot = workspace .. "/LIVE/Holy_Storm_UI/"
 
 local function read(path)
     local file=assert(io.open(path,"r"));local content=file:read("*a");file:close();return content
@@ -15,7 +16,7 @@ local function loadDefinitions(locale)
         return values
     end
     local environment=setmetatable({LibStub=function(name)assert(name=="AceLocale-3.0");return ace end},{__index=_G})
-    assert(loadfile(addonRoot.."UI/Administration/Locales/"..locale..".lua","t",environment))()
+    assert(loadfile(uiRoot.."UI/Administration/Locales/"..locale..".lua","t",environment))()
     return values
 end
 
@@ -36,7 +37,7 @@ for _,relativePath in ipairs({
     "UI/Administration/Filters.lua",
     "UI/Administration/PolicyInspector.lua",
 })do
-    local source=read(addonRoot..relativePath)
+    local source=read(uiRoot..relativePath)
     for key in source:gmatch('L%["([^"\r\n]+)"%]')do requireKey(key,relativePath)end
 end
 
@@ -82,8 +83,8 @@ local reportedErrors = {}
 function geterrorhandler() return function(message)reportedErrors[#reportedErrors+1]=tostring(message)end end
 dofile(addonRoot.."Libs/LibStub/LibStub.lua")
 dofile(addonRoot.."Libs/AceLocale-3.0/AceLocale-3.0.lua")
-dofile(addonRoot.."UI/Administration/Locales/enUS.lua")
-dofile(addonRoot.."UI/Administration/Locales/deDE.lua")
+dofile(uiRoot.."UI/Administration/Locales/enUS.lua")
+dofile(uiRoot.."UI/Administration/Locales/deDE.lua")
 assert(#reportedErrors==0,table.concat(reportedErrors,"\n"))
 local L=LibStub("AceLocale-3.0"):GetLocale("Holy_Storm_Policy")
 for _,key in ipairs({"CATEGORY_CHARACTERS","PERMISSION_MATRIX","MODULE_SETTINGS","MATCHES_WITH_UNKNOWN","STATE_DETAILS_FORMAT"})do assert(L[key]~=key,activeLocale.." is missing translation for "..key)end

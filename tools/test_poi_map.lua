@@ -18,6 +18,7 @@ assert(map:find("pcall(self.worldProvider.RefreshAllData", 1, true), "POI refres
 
 local toc = read("Holy_Storm_POI.toc")
 local coreTocFile=assert(io.open(workspace.."Holy_Storm/Holy_Storm.toc","r"));local coreToc=coreTocFile:read("*a");coreTocFile:close()
-assert(coreToc:find("## RequiredDeps: Blizzard_MapCanvas", 1, true), "core TOC must load Blizzard MapCanvas first")
+assert(not coreToc:find("Blizzard_MapCanvas", 1, true), "core TOC must not own feature MapCanvas dependencies")
+assert(toc:find("## RequiredDeps: Holy_Storm, Blizzard_MapCanvas", 1, true), "POI TOC must own Blizzard MapCanvas")
 assert((toc:find("Map.lua", 1, true) or toc:find("Map\\.lua", 1, true)) and (toc:find("Map.xml", 1, true) or toc:find("Map\\.xml", 1, true)), "POI map files must be in the feature TOC")
 print("POI MapCanvas template, refresh guard and load-order checks passed")

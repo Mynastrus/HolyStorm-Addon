@@ -2,7 +2,7 @@ local addonVersion="1.4.2"
 local HolyStorm=LibStub("AceAddon-3.0"):GetAddon("Holy_Storm")
 local L=LibStub("AceLocale-3.0"):GetLocale("Holy_Storm_CharacterUI")
 local Page=HolyStorm:RegisterRequiredModule("CharacterOverview")
-HolyStorm:ApplyModuleMetadata(Page,{displayName=L["WINDOW_TITLE"],internalName="characterOverview",version=addonVersion,category="required",description=L["WINDOW_TITLE"],permissions={},dependencies={"core","ui"},enabledByDefault=true})
+HolyStorm:ApplyModuleMetadata(Page,{displayName=L["WINDOW_TITLE"],internalName="characterOverview",version=addonVersion,category="required",description=L["WINDOW_TITLE"],permissions={},dependencies={"core"},enabledByDefault=true})
 local C=HolyStorm.CharacterUI
 
 
@@ -165,8 +165,7 @@ function Page:BuildTabs()
  local tabs={};for _,definition in ipairs(C:GetTabs())do local visual=tabVisuals[definition.id];tabs[#tabs+1]={value=definition.id,text=definition.label or L[definition.labelKey],icon=definition.icon or(visual and visual.icon)}end
  if self.tabGroup and self.tabGroup.SetTabs then self.tabGroup:SetTabs(tabs);self.tabButtons=self.tabGroup.tabButtons or{};self.tabGroup:SelectTab(C.activeTab or(tabs[1]and tabs[1].value),true)end
 end
-function Page:OnInitialize()
- HolyStorm.Tasks:RegisterTaskType("Character.Refresh",{name=L["TASK_CHARACTER_REFRESH"],localizedNameKey="TASK_CHARACTER_REFRESH",module="CharacterOverview",priority=30,executionMode="MERGE_BY_KEY",execute=function(task)local m=task.metadata or{};return C:ConsumeRefresh(m.characterUUID)end})
+function Page:InitializeUI()
  local UI=HolyStorm:GetModule("UI",true);local page=CreateFrame("Frame",nil,UI.content);self.page=page;self.views,self.tabButtons,self.dirty={},{},{}
  local headerBar=HolyStorm.UIComponents:CreateHeaderBar(UI.frame or page,UI.content or page);self.headerBar=headerBar;self.header=headerBar.frame;self.classIcon=headerBar.primaryIcon;self.portrait=headerBar.primaryIcon;self.specIcon=headerBar.secondaryIcon;self.headerName=headerBar.title;self.headerInfo=headerBar.subtitle;self.factionMark=headerBar.watermark;self.headerStatus=headerBar.status;self.headerUpdated=headerBar.updated;self.developer=headerBar.developer;self.refreshButton=headerBar.refreshButton
  self.refreshButton:SetScript("OnEnter",function(b)GameTooltip:SetOwner(b,"ANCHOR_LEFT");GameTooltip:SetText(L["REFRESH"]);GameTooltip:Show()end);self.refreshButton:SetScript("OnLeave",function()GameTooltip:Hide()end);self.refreshButton:SetScript("OnClick",function()if C.context then C:RequestRefresh(C.context.characterUUID,(C:GetTab(C.activeTab)or{}).blocks,"MANUAL")end end)
@@ -180,5 +179,9 @@ function Page:OnInitialize()
  HolyStorm.Events:Register("HS_TASK_STARTED","character-overview-task",function(_,task)if task.registryId=="Character.Refresh"and C:IsCurrent(task.metadata.characterUUID)then Page.headerStatus:SetText(L["STATUS_REFRESHING"])end end)
  HolyStorm.Events:Register("HS_TASK_COMPLETED","character-overview-task-complete",function(_,task)if task.registryId=="Character.Refresh"and C:IsCurrent(task.metadata.characterUUID)then Page:ScheduleRefresh(C.activeTab,task.metadata.characterUUID)end end)
  HolyStorm.Events:Register("HS_TASK_FAILED","character-overview-task-failed",function(_,task)if task.registryId=="Character.Refresh"and C:IsCurrent(task.metadata.characterUUID)then Page:ScheduleRefresh(C.activeTab,task.metadata.characterUUID)end end)
+end
+function Page:OnInitialize()
+ HolyStorm.Tasks:RegisterTaskType("Character.Refresh",{name=L["TASK_CHARACTER_REFRESH"],localizedNameKey="TASK_CHARACTER_REFRESH",module="CharacterOverview",priority=30,executionMode="MERGE_BY_KEY",execute=function(task)local m=task.metadata or{};return C:ConsumeRefresh(m.characterUUID)end})
+ HolyStorm:RegisterUIExtension("CharacterOverview",{id="characters.overview",order=4,initialize=function()Page:InitializeUI()end})
 end
 function Page:OnDisable()HolyStorm.Events:UnregisterOwner("character-overview");for _,definition in ipairs(C:GetTabs())do for _,event in ipairs(definition.events or{})do HolyStorm.Events:UnregisterOwner("character-overview:"..definition.id..":"..event)end end;HolyStorm.Events:UnregisterOwner("character-overview-tabs");HolyStorm.Events:UnregisterOwner("character-overview-summary");HolyStorm.Events:UnregisterOwner("character-overview-task");HolyStorm.Events:UnregisterOwner("character-overview-task-complete");HolyStorm.Events:UnregisterOwner("character-overview-task-failed")end

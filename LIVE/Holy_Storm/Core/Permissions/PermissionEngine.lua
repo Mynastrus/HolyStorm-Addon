@@ -4,7 +4,7 @@ local Core = HolyStorm.PermissionCore
 local Engine = { version=addonVersion, permissionCache={}, membershipCache={}, generation=0 }
 
 function Engine:BuildContext(accountUUID,characterUUID,target,projection)
-    local localAccount=(HolyStorm.TwinkCore and HolyStorm.TwinkCore:GetLocalAccountUUID()) or HolyStorm.Data.PlayerStore:GetLocalPlayerId()
+    local localAccount=(HolyStorm.Accounts and HolyStorm.Accounts:GetLocalAccountUUID()) or HolyStorm.Data.PlayerStore:GetLocalPlayerId()
     accountUUID=accountUUID or localAccount
     characterUUID=characterUUID or (accountUUID==localAccount and UnitGUID("player"))
     projection=projection or{}
@@ -13,18 +13,18 @@ function Engine:BuildContext(accountUUID,characterUUID,target,projection)
     return {accountUUID=accountUUID,playerId=accountUUID,characterUUID=characterUUID,guid=characterUUID,player=projection.player,character=character,guild=guild,member=member,target=target}
 end
 function Engine:Actor(accountUUID,characterUUID)
-    return {accountUUID=accountUUID or (HolyStorm.TwinkCore and HolyStorm.TwinkCore:GetLocalAccountUUID()) or HolyStorm.Data.PlayerStore:GetLocalPlayerId(),characterUUID=characterUUID or UnitGUID("player")}
+    return {accountUUID=accountUUID or (HolyStorm.Accounts and HolyStorm.Accounts:GetLocalAccountUUID()) or HolyStorm.Data.PlayerStore:GetLocalPlayerId(),characterUUID=characterUUID or UnitGUID("player")}
 end
 function Engine:IsActualGuildLeader(accountUUID,characterUUID)
     local guild=HolyStorm.Data.GuildStore:GetCurrent()
     if characterUUID then local member=guild and guild.roster and guild.roster[characterUUID]; return member and member.rankIndex==0 or false end
-    local localAccount=(HolyStorm.TwinkCore and HolyStorm.TwinkCore:GetLocalAccountUUID()) or HolyStorm.Data.PlayerStore:GetLocalPlayerId()
+    local localAccount=(HolyStorm.Accounts and HolyStorm.Accounts:GetLocalAccountUUID()) or HolyStorm.Data.PlayerStore:GetLocalPlayerId()
     if not accountUUID or accountUUID==localAccount then
         local playerGuid=UnitGUID("player"); local member=guild and guild.roster and guild.roster[playerGuid]
         if member then return member.rankIndex==0 end
         local _,_,rank=GetGuildInfo("player"); return IsInGuild() and rank==0
     end
-    local characters=HolyStorm.TwinkCore and HolyStorm.TwinkCore:GetCharactersForAccount(accountUUID) or {}
+    local characters=HolyStorm.Accounts and HolyStorm.Accounts:GetCharactersForAccount(accountUUID) or {}
     for guid in pairs(characters) do local member=guild and guild.roster and guild.roster[guid]; if member and member.rankIndex==0 then return true end end
     return false
 end
@@ -120,13 +120,13 @@ end
 function Engine:GetEffectiveMembers(groupId)
     local group=self:GetGroup(groupId); local out={}; if not group then return out end
     local guild=HolyStorm.Data.GuildStore:GetCurrent()
-    for guid,member in pairs(guild and guild.roster or {}) do local accountUUID=HolyStorm.TwinkCore and HolyStorm.TwinkCore:GetAccountUUIDForCharacter(guid) or HolyStorm.Data.PlayerStore:GetCharacterOwner(guid); local membership=self:GetMembershipReasons(group,accountUUID,guid); if #membership>0 then local character=HolyStorm.Data.CharacterStore:Get(guid) or {}; out[#out+1]={characterUUID=guid,accountUUID=accountUUID,name=member.name or character.name or guid,classFile=character.classFile or member.classFile,rank=member.rank,rankIndex=member.rankIndex,isMain=accountUUID and HolyStorm.TwinkCore and HolyStorm.TwinkCore:GetAccountMain(accountUUID)==guid,reasons=membership} end end
+    for guid,member in pairs(guild and guild.roster or {}) do local accountUUID=HolyStorm.Accounts and HolyStorm.Accounts:GetAccountUUIDForCharacter(guid) or HolyStorm.Data.PlayerStore:GetCharacterOwner(guid); local membership=self:GetMembershipReasons(group,accountUUID,guid); if #membership>0 then local character=HolyStorm.Data.CharacterStore:Get(guid) or {}; out[#out+1]={characterUUID=guid,accountUUID=accountUUID,name=member.name or character.name or guid,classFile=character.classFile or member.classFile,rank=member.rank,rankIndex=member.rankIndex,isMain=accountUUID and HolyStorm.Accounts and HolyStorm.Accounts:GetAccountMain(accountUUID)==guid,reasons=membership} end end
     table.sort(out,function(a,b) return tostring(a.name)<tostring(b.name) end); return out
 end
 function Engine:GetGroupSummaries()
     local groups=self:GetGroups(); local out={}
     for id,group in pairs(groups) do out[id]={id=id,name=group.name,nameKey=group.nameKey,system=group.system==true,creator=group.creator,description=group.description,effectiveMembers=0,explicitMembers=HolyStorm.Utils.TableCount(group.characterMembers)+HolyStorm.Utils.TableCount(group.accountMembers)+HolyStorm.Utils.TableCount(group.guildRanks),filters=#group.filterIds,permissions=HolyStorm.Utils.TableCount(group.permissions)} end
-    local guild=HolyStorm.Data.GuildStore:GetCurrent(); for guid in pairs(guild and guild.roster or {}) do local accountUUID=HolyStorm.TwinkCore and HolyStorm.TwinkCore:GetAccountUUIDForCharacter(guid) or HolyStorm.Data.PlayerStore:GetCharacterOwner(guid); for id in pairs(self:GetEffectiveGroups(accountUUID,guid)) do if out[id] then out[id].effectiveMembers=out[id].effectiveMembers+1 end end end
+    local guild=HolyStorm.Data.GuildStore:GetCurrent(); for guid in pairs(guild and guild.roster or {}) do local accountUUID=HolyStorm.Accounts and HolyStorm.Accounts:GetAccountUUIDForCharacter(guid) or HolyStorm.Data.PlayerStore:GetCharacterOwner(guid); for id in pairs(self:GetEffectiveGroups(accountUUID,guid)) do if out[id] then out[id].effectiveMembers=out[id].effectiveMembers+1 end end end
     return out
 end
 function Engine:GetGroupSummary(groupId) return self:GetGroupSummaries()[groupId] end
@@ -172,7 +172,7 @@ function Engine:Recalculate()
     end
     local blockList={};for blockId in pairs(blocks)do blockList[#blockList+1]=blockId end;table.sort(blockList)
     for guid in pairs(guild and guild.roster or{})do
-        local account=HolyStorm.TwinkCore and HolyStorm.TwinkCore:GetAccountUUIDForCharacter(guid)or HolyStorm.Data.PlayerStore:GetCharacterOwner(guid)or guid
+        local account=HolyStorm.Accounts and HolyStorm.Accounts:GetAccountUUIDForCharacter(guid)or HolyStorm.Data.PlayerStore:GetCharacterOwner(guid)or guid
         local character=HolyStorm.Data.CharacterStore.GetProjection and HolyStorm.Data.CharacterStore:GetProjection(guid,blockList)or HolyStorm.Data.CharacterStore:Get(guid)
         local context=self:BuildContext(account,guid,nil,{guild=guild,character=character})
         local groups=self:GetEffectiveGroupsForState(state,account,guid,context);local key=tostring(account).."\031"..tostring(guid);self.membershipCache[key]=groups

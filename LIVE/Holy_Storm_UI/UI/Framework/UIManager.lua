@@ -1,10 +1,23 @@
 local addonVersion = "1.3.0"
 local HolyStorm = LibStub("AceAddon-3.0"):GetAddon("Holy_Storm")
-local UIManager = { version=addonVersion, driver=nil, pages={}, dirty={}, scheduled={} }
+local UIManager = { version=addonVersion, driver=nil, pages={}, dirty={}, scheduled={}, initializedExtensions={} }
+function UIManager:InitializeExtension(definition)
+    if not self.driver or type(definition)~="table" or self.initializedExtensions[definition.id] then return false end
+    local ok=HolyStorm.Utils.SafeCall("ui-extension:"..definition.id,definition.initialize,definition)
+    if ok then self.initializedExtensions[definition.id]=true end
+    return ok
+end
+function UIManager:FlushExtensions()
+    if not self.driver then return 0 end
+    local count=0
+    for _,definition in ipairs(HolyStorm:GetUIExtensions())do if self:InitializeExtension(definition)then count=count+1 end end
+    return count
+end
 function UIManager:SetDriver(driver)
     self.driver=driver; HolyStorm.State:Set("uiReady",driver~=nil)
     HolyStorm.Events:Register("HS_UI_STATUS_REQUESTED","ui-manager-status",function(_,text) if UIManager.driver then UIManager.driver:SetStatusText(text) end end)
     if HolyStorm.Administration and HolyStorm.Administration.RefreshNavigation then HolyStorm.Administration:RefreshNavigation() end
+    self:FlushExtensions()
     return true
 end
 function UIManager:RegisterPage(id,frame,title,refresh,events)
@@ -37,3 +50,4 @@ function UIManager:GetVisiblePage()
     if not self.driver or not self.driver.pages then return nil end; for id,page in pairs(self.driver.pages) do if page.frame:IsShown() then return id end end
 end
 HolyStorm.UI = UIManager
+HolyStorm.Events:Register("HS_UI_EXTENSION_REGISTERED","ui-extensions",function(_,_,definition)UIManager:InitializeExtension(definition)end)

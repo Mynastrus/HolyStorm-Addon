@@ -18,6 +18,6 @@ for _,name in ipairs(folders)do
    for key in pairs(en)do definitions[key]=true end
   end
  end
- for _,path in ipairs(luaFiles)do if not path:match("/Locales/")then for key in pairs(keys(read(path)))do assert(definitions[key],path.." uses undefined feature locale "..key)end end end
+ for _,path in ipairs(luaFiles)do if not path:match("/Locales/")then local source=read(path);if not source:find('GetLocale("Holy_Storm")',1,true)then for key in pairs(keys(source))do assert(definitions[key],path.." uses undefined feature locale "..key)end end end end
 end
 print("Feature locale ownership and enUS/deDE parity passed")

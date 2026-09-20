@@ -33,7 +33,7 @@ RAID_CLASS_COLORS={PALADIN={r=1,g=.5,b=.8,GenerateHexColor=function()return"ffff
 ChatFrameUtil={AddMessageEventFilter=function(event,fn)filters[event]=fn end,RemoveMessageEventFilter=function(event)removed[event]=true end,GetActiveWindow=function()return editBox end,InsertLink=function(value)editBox.text=editBox.text..value;editBox.cursor=#editBox.text;return true end}
 function StaticPopup_Show()end;StaticPopupDialogs={};OKAY="Okay"
 
-assert(loadfile(root.."Core/Content/RichContent.lua"))();assert(loadfile(root.."Core/Chat/Chat.lua"))();HolyStorm.RichContent:Initialize()
+assert(loadfile(root.."Core/Content/RichContent.lua"))();assert(loadfile(root.."../Holy_Storm_Characters/Chat.lua"))();HolyStorm.RichContent:Initialize()
 -- Standalone feature addons own these registrations in production. Register their
 -- public contracts in this focused Chat test fixture so the core remains feature-free.
 local function characterRender(target,label)local record=HolyStorm.Data.CharacterStore:Get(target);return label or(record and(record.fullName or record.name))or target end

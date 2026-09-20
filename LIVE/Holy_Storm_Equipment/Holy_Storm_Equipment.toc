@@ -7,6 +7,10 @@
 ## DefaultState: enabled
 ## Version: @project-version@
 ## RequiredDeps: Holy_Storm
+## LoadOnDemand: 1
+## X-HolyStorm-ID: equipment
+## X-HolyStorm-Requires: synchronization
+## X-HolyStorm-LoadOnEvent: PLAYER_EQUIPMENT_CHANGED
 
 Locales\enUS.lua
 Locales\deDE.lua

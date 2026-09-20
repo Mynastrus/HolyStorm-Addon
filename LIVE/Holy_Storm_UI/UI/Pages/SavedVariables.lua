@@ -104,7 +104,7 @@ function SavedVariables:Serialize(value, depth, visited, lines)
 end
 
 function SavedVariables:GetOutputText(variableName)
-    local value = _G[variableName]
+    local value = HolyStorm.Database:GetDiagnosticSource(variableName)
     if value == nil then return L["NOT_LOADED"] end
     self.lineCount = 0
     local lines = {}
@@ -178,7 +178,7 @@ end
 function SavedVariables:EnsureTreeOptions()
     if self.treeVariable == self.selectedVariable and self.treeOptions then return end
 
-    local value = _G[self.selectedVariable]
+    local value = HolyStorm.Database:GetDiagnosticSource(self.selectedVariable)
     self.treeNodeCount = 0
     if value == nil then
         self.treeOptions = {
@@ -208,7 +208,7 @@ function SavedVariables:OnInitialize()
         args = {
             database = {
                 type = "select", name = L["SELECT_LABEL"], order = 1, width = "double",
-                values = { HolyStormDB = L["DATABASE_HOLYSTORM"], HS_Player_DB = L["DATABASE_PLAYERS"], HS_GuildLog_DB = L["DATABASE_GUILD_LOG"] },
+                values = function()local values={};for _,id in ipairs(HolyStorm.Database:GetDiagnosticSources())do values[id]=id end;return values end,
                 get = function() return SavedVariables.selectedVariable end,
                 set = function(_, value)
                     SavedVariables.selectedVariable = value

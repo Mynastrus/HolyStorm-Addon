@@ -1,4 +1,5 @@
 local root=(arg[0]:gsub("tools[/\\]test_logs.lua$","")).."LIVE/Holy_Storm/"
+local uiRoot=(arg[0]:gsub("tools[/\\]test_logs.lua$","")).."LIVE/Holy_Storm_UI/"
 local clock=1000
 unpack=unpack or table.unpack
 local function copy(value,seen)if type(value)~="table"then return value end;seen=seen or{};if seen[value]then return seen[value]end;local out={};seen[value]=out;for key,child in pairs(value)do out[copy(key,seen)]=copy(child,seen)end;return out end
@@ -10,7 +11,8 @@ function HolyStorm:ApplyModuleMetadata()end
 function LibStub(name)if name=="AceAddon-3.0"then return{GetAddon=function()return HolyStorm end}elseif name=="AceLocale-3.0"then return{GetLocale=function()return locale end}end end
 function date(_,timestamp)return tostring(timestamp)end
 assert(loadfile(root.."Core/Logging/Logger.lua"))();HolyStorm.Logger:Initialize(false)
-assert(loadfile(root.."UI/Pages/Logs.lua"))();Logs:LoadSettings()
+HolyStorm.Database={Get=function(_,path)local value=HolyStorm.db.profile;for key in path:gmatch("[^%.]+")do value=value and value[key]end;return value end,Set=function(_,path,value)local target=HolyStorm.db.profile;local keys={};for key in path:gmatch("[^%.]+")do keys[#keys+1]=key end;for index=1,#keys-1 do target[keys[index]]=target[keys[index]]or{};target=target[keys[index]]end;target[keys[#keys]]=value;return true end}
+assert(loadfile(uiRoot.."UI/Pages/Logs.lua"))();Logs:LoadSettings()
 
 HolyStorm.Logger:Write("DEBUG","Core","database","Database opened",{reason="LOGIN"})
 HolyStorm.Logger:Write("INFO","MythicPlus","task","Snapshot completed",{taskId="task-1"},"wf-1")

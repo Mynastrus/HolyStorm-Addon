@@ -17,7 +17,6 @@ L["CONTENT_DESCRIPTION"] = "Schreibgeschützte Anzeige der gespeicherten Daten d
 L["SELECT_LABEL"] = "Gespeicherte Variable"
 L["DATABASE_HOLYSTORM"] = "HolyStormDB (Einstellungen und Addondaten)"
 L["DATABASE_PLAYERS"] = "HS_Player_DB (bekannte Spieler)"
-L["DATABASE_GUILD_LOG"] = "HS_GuildLog_DB (Gildenlog)"
 L["REFRESH"] = "Aktualisieren"
 L["REFRESH_TOOLTIP"] = "Aktualisiert die gespeicherten Variablen dieses Addons."
 L["TREE_VIEW"] = "Baumansicht"

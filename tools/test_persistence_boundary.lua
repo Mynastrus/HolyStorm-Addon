@@ -12,18 +12,16 @@ local allow = {
     ["LIVE/Holy_Storm_Positions/GuildPositions.lua"] = { 0, 0, 0, 3 },
     ["LIVE/Holy_Storm_Achievements/Persistence/AchievementStore.lua"] = { 0, 0, 0, 2 },
     ["LIVE/Holy_Storm_News/Persistence/ContentStore.lua"] = { 0, 0, 0, 2 },
-    ["LIVE/Holy_Storm/Persistence/Database.lua"] = { 4, 6, 6, 8 },
+    ["LIVE/Holy_Storm/Persistence/Database.lua"] = { 5, 8, 6, 11 },
     ["LIVE/Holy_Storm/Persistence/GuildStore.lua"] = { 0, 0, 7, 2 },
     ["LIVE/Holy_Storm/Persistence/Migrations.lua"] = { 1, 40, 0, 0 },
     ["LIVE/Holy_Storm/Persistence/PlayerDataStore.lua"] = { 1, 8, 0, 3 },
     ["LIVE/Holy_Storm/Persistence/PlayerStore.lua"] = { 0, 0, 0, 3 },
     ["LIVE/Holy_Storm_POI/Persistence/POIStore.lua"] = { 0, 0, 0, 3 },
-    ["LIVE/Holy_Storm/UI/Pages/Logs.lua"] = { 0, 0, 0, 4 },
-    ["LIVE/Holy_Storm/UI/Pages/Options.lua"] = { 0, 0, 0, 1 },
-    ["LIVE/Holy_Storm/UI/Pages/SavedVariables.lua"] = { 2, 1, 1, 0 },
-    ["LIVE/Holy_Storm/UI/Pages/TaskManager.lua"] = { 0, 0, 0, 2 },
-    ["LIVE/Holy_Storm/UI/Pages/SavedVariablesLocales/deDE.lua"] = { 3, 1, 1, 0 },
-    ["LIVE/Holy_Storm/UI/Pages/SavedVariablesLocales/enUS.lua"] = { 3, 1, 1, 0 },
+    ["LIVE/Holy_Storm_GuildLog/GuildLogStore.lua"] = { 0, 0, 9, 0 },
+    ["LIVE/Holy_Storm_UI/UI/Pages/SavedVariables.lua"] = { 2, 1, 1, 0 },
+    ["LIVE/Holy_Storm_UI/UI/Pages/SavedVariablesLocales/deDE.lua"] = { 3, 1, 1, 0 },
+    ["LIVE/Holy_Storm_UI/UI/Pages/SavedVariablesLocales/enUS.lua"] = { 3, 1, 1, 0 },
 }
 
 local tokens = { "HolyStormDB", "HS_Player_DB", "HS_GuildLog_DB", "HolyStorm.db" }

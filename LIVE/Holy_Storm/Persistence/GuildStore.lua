@@ -28,11 +28,6 @@ function Store:ResolveSenderGuid(sender)
     if type(sender)~="string" then return nil end; local full,short=string.lower(sender),string.lower(sender:match("^[^-]+")or sender); local qualified=sender:find("-",1,true)~=nil
     local guild=self:GetCurrent(); for guid,member in pairs(guild and guild.roster or {}) do local name=member.name; if name then local candidateFull,candidateShort=string.lower(name),string.lower(name:match("^[^-]+")or name); if candidateFull==full or (not qualified and candidateShort==short) then return guid end end end
 end
-function Store:GetLogDatabase() HS_GuildLog_DB=type(HS_GuildLog_DB)=="table" and HS_GuildLog_DB or {entries={},snapshot=nil}; HS_GuildLog_DB.entries=type(HS_GuildLog_DB.entries)=="table" and HS_GuildLog_DB.entries or {}; return HS_GuildLog_DB end
-function Store:AddLogEntry(eventType,message)
-    local entries=self:GetLogDatabase().entries; table.insert(entries,1,{timestamp=HolyStorm.Utils.Now(),eventType=eventType,message=message}); while #entries>1000 do table.remove(entries) end; HolyStorm.Events:Emit("HS_GUILD_LOG_UPDATED",eventType)
-end
-function Store:SetLogSnapshot(snapshot) self:GetLogDatabase().snapshot=HolyStorm.Utils.DeepCopy(snapshot) end
 function Store:GetGuildId()
     if not IsInGuild() then return nil end
     local guildName, _, _, realm = GetGuildInfo("player"); realm = realm or (GetNormalizedRealmName and GetNormalizedRealmName()) or GetRealmName()

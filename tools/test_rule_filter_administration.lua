@@ -2,13 +2,14 @@
 local root=(arg[0]:gsub("tools[/\\]test_rule_filter_administration.lua$",""))
 local addon=root.."LIVE/Holy_Storm/"
 local function read(path)local file=assert(io.open(addon..path,"rb"));local text=file:read("*a");file:close();return text end
+local function readUI(path)local file=assert(io.open(root.."LIVE/Holy_Storm_UI/"..path,"rb"));local text=file:read("*a");file:close();return text end
 
 local ruleEngine=read("Core/Permissions/RuleEngine.lua")
 local filters=read("Core/Permissions/FilterManager.lua")
 local state=read("Core/Permissions/PolicyState.lua")
-local policyUI=read("UI/Framework/Components/PolicyUI.lua")
-local filterUI=read("UI/Administration/Filters.lua")
-local ruleUI=read("UI/Administration/Rules.lua")
+local policyUI=readUI("UI/Framework/Components/PolicyUI.lua")
+local filterUI=readUI("UI/Administration/Filters.lua")
+local ruleUI=readUI("UI/Administration/Rules.lua")
 local moduleRegistry=read("Core/Registry/ModuleRegistry.lua")
 local toc=read("Holy_Storm.toc")
 
@@ -46,7 +47,7 @@ end
 
 -- Every newly visible administration label exists in both locales.
 for _,locale in ipairs({"enUS","deDE"})do
-    local source=read("UI/Administration/Locales/"..locale..".lua")
+    local source=readUI("UI/Administration/Locales/"..locale..".lua")
     for _,key in ipairs({"REFERENCES","NO_REFERENCES","EMPTY_FILTERS","EMPTY_RULES","EMPTY_FIELDS","EMPTY_PREVIEW_ENTITIES","FIELD_PROVIDERS","RESULT_PASS","RESULT_FAIL","RESULT_UNKNOWN","TRACE_CONDITION","TRACE_REASON","ADD_AND_GROUP","ADD_OR_GROUP","MOVE_UP","MOVE_DOWN","INDENT","OUTDENT","CONFIRM_FILTER_DELETE","CONFIRM_RULE_DELETE"})do
         assert(source:find('L["'..key..'"]',1,true),locale.." is missing "..key)
     end

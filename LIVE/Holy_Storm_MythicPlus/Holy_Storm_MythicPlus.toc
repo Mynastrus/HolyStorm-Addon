@@ -7,6 +7,9 @@
 ## DefaultState: enabled
 ## Version: @project-version@
 ## RequiredDeps: Holy_Storm
+## LoadOnDemand: 1
+## X-HolyStorm-ID: mythicPlus
+## X-HolyStorm-LoadOnEvent: CHALLENGE_MODE_COMPLETED
 
 Locales\enUS.lua
 Locales\deDE.lua

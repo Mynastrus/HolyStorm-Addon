@@ -1,4 +1,5 @@
 local root=(arg[0]:gsub("tools[/\\]test_character_tabs.lua$","")).."LIVE/Holy_Storm/"
+local uiRoot=(arg[0]:gsub("tools[/\\]test_character_tabs.lua$","")).."LIVE/Holy_Storm_UI/"
 local featureRoot=(arg[0]:gsub("tools[/\\]test_character_tabs.lua$","")).."LIVE/Holy_Storm_Characters/"
 local unpack=unpack or table.unpack
 local function copy(value,seen)if type(value)~="table"then return value end;seen=seen or{};if seen[value]then return seen[value]end;local out={};seen[value]=out;for key,child in pairs(value)do out[copy(key,seen)]=copy(child,seen)end;return out end
@@ -12,6 +13,7 @@ function HolyStorm:RegisterRequiredModule()local module={};self.characterOvervie
 function HolyStorm:RegisterCapability(_,capability,handler)self.capabilities=self.capabilities or{};self.capabilities[capability]=handler;return true end
 function HolyStorm:RegisterCharacterTab(_,definition)return self.CharacterUI:RegisterTab(definition)end
 function HolyStorm:RegisterCharacterSummarySection(_,definition)return self.CharacterUI:RegisterSummarySection(definition)end
+function HolyStorm:RegisterUIExtension(_,definition)self.uiExtension=definition;return true end
 function HolyStorm:CallCapability()return true end
 function HolyStorm:ApplyModuleMetadata()end
 function HolyStorm:IsOptionalModuleEnabled()return true end
@@ -31,7 +33,7 @@ HolyStorm.TwinkCore={sources={OWNER="OWNER"},GetAccountUUIDForCharacter=function
 LOCALIZED_CLASS_NAMES_MALE={PALADIN="Paladin"};RAID_CLASS_COLORS={PALADIN={r=1,g=.96,b=.41}};NORMAL_FONT_COLOR={r=1,g=1,b=1};CLASS_ICON_TCOORDS={PALADIN={0,0.25,0,0.25}}
 for index,name in ipairs({"HEAD","NECK","SHOULDER","BACK","CHEST","WRIST","HAND","WAIST","LEGS","FEET","FINGER1","FINGER2","TRINKET1","TRINKET2","MAINHAND","OFFHAND"})do _G["INVSLOT_"..name]=index end
 
-assert(loadfile(featureRoot.."UI/CharacterUI.lua"))();assert(loadfile(root.."UI/Framework/Components/HolyStormHeaderBar.lua"))();assert(loadfile(root.."../Holy_Storm_Equipment/UI/CharacterTab.lua"))();assert(loadfile(root.."../Holy_Storm_MythicPlus/UI/CharacterTab.lua"))();assert(loadfile(root.."../Holy_Storm_Raids/UI/CharacterTab.lua"))();assert(loadfile(root.."../Holy_Storm_Delves/UI/CharacterTab.lua"))();assert(loadfile(featureRoot.."UI/CharacterOverview.lua"))()
+assert(loadfile(featureRoot.."UI/CharacterUI.lua"))();assert(loadfile(uiRoot.."UI/Framework/Components/HolyStormHeaderBar.lua"))();assert(loadfile(root.."../Holy_Storm_Equipment/UI/CharacterTab.lua"))();assert(loadfile(root.."../Holy_Storm_MythicPlus/UI/CharacterTab.lua"))();assert(loadfile(root.."../Holy_Storm_Raids/UI/CharacterTab.lua"))();assert(loadfile(root.."../Holy_Storm_Delves/UI/CharacterTab.lua"))();assert(loadfile(featureRoot.."UI/CharacterOverview.lua"))()
 local C=HolyStorm.CharacterUI;local context=C:ResolveContext("A")
 
 local function widget(kind,parent)
@@ -104,7 +106,7 @@ blocks.stats={primary={strength={base=100,effective=120},agility={base=20,effect
 assert(stats.text:find("100",1,true)and stats.text:find("120",1,true)and stats.text:find("LIVE_BUFFS_UNAVAILABLE",1,true),"persistent stats and explicit live limitation")
 
 local twinks=render("twinks");assert(twinks.text:find("Alpha%-Realm")and twinks.text:find("Beta%-Realm")and twinks.text:find("SHADOW_MAIN",1,true)and twinks.text:find("ADMINISTRATIVE",1,true),"TwinkCore visibility, shadow main and relationship")
-local Page=HolyStorm.characterOverview;Page:OnInitialize();assert(Page.header and Page.classIcon and Page.specIcon and Page.headerStatus and Page.headerUpdated and Page.tabHost,"character page builds the shared compact header and tab content shell");assert(Page.back==nil,"visible character back button is removed");assert(Page.refreshButton.width==22 and Page.refreshButton.height==22,"header refresh button stays compact")
+local Page=HolyStorm.characterOverview;Page:OnInitialize();HolyStorm.uiExtension.initialize();assert(Page.header and Page.classIcon and Page.specIcon and Page.headerStatus and Page.headerUpdated and Page.tabHost,"character page builds the shared compact header and tab content shell");assert(Page.back==nil,"visible character back button is removed");assert(Page.refreshButton.width==22 and Page.refreshButton.height==22,"header refresh button stays compact")
 assert(Page.header.parent==HolyStorm.testUIFrame and Page.tabGroup.frame.parent==Page.page and Page.tabHost==Page.tabGroup.content,"header is in the main window chrome while tabs and content stay on the character page");assert(Page.header.points[1][1]=="BOTTOMLEFT"and Page.header.points[1][2]==HolyStorm.testUIContent and Page.header.points[1][3]=="TOPLEFT"and Page.header.points[1][4]==52 and Page.header.points[1][5]==4 and Page.tabGroup.frame.points[1][3]==-8,"header is aligned near the title text start and the window content starts at the top")
 C:SetContext("A",false);C:RefreshHeader();assert(C.context.name=="Alpha"and C.context.realm=="Realm","context keeps name and realm separated");assert(Page.headerName.textValue=="Alpha","header uses the character name without the realm");assert(Page.headerInfo.textValue:find("Realm",1,true)and Page.headerInfo.textValue:find("Paladin",1,true)and Page.headerInfo.textValue:find("Retribution",1,true)and Page.headerInfo.textValue:find("Level 80",1,true)and Page.headerInfo.textValue:find("Stored Officer",1,true),"header info contains realm, class, optional spec, level and guildRank fallback");assert(Page.classIcon.texture=="Interface\\GLUES\\CHARACTERCREATE\\UI-CHARACTERCREATE-CLASSES"and Page.classIcon.texCoord[1]==0,"own character uses the class icon texture");assert(portraitCalls==0,"own character no longer calls SetPortraitTexture");assert(Page.classIcon.width==28 and Page.classIcon.height==28 and Page.specIcon.width==28 and Page.specIcon.height==28,"class and spec icons have identical compact visible size");assert(Page.specIcon.texture==98765 and Page.specIcon.shown~=false,"known spec icon is shown")
 assert(not Page.headerStatus.textValue:find("\n",1,true)and not Page.headerUpdated.textValue:find("\n",1,true),"header status uses separate single-line fields")

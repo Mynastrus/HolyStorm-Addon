@@ -50,8 +50,13 @@ local definitions = {
     ["logs-view"]="Logs",["logs-clear"]="Logs",["taskmanager-view"]="Task Manager",["taskmanager-control"]="Task Manager",["tasks-view"]="Task Manager",
 }
 Registry.legacyIds = {
-    ["roles.manage"]="groups-edit",["permissions.manage"]="permissions-manage",["filters.manage_global"]="filters-edit",["rules.manage_global"]="rules-manage",["policy.inspect"]="policy-inspect",["core.settings.read"]="core-settings-read",["core.settings.write"]="core-settings-write",["ui.render"]="ui-render",["sync.send"]="sync-send",["guild.roster.read"]="guild-roster-read",["roster.manage"]="roster-manage",["news.create"]="news-create",["news.edit"]="news-edit",["news.delete"]="news-delete",["news.read_receipts"]="news-read-receipts",["calendar.read"]="calendar-read",["calendar.manage"]="calendar-manage",["raids.read"]="raids-read",["mythicplus.read"]="mythicplus-read",["delves.read"]="delves-read",["equipment.read"]="equipment-read",["logs.view"]="logs-view",["logs.clear"]="logs-clear",["taskmanager.view"]="taskmanager-view",["taskmanager.control"]="taskmanager-control",["tasks.view"]="tasks-view",["twinks.assign"]="twinks-assign",["twinks.remove"]="twinks-remove",["poi.create"]="poi-create",["poi.edit"]="poi-edit",["poi.delete"]="poi-delete",
+    ["roles.manage"]="groups-edit",["permissions.manage"]="permissions-manage",["filters.manage_global"]="filters-edit",["rules.manage_global"]="rules-manage",["policy.inspect"]="policy-inspect",["core.settings.read"]="core-settings-read",["core.settings.write"]="core-settings-write",["ui.render"]="ui-render",["sync.send"]="sync-send",["logs.view"]="logs-view",["logs.clear"]="logs-clear",["taskmanager.view"]="taskmanager-view",["taskmanager.control"]="taskmanager-control",["tasks.view"]="tasks-view",
 }
+
+function Registry:RegisterLegacyAlias(legacyId, currentId)
+    if type(legacyId)~="string"or type(currentId)~="string"then return false end
+    self.legacyIds[legacyId]=currentId;return true
+end
 
 local function keyFor(prefix, id) return prefix .. id:gsub("[^%w]", "_"):upper() end
 function Registry:RegisterPermission(definition)

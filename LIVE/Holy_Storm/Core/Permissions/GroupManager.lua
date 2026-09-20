@@ -84,7 +84,7 @@ function Groups:MigrateLegacyGroups(groups)
             candidate.characterMembers = candidate.characterMembers or {}; candidate.accountMembers = candidate.accountMembers or {}
             for subject, enabled in pairs(group.manual or {}) do
                 if enabled then
-                    local account = HolyStorm.TwinkCore and HolyStorm.TwinkCore:GetAccount(subject)
+                    local account = HolyStorm.Accounts and HolyStorm.Accounts:GetAccount(subject)
                     if account then candidate.accountMembers[subject]=true else candidate.characterMembers[subject]=true end
                 end
             end

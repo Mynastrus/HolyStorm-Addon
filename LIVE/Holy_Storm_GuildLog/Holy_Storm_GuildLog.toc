@@ -7,7 +7,10 @@
 ## DefaultState: enabled
 ## Version: @project-version@
 ## RequiredDeps: Holy_Storm
+## SavedVariables: HS_GuildLog_DB
+## X-HolyStorm-ID: guildLog
 
 Locales\enUS.lua
 Locales\deDE.lua
+GuildLogStore.lua
 GuildLog.lua

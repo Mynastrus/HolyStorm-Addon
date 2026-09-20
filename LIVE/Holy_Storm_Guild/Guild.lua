@@ -1,11 +1,12 @@
 local addonVersion = "2.2.0"
 local HolyStorm = LibStub("AceAddon-3.0"):GetAddon("Holy_Storm")
 local L = LibStub("AceLocale-3.0"):GetLocale("Holy_Storm_GuildRoster")
+if HolyStorm.PermissionRegistry then HolyStorm.PermissionRegistry:RegisterLegacyAlias("guild.roster.read","guild-roster-read");HolyStorm.PermissionRegistry:RegisterLegacyAlias("roster.manage","roster-manage")end
 
 HolyStorm:RegisterModule({
     id = "GuildRoster", name = "GuildRoster", displayName = L["DISPLAY_NAME"], internalName = "guildRoster", version = addonVersion,
     moduleType = "feature", category="feature", description = L["DESCRIPTION"], permissions = {{id="guild-roster-read",category="Roster",defaults={member=true}}, {id="roster-manage",category="Roster",defaults={officers=true}}},
-    dependencies = { "core", "ui", "options" }, ui = { page = "guildRoster", navigation = true },
+    dependencies = { "core" }, ui = { page = "guildRoster", navigation = true },
     data = { stores = { "GuildStore", "CharacterStore" } }, enabledByDefault = true,
     ruleFields = {
         {id="guild.rank",aliases={"guildRank"},type="string",name=L["RULE_FIELD_GUILD_RANK"],nameKey="RULE_FIELD_GUILD_RANK",description=L["RULE_FIELD_GUILD_RANK_DESC"],descriptionKey="RULE_FIELD_GUILD_RANK_DESC",category=L["DISPLAY_NAME"],dependencies={"roster"},resolver=function(context)return(context.member and context.member.rank)or(context.character and context.character.guildRank)end},
@@ -39,6 +40,7 @@ end
 
 function GuildRoster:GetSettings()
     local settings = HolyStorm.Database:Get("guildRoster", "profile")
+    if type(settings)~="table"then HolyStorm.Database:Set("guildRoster",{},"profile");settings=HolyStorm.Database:Get("guildRoster","profile")end
     if settings.showOffline == nil then HolyStorm.Database:Set("guildRoster.showOffline", true, "profile") end
     if settings.groupTwinks == nil then HolyStorm.Database:Set("guildRoster.groupTwinks", true, "profile") end
     return settings
@@ -207,13 +209,7 @@ function GuildRoster:ShowCharacter(member)
     return member and member.guid and next(HolyStorm:CallCapability("character.open",member.guid,"summary"))~=nil or false
 end
 
-function GuildRoster:OnInitialize()
-    HolyStorm.Actions:Register("guild.save-notes", "GuildRoster", function(index, publicNote, officerNote, canEditPublic, canEditOfficer)
-        if not (HolyStorm.PermissionEngine or HolyStorm.Policy):Can("roster-manage") then return false end
-        if canEditPublic and _G.GuildRosterSetPublicNote then _G.GuildRosterSetPublicNote(index, publicNote) end
-        if canEditOfficer and _G.GuildRosterSetOfficerNote then _G.GuildRosterSetOfficerNote(index, officerNote) end
-        GuildRoster:RequestAndRefresh()
-    end, { combatSafe=false, priority=0 })
+function GuildRoster:InitializeUI()
     local UI = HolyStorm:GetModule("UI", true)
     local page = CreateFrame("Frame", nil, UI.content)
     local refresh = CreateFrame("Button", nil, UI.frame)
@@ -240,10 +236,19 @@ function GuildRoster:OnInitialize()
     HolyStorm.UI:AddNavigation("guildRoster", 3, "Interface\\Icons\\INV_Misc_GroupLooking", L["NAVIGATION_TITLE"], L["NAVIGATION_DESCRIPTION"], function() GuildRoster:RequestAndRefresh(); HolyStorm.UI:ShowPage("guildRoster") end)
 end
 
+function GuildRoster:OnInitialize()
+    HolyStorm.Actions:Register("guild.save-notes", "GuildRoster", function(index, publicNote, officerNote, canEditPublic, canEditOfficer)
+        if not (HolyStorm.PermissionEngine or HolyStorm.Policy):Can("roster-manage") then return false end
+        if canEditPublic and _G.GuildRosterSetPublicNote then _G.GuildRosterSetPublicNote(index, publicNote) end
+        if canEditOfficer and _G.GuildRosterSetOfficerNote then _G.GuildRosterSetOfficerNote(index, officerNote) end
+        GuildRoster:RequestAndRefresh()
+    end, { combatSafe=false, priority=0 })
+    HolyStorm:RegisterUIExtension("GuildRoster",{id="guild.roster",order=3,initialize=function()GuildRoster:InitializeUI()end})
+end
+
 function GuildRoster:OnEnable()
     local Options = HolyStorm:GetModule("Options", true)
-    if not Options then return end
-    Options:RegisterOptionsTab("guildRoster", {
+    if Options then Options:RegisterOptionsTab("guildRoster", {
         type = "group", name = L["OPTIONS_TAB_TITLE"], order = 4,
         args = {
             showOffline = {
@@ -257,12 +262,17 @@ function GuildRoster:OnEnable()
                 set = function(_, value) HolyStorm.Database:Set("guildRoster.groupTwinks", value, "profile"); GuildRoster:Refresh() end,
             },
         },
-    })
-    HolyStorm.Events:Register("GUILD_ROSTER_UPDATE", "guild-ui", function() HolyStorm.UI:MarkDirty("guildRoster") end)
-    HolyStorm.Events:Register("PLAYER_GUILD_UPDATE", "guild-ui", function() HolyStorm.UI:MarkDirty("guildRoster") end)
+    }) end
+    local function queueRoster(request)
+        if request then HolyStorm.Data.GuildStore:RequestRoster() end
+        HolyStorm.Tasks:Enqueue("guild.roster",function()HolyStorm.Data.GuildStore:RefreshFromBlizzard()end,{priority=6,debounce=.5,cooldown=5})
+    end
+    HolyStorm.Events:Register("GUILD_ROSTER_UPDATE", "guild-roster", function()queueRoster(false);if HolyStorm.UI then HolyStorm.UI:MarkDirty("guildRoster")end end)
+    HolyStorm.Events:Register("PLAYER_GUILD_UPDATE", "guild-roster", function()queueRoster(true);if HolyStorm.UI then HolyStorm.UI:MarkDirty("guildRoster")end end)
+    if IsLoggedIn() then queueRoster(true) end
 end
 
-function GuildRoster:OnDisable() HolyStorm.Events:UnregisterOwner("guild-ui") end
+function GuildRoster:OnDisable() HolyStorm.Events:UnregisterOwner("guild-roster");HolyStorm.Tasks:Cancel("guild.roster") end
 
 function GuildRoster:RequestAndRefresh()
     if _G.GuildRoster then _G.GuildRoster() end

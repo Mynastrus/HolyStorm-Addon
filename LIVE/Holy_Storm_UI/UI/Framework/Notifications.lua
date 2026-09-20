@@ -1,0 +1,12 @@
+local HolyStorm=LibStub("AceAddon-3.0"):GetAddon("Holy_Storm")
+local Notifications=HolyStorm.Notifications
+local Renderer={}
+
+function Renderer:EnsureFrame()
+ if self.frame then return self.frame end
+ local frame=CreateFrame("Button",nil,UIParent,"BackdropTemplate");frame:SetSize(360,82);frame:SetPoint("TOP",0,-120);frame:SetFrameStrata("DIALOG");frame:SetBackdrop({bgFile="Interface\\Buttons\\WHITE8x8",edgeFile="Interface\\Tooltips\\UI-Tooltip-Border",edgeSize=14,insets={left=3,right=3,top=3,bottom=3}});frame:SetBackdropColor(.025,.035,.05,.97);frame:SetBackdropBorderColor(1,.72,.12,1);frame.icon=frame:CreateTexture(nil,"ARTWORK");frame.icon:SetSize(52,52);frame.icon:SetPoint("LEFT",14,0);frame.title=frame:CreateFontString(nil,"OVERLAY","GameFontNormalLarge");frame.title:SetPoint("TOPLEFT",frame.icon,"TOPRIGHT",12,-8);frame.title:SetPoint("RIGHT",-12,0);frame.title:SetJustifyH("LEFT");frame.text=frame:CreateFontString(nil,"OVERLAY","GameFontHighlight");frame.text:SetPoint("TOPLEFT",frame.title,"BOTTOMLEFT",0,-7);frame.text:SetPoint("RIGHT",-12,0);frame.text:SetJustifyH("LEFT");frame:SetScript("OnClick",function()local entry=Notifications.current;local definition=entry and Notifications:GetType(entry.type);if definition and definition.onClick then definition.onClick(entry.payload)end;frame:Hide()end);frame:SetScript("OnEnter",function()if Renderer.hideTimer then Renderer.hideTimer:Cancel();Renderer.hideTimer=nil end end);frame:SetScript("OnLeave",function()Renderer:ScheduleHide()end);frame:Hide();self.frame=frame;return frame
+end
+function Renderer:ScheduleHide()if not(self.frame and self.frame:IsShown())or not C_Timer then return end;if self.hideTimer then self.hideTimer:Cancel()end;self.hideTimer=C_Timer.NewTimer(8,function()Renderer.frame:Hide();Renderer.hideTimer=nil end)end
+function Renderer:Show(typeId,entry)local definition=Notifications:GetType(typeId);if not definition then return end;local frame=self:EnsureFrame();local payload=entry.payload;frame.icon:SetTexture(definition.icon and definition.icon(payload)or"Interface\\Icons\\INV_Misc_QuestionMark");frame.title:SetText(definition.title(payload));frame.text:SetText(definition.text and definition.text(payload)or"");frame:Show();self:ScheduleHide();HolyStorm.Events:Emit("HS_NOTIFICATION_SHOWN",typeId,entry)end
+HolyStorm.Events:Register("HS_NOTIFICATION_PUSHED","ui-notifications",function(_,typeId,entry)Renderer:Show(typeId,entry)end)
+HolyStorm.NotificationRenderer=Renderer

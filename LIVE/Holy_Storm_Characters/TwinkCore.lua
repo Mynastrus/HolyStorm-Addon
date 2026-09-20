@@ -154,3 +154,4 @@ function TwinkCore:Initialize()
  self:RegisterSyncDomains();local guid=UnitGUID("player");if guid then self:ConfirmLocalCharacter(guid)end;return true
 end
 HolyStorm.TwinkCore=TwinkCore
+HolyStorm.Accounts=TwinkCore

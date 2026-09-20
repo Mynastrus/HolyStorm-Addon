@@ -22,6 +22,7 @@ ignore:
 
 move-folders:
   Holy_Storm/LIVE/Holy_Storm: Holy_Storm
+  Holy_Storm/LIVE/Holy_Storm_UI: Holy_Storm_UI
   Holy_Storm/LIVE/Holy_Storm_Characters: Holy_Storm_Characters
   Holy_Storm/LIVE/Holy_Storm_Equipment: Holy_Storm_Equipment
   Holy_Storm/LIVE/Holy_Storm_Raids: Holy_Storm_Raids

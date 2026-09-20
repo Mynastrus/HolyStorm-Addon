@@ -1,5 +1,6 @@
 -- Offline contracts for the generic Administration host.
-local root=(arg[0]:gsub("tools[/\\]test_administration_registry.lua$","")).."LIVE/Holy_Storm/"
+local root=(arg[0]:gsub("tools[/\\]test_administration_registry.lua$","")).."LIVE/Holy_Storm_UI/"
+local coreRoot=(arg[0]:gsub("tools[/\\]test_administration_registry.lua$","")).."LIVE/Holy_Storm/"
 
 local function deepCopy(value,seen)
     if type(value)~="table" then return value end
@@ -82,7 +83,7 @@ assert(source:find("Registry:GetPermissions",1,true),"permission administration 
 assert(not source:find('DEFAULT_PERMISSION,"news%-edit"')and not source:find('DEFAULT_PERMISSION%s*=%s*"news%-edit"'),"removed module permissions must not be recreated by a static inspector default")
 assert(not source:find("HolyStorm%.db")and not source:find("Database:GetRoot",1,true),"admin UI must not write SavedVariables directly")
 for _,name in ipairs({"PermissionRegistry","PermissionEngine","GroupManager","FilterManager","PolicyState"})do assert(source:find(name,1,true),name.." direct UI contract missing")end
-local registryFile=assert(io.open(root.."Core/Registry/ModuleRegistry.lua","rb"));local registrySource=registryFile:read("*a");registryFile:close()
+local registryFile=assert(io.open(coreRoot.."Core/Registry/ModuleRegistry.lua","rb"));local registrySource=registryFile:read("*a");registryFile:close()
 for _,contract in ipairs({"RegisterModuleAdministration","FlushAdministrationSections","IsModuleAvailable","IsCapabilityAvailable","HS_MODULE_AVAILABILITY_CHANGED"})do assert(registrySource:find(contract,1,true),"ModuleRegistry misses administration contract "..contract)end
 local hostFile=assert(io.open(root.."UI/Administration/AdministrationRegistry.lua","rb"));local hostSource=hostFile:read("*a");hostFile:close()
 for _,optionalName in ipairs({"Equipment","MythicPlus","Raids","Delves","Content","POI","Calendar","TaskManager","SyncManager"})do assert(not hostSource:find(optionalName,1,true),"Administration host hardcodes optional module "..optionalName)end
@@ -92,7 +93,7 @@ for _,locale in ipairs({"enUS","deDE"})do
     for _,key in ipairs({"ADMINISTRATION_TITLE","ADMINISTRATION_DESCRIPTION","ADMIN_CATEGORY_GENERAL","ADMIN_CATEGORY_PERMISSIONS","ADMIN_CATEGORY_GROUPS","ADMIN_CATEGORY_RULES","ADMIN_CATEGORY_FILTERS","ADMIN_CATEGORY_MODULES","ADMIN_CATEGORY_SYSTEM"})do assert(text:find('["'..key..'"]',1,true),locale.." misses "..key)end
 end
 
-local overview=assert(io.open(root.."../Holy_Storm_Characters/UI/CharacterOverview.lua","rb"));local overviewSource=overview:read("*a");overview:close()
+local overview=assert(io.open(coreRoot.."../Holy_Storm_Characters/UI/CharacterOverview.lua","rb"));local overviewSource=overview:read("*a");overview:close()
 local metadata=overviewSource:match("ApplyModuleMetadata%([^\n]+")or""
 assert(metadata:find("permissions={}",1,true),"Character Overview must not declare a basic access permission")
 assert(not overviewSource:find('OpenCharacter.-HasPermission'),"Character Overview opening must not have an access gate")

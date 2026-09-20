@@ -1,7 +1,8 @@
 local addonVersion="5.2.0"
 local HolyStorm=LibStub("AceAddon-3.0"):GetAddon("Holy_Storm");local L=LibStub("AceLocale-3.0"):GetLocale("Holy_Storm_Raids")
+if HolyStorm.PermissionRegistry then HolyStorm.PermissionRegistry:RegisterLegacyAlias("raids.read","raids-read")end
 if HolyStorm.PlayerData then HolyStorm.PlayerData:RegisterBlock("raid",{fields={"raidLockouts"},event="HS_RAIDLOCKS_UPDATED",staleAfter=21600})end
-local metadata={id="raids",name="Raids",displayName=L["DISPLAY_NAME"],description=L["DESCRIPTION"],version=addonVersion,moduleType="feature",category="feature",permissions={{id="raids-read",category="Raid",defaults={member=true}},"sync-send"},dependencies={"core","synchronization","ui"},capabilities={"character.scan.raids"},ui={characterTab="raid"},data={block="raid",snapshotType="raids",schemaVersion=3,capability="character.scan.raids"},sync={domains={"character"}},enabledByDefault=true,ruleFields={{id="raid.progress",aliases={"raidProgress"},type="number",name=L["RULE_FIELD_PROGRESS"],nameKey="RULE_FIELD_PROGRESS",description=L["RULE_FIELD_PROGRESS_DESC"],descriptionKey="RULE_FIELD_PROGRESS_DESC",category=L["DISPLAY_NAME"],dependencies={"raid"},unit="bosses",resolver=function(context)local block=context.character and context.character.raid or HolyStorm.Data.CharacterStore:GetBlock(context.characterUUID,"raid");local progress=block and block.bestProgress;return progress and tonumber(progress.killed)or nil end}}}
+local metadata={id="raids",name="Raids",displayName=L["DISPLAY_NAME"],description=L["DESCRIPTION"],version=addonVersion,moduleType="feature",category="feature",permissions={{id="raids-read",category="Raid",defaults={member=true}},"sync-send"},dependencies={"core","synchronization"},capabilities={"character.scan.raids"},ui={characterTab="raid"},data={block="raid",snapshotType="raids",schemaVersion=3,capability="character.scan.raids"},sync={domains={"character"}},enabledByDefault=true,ruleFields={{id="raid.progress",aliases={"raidProgress"},type="number",name=L["RULE_FIELD_PROGRESS"],nameKey="RULE_FIELD_PROGRESS",description=L["RULE_FIELD_PROGRESS_DESC"],descriptionKey="RULE_FIELD_PROGRESS_DESC",category=L["DISPLAY_NAME"],dependencies={"raid"},unit="bosses",resolver=function(context)local block=context.character and context.character.raid or HolyStorm.Data.CharacterStore:GetBlock(context.characterUUID,"raid");local progress=block and block.bestProgress;return progress and tonumber(progress.killed)or nil end}}}
 HolyStorm:RegisterModule(metadata,function(Module)
  HolyStorm:ApplyModuleMetadata(Module,metadata)
  local difficultyKeys={[7]="LFR",[17]="LFR",[14]="NORMAL",[15]="HEROIC",[16]="MYTHIC"};local difficultyOrder={LFR=1,NORMAL=2,HEROIC=3,MYTHIC=4}
@@ -43,7 +44,7 @@ HolyStorm:RegisterModule(metadata,function(Module)
   return s
  end
  function Module:Validate(s)if type(s)~="table"or type(s.lockouts)~="table"or type(s.raids)~="table"or type(s.lifetime)~="table"or type(s.lifetime.bosses)~="table"then return false,"instance data unavailable"end;for _,r in ipairs(s.lockouts)do if not r.name or not r.difficultyId or type(r.bosses)~="table"then return false,"lockout incomplete"end end;if not s.catalogReady and#s.lockouts==0 then return false,"raid catalog pending"end;return true end
- function Module:Commit(s)local guid=UnitGUID("player");return HolyStorm.Data.CharacterStore:SetRaidLockouts(guid,s,{updatedAt=s.updatedAt,updatedBy=guid},"blizzard")end
+ function Module:Commit(s)local guid=UnitGUID("player");return HolyStorm.PlayerData:WriteOwnedBlock(guid,"raid",s,"blizzard")end
  function Module:Queue(sync,delay,requestRaidInfo)
   -- UPDATE_INSTANCE_INFO is the response to RequestRaidInfo(). Requesting the
   -- data again from that event creates a loop and keeps extending the debounce.
@@ -52,6 +53,6 @@ HolyStorm:RegisterModule(metadata,function(Module)
  end
  function Module:RefreshPage()if not self.page or not self.page:IsShown()then return end;local r=HolyStorm.Data.CharacterStore:Get(UnitGUID("player"));local d=r and r.raidLockouts;local lines={};for _,raid in ipairs(d and d.lockouts or{})do lines[#lines+1]=string.format("%s — %s (%d/%d)",raid.name or L["UNKNOWN"],raid.difficultyName or"",raid.killed or 0,raid.total or 0)end;self.content:SetText(#lines>0 and table.concat(lines,"\n")or L["NO_LOCKOUTS"])end
  function Module:OnInitialize()HolyStorm:RegisterCapability("Raids","character.scan.raids",function(_,sync)return Module:Queue(sync,1)end)end
- function Module:OnEnable()for _,ev in ipairs({"UPDATE_INSTANCE_INFO","BOSS_KILL","ENCOUNTER_END","PLAYER_ENTERING_WORLD"})do local event=ev;HolyStorm.Events:Register(event,"raids",function()Module:Queue(true,event=="BOSS_KILL"and .5 or 1,event~="UPDATE_INSTANCE_INFO")end)end end
+ function Module:OnEnable()for _,ev in ipairs({"UPDATE_INSTANCE_INFO","BOSS_KILL","ENCOUNTER_END","PLAYER_ENTERING_WORLD"})do local event=ev;HolyStorm.Events:Register(event,"raids",function()Module:Queue(true,event=="BOSS_KILL"and .5 or 1,event~="UPDATE_INSTANCE_INFO")end)end;local context=self.loadContext;if context and context.reason=="event"then self:Queue(true,0,true)end end
  function Module:OnDisable()HolyStorm.Events:UnregisterOwner("raids");HolyStorm.Snapshots:Cancel("raids")end
 end)

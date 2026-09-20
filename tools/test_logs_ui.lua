@@ -1,5 +1,6 @@
 -- Offline smoke test for the row-pooled log UI. Run with: lua tools/test_logs_ui.lua
 local root=(arg[0]:gsub("tools[/\\]test_logs_ui.lua$","")).."LIVE/Holy_Storm/"
+local uiRoot=(arg[0]:gsub("tools[/\\]test_logs_ui.lua$","")).."LIVE/Holy_Storm_UI/"
 local locale=setmetatable({}, {__index=function(_,key)return key end})
 local Frame={}
 Frame.__index=Frame
@@ -52,6 +53,7 @@ function date(_,timestamp)return tostring(timestamp or 0)end
 
 local Logs
 local HolyStorm={version="5.3.2",db={profile={logs={autoScroll=true}},global={logs={entries={}}}},Logger={history={}},Permissions={Has=function()return true end},UI={}}
+HolyStorm.Database={Get=function(_,path)local value=HolyStorm.db.profile;for key in path:gmatch("[^%.]+")do value=value and value[key]end;return value end,Set=function(_,path,value)local target=HolyStorm.db.profile;local keys={};for key in path:gmatch("[^%.]+")do keys[#keys+1]=key end;for index=1,#keys-1 do target[keys[index]]=target[keys[index]]or{};target=target[keys[index]]end;target[keys[#keys]]=value;return true end}
 function HolyStorm.Logger:GetHistory()local out={};for index,entry in ipairs(self.history)do out[index]=entry end;return out end
 function HolyStorm.Logger:Clear()self.history={}end
 function HolyStorm:RegisterRequiredModule()Logs={};return Logs end
@@ -63,7 +65,7 @@ function HolyStorm.UI:ShowPage()end
 HolyStorm.UI.content=CreateFrame()
 function LibStub(name)if name=="AceAddon-3.0"then return{GetAddon=function()return HolyStorm end}elseif name=="AceLocale-3.0"then return{GetLocale=function()return locale end}end end
 
-assert(loadfile(root.."UI/Pages/Logs.lua"))();Logs:OnInitialize()
+assert(loadfile(uiRoot.."UI/Pages/Logs.lua"))();Logs:OnInitialize()
 for index=1,2000 do HolyStorm.Logger.history[index]={timestamp=index,level=index%20==0 and"ERROR"or"DEBUG",source="Module"..(index%7),category=index%3==0 and"event"or"task",message="Entry "..index,context=index%3==0 and{eventName="EVENT_"..(index%5)}or{}}end
 Logs:Render();assert(#Logs.filtered==2000 and#Logs.rows<=60,"2000 entries must use a bounded reusable row pool")
 Logs:SelectEntry({timestamp=1,level="INFO",source="Legacy",category="general",message="partial",context=nil});assert(Logs.detailsText.text:find("partial",1,true),"detail view must tolerate missing context")

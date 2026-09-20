@@ -96,7 +96,7 @@ function Options:OnInitialize()
                     },
                 },
             },
-            profiles = LibStub("AceDBOptions-3.0"):GetOptionsTable(HolyStorm.db),
+            profiles = LibStub("AceDBOptions-3.0"):GetOptionsTable(HolyStorm.Database:GetHandle()),
             chat = {
                 type="group",name=L["CHAT_SETTINGS"],order=2,args={
                     enabled={type="toggle",name=L["CHAT_ENABLED"],order=1,get=function()return chatGet("enabled")end,set=function(_,v)chatSet("enabled",v)end},

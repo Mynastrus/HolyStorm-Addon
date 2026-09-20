@@ -53,15 +53,6 @@ function Store:CaptureCurrent()
     local identity=self:GetBlock(guid,"identity")
     return {guid=guid,identity=identity}
 end
-function Store:GetEquipment(guid)local r=self:GetOrCreate(guid or UnitGUID("player"));return r and r.equipment end
-function Store:GetRaidLockouts(guid)local r=self:GetOrCreate(guid or UnitGUID("player"));return r and r.raidLockouts end
-function Store:SetEquipment(guid,equipment,itemLevel,metadata,source)return HolyStorm.PlayerData:WriteOwnedBlock(guid,"equipment",{equipment=equipment,itemLevel=itemLevel},source or"blizzard")end
-function Store:SetRaidLockouts(guid,data,metadata,source)return HolyStorm.PlayerData:WriteOwnedBlock(guid,"raid",data,source or"blizzard")end
-function Store:SetMythicPlus(guid,data,metadata,source)return HolyStorm.PlayerData:WriteOwnedBlock(guid,"mythicPlus",data,source or"blizzard")end
-function Store:SetProfessions(guid,data,metadata)return HolyStorm.PlayerData:WriteOwnedBlock(guid,"professions",data,"blizzard")end
-function Store:SetDelves(guid,data,metadata,source)return HolyStorm.PlayerData:WriteOwnedBlock(guid,"delves",data,source or"blizzard")end
-function Store:SetStats(guid,data,metadata,source)return HolyStorm.PlayerData:WriteOwnedBlock(guid,"stats",data,source or"blizzard")end
-function Store:SetProfile(guid,data,metadata,source)return HolyStorm.PlayerData:WriteOwnedBlock(guid,"profile",data,source or"local")end
 HolyStorm.Data.CharacterStore=Store
 
 -- Deprecated read-only compatibility entry points. Modules use CharacterStore.

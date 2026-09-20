@@ -9,6 +9,7 @@ HolyStorm.pendingModulePermissions = HolyStorm.pendingModulePermissions or {}
 HolyStorm.pendingAdministrationSections = HolyStorm.pendingAdministrationSections or {}
 HolyStorm.pendingCharacterTabs = HolyStorm.pendingCharacterTabs or {}
 HolyStorm.pendingCharacterSummarySections = HolyStorm.pendingCharacterSummarySections or {}
+HolyStorm.uiExtensions = HolyStorm.uiExtensions or {}
 
 local function copyMetadata(metadata)
     local copy = {}
@@ -157,10 +158,28 @@ function HolyStorm:FlushCharacterExtensions()
     return count
 end
 
+function HolyStorm:RegisterUIExtension(owner, definition)
+    if type(owner) ~= "string" or type(definition) ~= "table" or type(definition.id) ~= "string" or type(definition.initialize) ~= "function" then
+        return false, "INVALID_UI_EXTENSION"
+    end
+    definition.owner = definition.owner or owner
+    self.uiExtensions[definition.id] = definition
+    if self.Events then self.Events:Emit("HS_UI_EXTENSION_REGISTERED", definition.id, definition) end
+    return true
+end
+
+function HolyStorm:GetUIExtensions()
+    local result = {}
+    for _, definition in pairs(self.uiExtensions) do result[#result + 1] = definition end
+    table.sort(result, function(left, right) return (left.order or 100) < (right.order or 100) or (left.order or 100) == (right.order or 100) and left.id < right.id end)
+    return result
+end
+
 function HolyStorm:ApplyModuleMetadata(module, metadata)
     local normalized = self:NormalizeModuleMetadata(metadata, module and module:GetName(), "required")
     module.metadata = normalized
     module.version = normalized.version
+    module.loadContext = self.GetAddonLoadContext and self:GetAddonLoadContext(normalized.id) or nil
     self:RegisterModulePermissions(normalized)
     self:RegisterModuleRuleFields(normalized)
     self:RegisterModuleAdministration(normalized)

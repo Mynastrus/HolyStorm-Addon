@@ -1,83 +1,79 @@
 # Holy Storm – Addon- und Modulvertrag
 
-Holy Storm wird als Addon-Familie ausgeliefert. `Holy_Storm` ist der eigenständig
-ladefähige Core. Jedes Feature liegt in einem eigenen WoW-Addon und deklariert
-`## RequiredDeps: Holy_Storm`:
+Holy Storm wird als Addon-Familie ausgeliefert. `Holy_Storm` ist der
+eigenständig ladefähige, feature-blinde Kernel. Die fachlichen Addons sind
+`Holy_Storm_Characters`, `Holy_Storm_Equipment`, `Holy_Storm_Raids`,
+`Holy_Storm_MythicPlus`, `Holy_Storm_Delves`, `Holy_Storm_Calendar`,
+`Holy_Storm_Professions`, `Holy_Storm_Guild`, `Holy_Storm_GuildLog`,
+`Holy_Storm_News`, `Holy_Storm_Achievements`, `Holy_Storm_POI` und
+`Holy_Storm_Positions`. Die grafische Oberfläche liegt in `Holy_Storm_UI`.
 
-- `Holy_Storm_Characters`
-- `Holy_Storm_Equipment`
-- `Holy_Storm_Raids`
-- `Holy_Storm_MythicPlus`
-- `Holy_Storm_Delves`
-- `Holy_Storm_Calendar`
-- `Holy_Storm_Professions`
-- `Holy_Storm_Guild`
-- `Holy_Storm_GuildLog`
-- `Holy_Storm_News`
-- `Holy_Storm_Achievements`
-- `Holy_Storm_POI`
-- `Holy_Storm_Positions`
-
-Alle Addons verwenden die TOC-Kategorie `Holy Storm`. Die bestehenden
-SavedVariables bleiben unverändert im Core-TOC; Feature-Addons erzeugen keine
-zweiten Datenbanken.
+Alle Addons verwenden `## RequiredDeps: Holy_Storm` (POI und Positions
+zusätzlich `Blizzard_MapCanvas`) und die TOC-Kategorie `Holy Storm`.
+`HolyStormDB` und `HS_Player_DB` gehören dem Core. `HS_GuildLog_DB` gehört
+`Holy_Storm_GuildLog`; der globale Name bleibt zur verlustfreien Nutzung
+bestehender Daten unverändert.
 
 ## Core-Verantwortung
 
-Der Core besitzt Infrastruktur, gemeinsame Stores und Hosts: Registry, Events,
-Tasks, Workflows, Actions, Permissions, Sync, Logging, Rich Content sowie die
-generische UI. Er lädt keine Feature-Runtime- oder Feature-UI-Dateien.
+Der Core besitzt Bootstrap, Logging, Events, Tasks, Workflows, Registry und
+Addon-Loader sowie gemeinsam benötigte Persistence-, Permission-, Sync-,
+Command-, Action-, Hook-, Karten-/Orts- und Rich-Content-Dienste. Renderer,
+Fenster, Administration und Optionsseiten liegen in `Holy_Storm_UI`.
+Character- und Guild-Collections werden von ihren Features angefordert, nicht
+vom Core-Bootstrap.
 
-`ModuleRegistry:NormalizeModuleMetadata` normalisiert `id`, `internalName`,
-`name`, `displayName`, `description`, `icon`, `version`, `moduleType`,
-`category`, `dependencies`, `capabilities`, `ui`, `options`, `administration`,
-`data`, `sync`, `permissions`, `ruleFields`, `schemaVersion` und
-`snapshotVersion`.
+## TOC-Discovery und Load-on-Demand
 
-## Feature-Registrierung
+Jedes Addon deklariert `X-HolyStorm-ID`. Optional sind
+`X-HolyStorm-Requires` und eine kommaseparierte Liste in
+`X-HolyStorm-LoadOnEvent`. Der Core liest diese Werte über
+`C_AddOns.GetNumAddOns`, `C_AddOns.GetAddOnInfo` und
+`C_AddOns.GetAddOnMetadata`. Er kennt weder Feature-Namen noch die fachliche
+Bedeutung eines Events.
 
-Feature-Addons registrieren sich mit `HolyStorm:RegisterModule(metadata,
-factory)`. Die Kategorie `feature` erzeugt das AceAddon-Modul beim Laden des
-Feature-Addons; die frühere interne Optional-Modul-Schaltung ist nur noch eine
-Compatibility-API. Aktivierung und Deaktivierung erfolgen über den WoW-Addon-
-Manager und die normalen AceAddon-Lifecycles.
+Bei einem passenden Event versucht der Loader das Addon genau einmal über
+`C_AddOns.LoadAddOn` zu laden und hinterlegt den Load Context
+`{ reason = "event", trigger = event }`. Das Feature fordert anschließend die
+fachliche Arbeit selbst über TaskManager oder WorkflowManager an.
 
-Feature-spezifische Verantwortungen verbleiben beim jeweiligen Addon:
+Aktuell sind folgende Addons Load-on-Demand:
 
-- Permissions und Rule-Felder über Modulmetadaten
-- Datenblock-Schemas über `HolyStorm.PlayerData:RegisterBlock`
-- Snapshot-, Task-, Workflow- und Sync-Registrierung
-- UI-Seiten, Navigation und Administrationserweiterungen
-- Feature-Locale-Namespaces in Englisch und Deutsch
-- Rich-Link-Typen und Slash-Unterbefehle
+- Equipment: `PLAYER_EQUIPMENT_CHANGED`
+- Mythic+: `CHALLENGE_MODE_COMPLETED`
+- Raids: `ENCOUNTER_END`
+- Professions: `TRADE_SKILL_SHOW`
 
-Der Core entdeckt Character-Scan-Capabilities dynamisch. Es gibt keine
-featurebezogenen Startup-Zweige im Bootstrap.
+Die übrigen Features bleiben wegen Login-, Sync- oder dauerhaftem Dienstbedarf
+normal geladen. Insbesondere wird `PLAYER_ENTERING_WORLD` nicht als generischer
+Loader-Trigger verwendet.
 
-## Dynamische Erweiterungspunkte
+## Feature- und UI-Registrierung
 
-- `RegisterCapability` / `CallCapability` für fachliche Aktionen
-- `RegisterCharacterTab` für CharacterOverview-Tabs
-- `RegisterCharacterSummarySection` für Summary-Blöcke
-- `RegisterAdministrationSection` beziehungsweise `metadata.administration`
-- `Commands:RegisterSubcommand` für `/hs`-Unterbefehle
-- `RichLinks:RegisterType` und `RegisterToken` für Inhalte und Chatlinks
-- `PlayerData:RegisterBlock` für featureeigene Character-Daten
-- `Rules:RegisterField` sowie `metadata.ruleFields` für Filterregeln
+Features registrieren sich mit `HolyStorm:RegisterModule(metadata, factory)`.
+Sie besitzen ihre Permissions, Rule-Felder, Datenblock-Schemas, Tasks,
+Workflows, Sync-Domänen, Commands und fachlichen Events selbst. Größere Arbeit
+läuft über Tasks oder Workflows.
 
-Character-Erweiterungen sind load-order-sicher: Sie können vor oder nach
-`Holy_Storm_Characters` geladen werden und werden über die Core-Registry
-nachregistriert. Fehlt ein Feature-Addon, fehlen nur dessen Tabs, Seiten,
-Capabilities und Datenregistrierungen; der Core bleibt funktionsfähig.
+Optionale Präsentation wird mit `RegisterUIExtension` registriert. Die Registry
+ist reihenfolgeunabhängig: Ein Feature kann vor der UI registrieren und später
+integriert werden; eine bereits geladene UI beobachtet nachträgliche
+Registrierungen. Ohne `Holy_Storm_UI` bleiben Core und Features funktionsfähig.
+
+Weitere Erweiterungspunkte sind `RegisterCapability` / `CallCapability`,
+`RegisterCharacterTab`, `RegisterCharacterSummarySection`,
+`metadata.administration`, `Commands:RegisterSubcommand`,
+`RichLinks:RegisterType`, `PlayerData:RegisterBlock` und
+`Rules:RegisterField`.
 
 ## Anforderungen an neue Feature-Addons
 
-1. Eigenen Ordner und eigenes TOC mit `RequiredDeps: Holy_Storm` anlegen.
-2. Stabile Modul-ID, SemVer, Icon, Abhängigkeiten und Datenversionen deklarieren.
-3. Nur öffentliche Store-, Event-, Task-, Workflow-, Capability-, UI-,
-   Permission- und Sync-APIs verwenden.
-4. Keine SavedVariables direkt verändern und keine zweite Queue einführen.
-5. Featuretexte mindestens in `enUS` und `deDE` im Feature-Addon pflegen.
-6. Ohne andere Feature-Addons sicher laden; optionale Integration ausschließlich
-   über Registries, Capabilities oder nil-sichere Abfragen herstellen.
+1. Eigenes TOC mit `RequiredDeps: Holy_Storm` und stabiler `X-HolyStorm-ID`.
+2. `LoadOnDemand: 1` nur mit einem sinnvollen, spezifischen
+   `X-HolyStorm-LoadOnEvent`; keine eigene Trigger-Sprache.
+3. Nur öffentliche Store-, Event-, Task-, Workflow-, Registry-, Permission-
+   und Sync-APIs verwenden.
+4. UI-Integration ausschließlich optional und über `RegisterUIExtension`.
+5. SavedVariables nicht direkt aus UI-Code ändern.
+6. Featuretexte mindestens in `enUS` und `deDE` pflegen.
 7. TOC-, Syntax-, Locale-, Offline- und Ingame-Vertragstests ergänzen.
