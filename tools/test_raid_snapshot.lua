@@ -1,4 +1,5 @@
 local root=(arg[0]:gsub("tools[/\\]test_raid_snapshot.lua$","")).."LIVE/Holy_Storm/"
+local featureRoot=(arg[0]:gsub("tools[/\\]test_raid_snapshot.lua$","")).."LIVE/Holy_Storm_Raids/"
 local oldSnapshot
 local HolyStorm={Utils={}}
 function HolyStorm.Utils.DeepCopy(value,seen)if type(value)~="table"then return value end;seen=seen or{};if seen[value]then return seen[value]end;local out={};seen[value]=out;for key,child in pairs(value)do out[HolyStorm.Utils.DeepCopy(key,seen)]=HolyStorm.Utils.DeepCopy(child,seen)end;return out end
@@ -34,7 +35,7 @@ function GetNumSavedInstances()return#instances end
 function GetSavedInstanceInfo(index)local x=instances[index];return lockoutName,lockoutId+index,3600,x.difficultyId,true,false,nil,true,20,x.difficultyName,#x.kills end
 function GetSavedInstanceEncounterInfo(index,bossIndex)local x=instances[index];return bossIndex==1 and"Boss A"or"Boss B",bossIndex==1 and 501 or 502,x.kills[bossIndex]end
 
-assert(loadfile(root.."Modules/Raids/Raids.lua"))()
+assert(loadfile(featureRoot.."Raids.lua"))()
 local module=assert(HolyStorm.raidModule)
 local first=module:Collect()
 assert(first.snapshotVersion==3 and#first.raids==1 and#first.raids[1].bosses==2,"current raid catalog")

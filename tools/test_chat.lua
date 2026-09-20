@@ -33,7 +33,18 @@ RAID_CLASS_COLORS={PALADIN={r=1,g=.5,b=.8,GenerateHexColor=function()return"ffff
 ChatFrameUtil={AddMessageEventFilter=function(event,fn)filters[event]=fn end,RemoveMessageEventFilter=function(event)removed[event]=true end,GetActiveWindow=function()return editBox end,InsertLink=function(value)editBox.text=editBox.text..value;editBox.cursor=#editBox.text;return true end}
 function StaticPopup_Show()end;StaticPopupDialogs={};OKAY="Okay"
 
-assert(loadfile(root.."Core/Content/RichContent.lua"))();assert(loadfile(root.."Core/Chat/Chat.lua"))();HolyStorm.RichContent:Initialize();HolyStorm.Chat:Initialize();local Chat=HolyStorm.Chat
+assert(loadfile(root.."Core/Content/RichContent.lua"))();assert(loadfile(root.."Core/Chat/Chat.lua"))();HolyStorm.RichContent:Initialize()
+-- Standalone feature addons own these registrations in production. Register their
+-- public contracts in this focused Chat test fixture so the core remains feature-free.
+local function characterRender(target,label)local record=HolyStorm.Data.CharacterStore:Get(target);return label or(record and(record.fullName or record.name))or target end
+local function characterClick(target,button,owner)if button=="RightButton"then return HolyStorm.CharacterActions:CreateContextMenu(owner,target)end;return HolyStorm:CallCapability("character.open",target,"summary")end
+local function characterTooltip(target)local record=HolyStorm.Data.CharacterStore:Get(target);return record and(record.fullName or record.name)or target,record and record.class end
+for _,kind in ipairs({"character","player"})do HolyStorm.RichLinks:RegisterType({type=kind,render=characterRender,chatText=function(target)local record=HolyStorm.Data.CharacterStore:Get(target);return(record and(record.name or record.fullName)or target):match("^([^%-]+)")end,onClick=characterClick,tooltip=characterTooltip,showTooltip=function(owner,target)return HolyStorm.CharacterUI:ShowTooltip(owner,target)end})end
+HolyStorm.RichLinks:RegisterType({type="poi",render=function(target,label)return label or target end,onClick=function(target)return HolyStorm.MapLinks:OpenPOI(target)end})
+local function contentRender(target,label)local entry=HolyStorm.Content:GetVisibleById(target);return label or(entry and entry.title)or target end
+local function contentClick(target)return HolyStorm.Content:Open(target)end
+HolyStorm.RichLinks:RegisterType({type="news",render=contentRender,onClick=contentClick});HolyStorm.RichLinks:RegisterType({type="guide",render=contentRender,onClick=contentClick})
+HolyStorm.Chat:Initialize();local Chat=HolyStorm.Chat
 local plain=Chat:ProcessMessage("CHAT_MSG_GUILD","Hallo zusammen","Other");assert(plain=="Hallo zusammen","normal text remains unchanged")
 local substring=Chat:ProcessMessage("CHAT_MSG_GUILD","Ich esse Tomaten.","Other");assert(substring=="Ich esse Tomaten.","substring is not enriched")
 local player=Chat:ProcessMessage("CHAT_MSG_GUILD","Marithiel komm bitte","Other");assert(player:find("|Hholystorm:player:A|h",1,true)and player:find("ffff80cc",1,true),"known player becomes stable UUID link with class color")

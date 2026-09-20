@@ -1,4 +1,5 @@
 local root=(arg[0]:gsub("tools[/\\]test_character_tabs.lua$","")).."LIVE/Holy_Storm/"
+local featureRoot=(arg[0]:gsub("tools[/\\]test_character_tabs.lua$","")).."LIVE/Holy_Storm_Characters/"
 local unpack=unpack or table.unpack
 local function copy(value,seen)if type(value)~="table"then return value end;seen=seen or{};if seen[value]then return seen[value]end;local out={};seen[value]=out;for key,child in pairs(value)do out[copy(key,seen)]=copy(child,seen)end;return out end
 local locale=setmetatable({LEVEL="Level",SEASON="Season %s",PROGRESS_FORMAT="%s / %s (level %s)",ACTIVITY="Activity %s",CHARACTER_COUNT="%d known characters",LAST_UPDATED="Last updated: %s",WEEKLY_TOOLTIP="Weekly %s",BOSS_KILLED="Killed %s",BOSS_OPEN="Open %s",BEST_ROW="%s | %s | %d kills"},{__index=function(_,key)return key end})
@@ -9,6 +10,8 @@ local HolyStorm={Utils={DeepCopy=copy,TableCount=function(t)local n=0;for _ in p
 function LibStub(name)if name=="AceAddon-3.0"then return{GetAddon=function()return HolyStorm end}elseif name=="AceLocale-3.0"then return{GetLocale=function()return locale end}elseif name=="AceGUI-3.0"then return aceGUI end end
 function HolyStorm:RegisterRequiredModule()local module={};self.characterOverview=module;return module end
 function HolyStorm:RegisterCapability(_,capability,handler)self.capabilities=self.capabilities or{};self.capabilities[capability]=handler;return true end
+function HolyStorm:RegisterCharacterTab(_,definition)return self.CharacterUI:RegisterTab(definition)end
+function HolyStorm:RegisterCharacterSummarySection(_,definition)return self.CharacterUI:RegisterSummarySection(definition)end
 function HolyStorm:CallCapability()return true end
 function HolyStorm:ApplyModuleMetadata()end
 function HolyStorm:IsOptionalModuleEnabled()return true end
@@ -28,7 +31,7 @@ HolyStorm.TwinkCore={sources={OWNER="OWNER"},GetAccountUUIDForCharacter=function
 LOCALIZED_CLASS_NAMES_MALE={PALADIN="Paladin"};RAID_CLASS_COLORS={PALADIN={r=1,g=.96,b=.41}};NORMAL_FONT_COLOR={r=1,g=1,b=1};CLASS_ICON_TCOORDS={PALADIN={0,0.25,0,0.25}}
 for index,name in ipairs({"HEAD","NECK","SHOULDER","BACK","CHEST","WRIST","HAND","WAIST","LEGS","FEET","FINGER1","FINGER2","TRINKET1","TRINKET2","MAINHAND","OFFHAND"})do _G["INVSLOT_"..name]=index end
 
-assert(loadfile(root.."UI/Character/CharacterUI.lua"))();assert(loadfile(root.."UI/Framework/Components/HolyStormHeaderBar.lua"))();assert(loadfile(root.."UI/Character/CharacterOverview.lua"))()
+assert(loadfile(featureRoot.."UI/CharacterUI.lua"))();assert(loadfile(root.."UI/Framework/Components/HolyStormHeaderBar.lua"))();assert(loadfile(root.."../Holy_Storm_Equipment/UI/CharacterTab.lua"))();assert(loadfile(root.."../Holy_Storm_MythicPlus/UI/CharacterTab.lua"))();assert(loadfile(root.."../Holy_Storm_Raids/UI/CharacterTab.lua"))();assert(loadfile(root.."../Holy_Storm_Delves/UI/CharacterTab.lua"))();assert(loadfile(featureRoot.."UI/CharacterOverview.lua"))()
 local C=HolyStorm.CharacterUI;local context=C:ResolveContext("A")
 
 local function widget(kind,parent)

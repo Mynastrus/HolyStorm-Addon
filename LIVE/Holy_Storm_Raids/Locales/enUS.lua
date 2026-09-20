@@ -1,0 +1,16 @@
+local addonVersion = "1.1.0"
+local L = LibStub("AceLocale-3.0"):NewLocale("Holy_Storm_Raids", "enUS", true)
+
+L["DISPLAY_NAME"] = "Raids"
+L["PERMISSION_DENIED"]="You do not have permission to view this content.";L["MODULE_DISABLED"]="This module is disabled.";L["NO_RAID"]="No raid data available.";L["NO_DATA"]="No data"
+L["COLUMN_RAID"]="Raid";L["DIFFICULTY_LFR"]="LFR";L["DIFFICULTY_NORMAL"]="Normal";L["DIFFICULTY_HEROIC"]="Heroic";L["DIFFICULTY_MYTHIC"]="Mythic";L["COLUMN_BEST"]="Best";L["WEEKLY_TOOLTIP"]="Weekly %s";L["BOSS_KILLED"]="✓ %s";L["BOSS_OPEN"]="○ %s";L["BEST_TOOLTIP"]="Lifetime best";L["BEST_ROW"]="%s | %s | %d kills";L["OPEN_JOURNAL"]="Click to open in the Adventure Guide."
+L["DESCRIPTION"] = "Provides raid-related features."
+L["HEADING"] = "Raid lockouts"
+L["WINDOW_TITLE"] = "Holy Storm     |cffBFBFBFRaid lockouts|r"
+L["NAVIGATION_TITLE"] = "Raid lockouts"
+L["NO_LOCKOUTS"] = "No active raid lockouts were found."
+L["BOSS_LOCKED"] = "Locked"
+L["BOSS_AVAILABLE"] = "Available"
+L["UNKNOWN"] = "Unknown"
+L["RULE_FIELD_PROGRESS"] = "Raid progress"
+L["RULE_FIELD_PROGRESS_DESC"] = "The defeated-boss count from the best stored raid progress."

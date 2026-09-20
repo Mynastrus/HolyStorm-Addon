@@ -1,4 +1,5 @@
 local root=(arg[0]:gsub("tools[/\\]test_calendar_secret_values.lua$","")).."LIVE/Holy_Storm/"
+local featureRoot=(arg[0]:gsub("tools[/\\]test_calendar_secret_values.lua$","")).."LIVE/Holy_Storm_Calendar/"
 
 local Calendar={}
 local locale=setmetatable({
@@ -21,7 +22,7 @@ function LibStub(name)
 end
 
 Enum={CalendarStatus={Invited=0,Available=1,Declined=2,Confirmed=3,Out=4,Standby=5,Signedup=6,NotSignedup=7,Tentative=8}}
-assert(loadfile(root.."Modules/Calendar/Calendar.lua"))()
+assert(loadfile(featureRoot.."Calendar.lua"))()
 
 -- Legacy clients without Secret Value predicates retain the old numeric/string behavior.
 issecretvalue,canaccessvalue=nil,nil
@@ -118,6 +119,6 @@ Calendar.Render=function()renders=renders+1 end
 Calendar:ShowList()
 assert(ownHides==2 and ownShows==3 and renders==1,"Holy Storm-owned frame navigation still works")
 
-local source=assert(io.open(root.."Modules/Calendar/Calendar.lua","rb")):read("*a")
+local source=assert(io.open(featureRoot.."Calendar.lua","rb")):read("*a")
 assert(not source:find("HideUIPanel",1,true),"calendar task path contains no Blizzard panel hide")
 print("Calendar Secret Value compatibility tests passed")

@@ -1,11 +1,11 @@
 ## Interface: 120100
 ## RequiredDeps: Blizzard_MapCanvas
-## Title: Holy Storm
-## Title-deDE: Holy Storm
+## Title: Holy Storm: |cff24a7deCore|r
+## Title-deDE: Holy Storm: |cff24a7deCore|r
 ## Notes: Guild Management System - Developed for the guild |cff3FC7EB<Holy Storm>|r on the Norgannon-EU realm.
 ## Notes-deDE: Gilden-Verwaltungssystem - Entwickelt für die Gilde |cff3FC7EB<Holy Storm>|r auf dem Server Norgannon-EU.
 ## Author: Mynastrus - Norgannon - EU
-## Category: Utility
+## Category: Holy Storm
 ## DefaultState: enabled
 ## Version: @project-version@
 ## X-Curse-Project-ID: 1701433
@@ -68,9 +68,6 @@ Persistence\CharacterStore.lua
 Persistence\PlayerStore.lua
 Persistence\GuildStore.lua
 Persistence\SnapshotManager.lua
-Persistence\ContentStore.lua
-Persistence\POIStore.lua
-Persistence\AchievementStore.lua
 Core\Permissions\PermissionRegistry.lua
 Core\Permissions\GroupManager.lua
 Core\Permissions\FilterManager.lua
@@ -79,39 +76,20 @@ Core\Permissions\PermissionEngine.lua
 Core\Permissions\PermissionSync.lua
 Core\Permissions\Policy.lua
 Core\Permissions\Permissions.lua
-Modules\Characters\TwinkCore.lua
-Modules\Characters\RuleDataProvider.lua
 Sync\Comms.lua
 Sync\SyncManager.lua
 Core\Content\MapLinks.lua
 Core\Content\RichContent.lua
 Core\Notifications\Notifications.lua
-Modules\Achievements\Locales\enUS.lua
-Modules\Achievements\Locales\deDE.lua
-Modules\Achievements\AchievementService.lua
-Modules\News\Content.lua
-Modules\POI\POIService.lua
-Modules\POI\Map.lua
-Modules\POI\Map.xml
-Modules\Positions\Locales\enUS.lua
-Modules\Positions\Locales\deDE.lua
-Modules\Positions\GuildPositions.lua
-Modules\Positions\Map.lua
-Modules\Positions\Map.xml
 UI\Framework\UIManager.lua
-UI\Character\CharacterUI.lua
-Modules\Characters\CharacterActions.lua
 Core\Chat\Chat.lua
 Core\Commands\Commands.lua
 
 UI\Locales\enUS.lua
 UI\Locales\deDE.lua
-UI\Character\Locales\enUS.lua
-UI\Character\Locales\deDE.lua
 UI\Framework\MainWindow.lua
 UI\Framework\Components\HolyStormHeaderBar.lua
 UI\Framework\Components\HolyStormTabGroup.lua
-UI\Character\CharacterOverview.lua
 UI\Pages\OptionsLocales\enUS.lua
 UI\Pages\OptionsLocales\deDE.lua
 UI\Pages\Options.lua
@@ -132,46 +110,3 @@ UI\Administration\Permissions.lua
 UI\Administration\Rules.lua
 UI\Administration\Filters.lua
 UI\Administration\PolicyInspector.lua
-
-Modules\Achievements\Achievements.lua
-
-Modules\Guild\Locales\enUS.lua
-Modules\Guild\Locales\deDE.lua
-Modules\Guild\Guild.lua
-Modules\Characters\Locales\enUS.lua
-Modules\Characters\Locales\deDE.lua
-Modules\Characters\Characters.lua
-Modules\Characters\Profiles.lua
-Modules\Characters\Stats.lua
-
-Modules\News\Locales\enUS.lua
-Modules\News\Locales\deDE.lua
-Modules\News\News.lua
-
-Modules\POI\Locales\enUS.lua
-Modules\POI\Locales\deDE.lua
-Modules\POI\POI.lua
-
-Modules\Positions\Positions.lua
-
-Modules\Equipment\Locales\enUS.lua
-Modules\Equipment\Locales\deDE.lua
-Modules\Equipment\Equipment.lua
-Modules\Raids\Locales\enUS.lua
-Modules\Raids\Locales\deDE.lua
-Modules\Raids\Raids.lua
-Modules\MythicPlus\Locales\enUS.lua
-Modules\MythicPlus\Locales\deDE.lua
-Modules\MythicPlus\MythicPlus.lua
-Modules\Calendar\Locales\enUS.lua
-Modules\Calendar\Locales\deDE.lua
-Modules\Calendar\Calendar.lua
-Modules\Professions\Locales\enUS.lua
-Modules\Professions\Locales\deDE.lua
-Modules\Professions\Professions.lua
-Modules\GuildLog\Locales\enUS.lua
-Modules\GuildLog\Locales\deDE.lua
-Modules\GuildLog\GuildLog.lua
-Modules\Delves\Locales\enUS.lua
-Modules\Delves\Locales\deDE.lua
-Modules\Delves\Delves.lua

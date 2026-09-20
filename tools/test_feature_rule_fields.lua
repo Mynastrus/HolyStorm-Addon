@@ -49,10 +49,10 @@ assert(Rules:EvaluateDetailed({logic="NOT",children={unknownNode}},{})==Rules.Re
 
 -- K: feature declarations live in modules; the core has no feature IDs or scans.
 for _,entry in ipairs({
- {"Modules/Equipment/Equipment.lua","equipment.itemLevel"},{"Modules/MythicPlus/MythicPlus.lua","mythicplus.rating"},
- {"Modules/Raids/Raids.lua","raid.progress"},{"Modules/Delves/Delves.lua","delves.status"},
-})do local source=read("LIVE/Holy_Storm/"..entry[1]);assert(source:find('id="'..entry[2]..'"',1,true),"missing module field: "..entry[2])end
+ {"Holy_Storm_Equipment/Equipment.lua","equipment.itemLevel"},{"Holy_Storm_MythicPlus/MythicPlus.lua","mythicplus.rating"},
+ {"Holy_Storm_Raids/Raids.lua","raid.progress"},{"Holy_Storm_Delves/Delves.lua","delves.status"},
+})do local source=read("LIVE/"..entry[1]);assert(source:find('id="'..entry[2]..'"',1,true),"missing module field: "..entry[2])end
 local core=read("LIVE/Holy_Storm/Core/Permissions/RuleEngine.lua")
 for _,term in ipairs({"equipment.itemLevel","mythicplus.rating","raid.progress","delves.status","quest.completed","achievement.completed","C_QuestLog","GetAchievementInfo","CharacterStore"})do assert(not core:find(term,1,true),"core feature coupling: "..term)end
-local demandProvider=read("LIVE/Holy_Storm/Modules/Characters/RuleDataProvider.lua");assert(demandProvider:find("CharacterRuleData.RebuildDemands",1,true)and demandProvider:find("CharacterRuleData.Capture",1,true)and demandProvider:find("CharacterStore:Upsert",1,true),"demand acquisition must be task/store owned")
+local demandProvider=read("LIVE/Holy_Storm_Characters/RuleDataProvider.lua");assert(demandProvider:find("CharacterRuleData.RebuildDemands",1,true)and demandProvider:find("CharacterRuleData.Capture",1,true)and demandProvider:find("CharacterStore:Upsert",1,true),"demand acquisition must be task/store owned")
 print("Rule registry ownership, portability, UNKNOWN behavior and module decoupling passed")

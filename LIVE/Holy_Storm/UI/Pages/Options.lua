@@ -23,9 +23,6 @@ function Options:OnInitialize()
     local function chatGet(path) return HolyStorm.Database:Get("chat."..path,"profile") end
     local function chatSet(path,value) HolyStorm.Database:Set("chat."..path,value,"profile") end
     local channelArgs={};local channelOrder={"GUILD","OFFICER","PARTY","PARTY_LEADER","RAID","RAID_LEADER","INSTANCE_CHAT","INSTANCE_CHAT_LEADER","WHISPER","WHISPER_INFORM","SAY","YELL"};for index,id in ipairs(channelOrder)do local channelId=id;channelArgs[channelId]={type="toggle",name=L["CHAT_CHANNEL_"..channelId],order=index,get=function()return chatGet("channels."..channelId)end,set=function(_,value)chatSet("channels."..channelId,value)end}end
-    local function moduleToggle(moduleName, label, order)
-        return { type="toggle", name=label, desc=L["OPTIONAL_RELOAD_DESC"], order=order, get=function() return HolyStorm:IsOptionalModuleEnabled(moduleName) end, set=function(_,value) HolyStorm:SetOptionalModuleEnabled(moduleName,value) end }
-    end
     self.optionsTable = {
         type = "group",
         name = L["OPTIONS_TITLE"],
@@ -124,14 +121,6 @@ function Options:OnInitialize()
                         parser={type="input",name=L["CHAT_PARSER_TEST"],order=2,width="full",set=function(_,value)local rendered=HolyStorm.Chat:ParseForDiagnostics(value);Options.chatParserResult=rendered end,get=function()return""end},
                         result={type="description",order=3,name=function()return Options.chatParserResult or L["CHAT_PARSER_EMPTY"]end},
                     }},
-                },
-            },
-            optionalModules = {
-                type = "group", name = L["OPTIONAL_MODULES"], order = 4,
-                args = {
-                    guildLog=moduleToggle("GuildLog",L["MODULE_GUILD_LOG"],1), guildEvents=moduleToggle("GuildEvents",L["MODULE_CALENDAR"],2),
-                    equipment=moduleToggle("Equipment",L["MODULE_EQUIPMENT"],3), raids=moduleToggle("Raids",L["MODULE_RAIDS"],4),
-                    mythicPlus=moduleToggle("MythicPlus",L["MODULE_MYTHICPLUS"],5), professions=moduleToggle("Professions",L["MODULE_PROFESSIONS"],6), delves=moduleToggle("Delves",L["MODULE_DELVES"],7),
                 },
             },
         },

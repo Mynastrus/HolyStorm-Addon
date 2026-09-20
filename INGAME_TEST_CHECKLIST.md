@@ -2,6 +2,16 @@
 
 Mit aktivierten Lua-Fehlern testen. Nach Reload/Login prüfen, dass gespeicherte Daten ohne erzwungenen Neuscan sichtbar sind. Der Standard für Retry-fähige Tasks/Workflow-Ergebnisse ist drei Retries; ein Task darf bewusst eine andere Grenze deklarieren. Nach fehlgeschlagenen Snapshot-Scans muss der letzte gültige Stand erhalten bleiben.
 
+## Addon-Split und Kombinationen
+
+- Nur `Holy_Storm` aktivieren: Login, `/reload`, Hauptfenster, Optionen, Logs, Taskmanager und Administration ohne Lua-Fehler prüfen.
+- Jedes der 13 Feature-Addons einzeln zusammen mit dem Core aktivieren und Initialisierung, Navigation, Permissions sowie Deaktivierung prüfen.
+- Alle Addons gemeinsam aktivieren; es dürfen keine doppelten Seiten, Tabs, Tasks, Events, Sync-Domains oder Rich-Link-Handler entstehen.
+- `Characters` ohne Equipment/Raids/MythicPlus/Delves prüfen: nur Summary, Stats und Twinks erscheinen; fehlende Feature-Tabs erzeugen keine Platzhalterfehler.
+- Equipment/Raids/MythicPlus/Delves/Achievements jeweils vor und nach `Characters` laden und die dynamische Tab- und Summary-Registrierung prüfen.
+- News, POI und GuildLog deaktivieren: ihre Rich Links beziehungsweise `/hs`-Unterbefehle müssen fehlen oder lesbar degradieren, der Core bleibt bedienbar.
+- Addon-Manager-Titel und Kategorie prüfen: ausschließlich der Modulname ist blau, alle 14 Addons stehen unter `Holy Storm`.
+
 ## Start, UI und Daten
 
 - Frische Installation, Update einer bestehenden Datenbank, Login, `/reload` und Charakterwechsel ohne Lua-Fehler prüfen.

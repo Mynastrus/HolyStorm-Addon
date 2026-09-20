@@ -1,4 +1,5 @@
 local root=(arg[0]:gsub("tools[/\\]test_content.lua$","")).."LIVE/Holy_Storm/"
+local featureRoot=(arg[0]:gsub("tools[/\\]test_content.lua$","")).."LIVE/Holy_Storm_News/"
 local function copy(value,seen)if type(value)~="table"then return value end;seen=seen or{};if seen[value]then return seen[value]end;local out={};seen[value]=out;for key,child in pairs(value)do out[copy(key,seen)]=copy(child,seen)end;return out end
 local clock=1000;local currentGuid="A";local contentEnabled=true;local currentGuild={id="realm:guild",roster={A={rankIndex=1},B={rankIndex=2}}};local permissions={}
 local locale=setmetatable({RICH_ITEM_FALLBACK="Item %s",RICH_POI_UNAVAILABLE="POI unavailable",RICH_CONTENT_UNAVAILABLE="Content unavailable",TASK_CONTENT_INDEX="Rebuild content index"},{__index=function(_,key)return key end})
@@ -15,8 +16,8 @@ function HolyStorm:CallCapability(_,target)self.openedCharacter=target end
 function UnitGUID()return currentGuid end;function GetUnitName()return"Alpha-Realm"end
 C_Map={SetUserWaypoint=function(point)HolyStorm.waypoint=point end};C_SuperTrack={SetSuperTrackedUserWaypoint=function()end};UiMapPoint={CreateFromCoordinates=function(map,x,y)return{mapID=map,x=x,y=y}end};function OpenWorldMap(map)HolyStorm.openedMap=map end
 
-assert(loadfile(root.."Persistence/ContentStore.lua"))();assert(loadfile(root.."Core/Content/MapLinks.lua"))();assert(loadfile(root.."Core/Content/RichContent.lua"))();assert(loadfile(root.."Modules/News/Content.lua"))()
-HolyStorm.RichContent:Initialize();HolyStorm.Content:Initialize();local Content=HolyStorm.Content
+assert(loadfile(featureRoot.."Persistence/ContentStore.lua"))();assert(loadfile(root.."Core/Content/MapLinks.lua"))();assert(loadfile(root.."Core/Content/RichContent.lua"))();assert(loadfile(featureRoot.."Content.lua"))()
+HolyStorm.RichContent:Initialize();HolyStorm.RichContent:RegisterType({type="character",render=function(target,label)return label or target end,onClick=function(target)return HolyStorm:CallCapability("character.open",target,"summary")end});HolyStorm.Content:Initialize();local Content=HolyStorm.Content
 local migrated,count=HolyStorm.Data.ContentStore:MigrateLegacy();assert(migrated and count==1 and Content:Get("old-news").body=="Preserved"and HolyStorm.Data.ContentStore:GetRead("old-news","A").revision==4,"legacy news and personal read state migrate once");assert(not HolyStorm.Data.ContentStore:MigrateLegacy(),"legacy migration is idempotent")
 
 local ok,guide=Content:SaveDraft({type="GUIDE",category="MOUNT",title="Mount X",body="# Route\n- Go to [[coordinate:2248,0.524,0.631|52.4, 63.1]]\n- Use |cffa335ee|Hitem:111::::::::80:70::1:2:999:888::::::|h[Test]|h|r",priority="IMPORTANT",visibility={scope="GUILD"}},0)
@@ -42,5 +43,5 @@ for i=1,1000 do HolyStorm.Data.ContentStore:Put({id="perf-"..i,guildId=Content:G
 contentEnabled=false;assert(not Content:SaveDraft({type="NEWS",title="Disabled",body="x",visibility={scope="GUILD"}},0),"guild-wide module disable blocks creation");contentEnabled=true
 ok,guide=Content:Delete(guide.id,guide.revision);assert(ok and guide.status=="DELETED"and not Content:GetVisibleById(guide.id),"delete creates hidden tombstone")
 currentGuild={id="other:guild",roster={A={rankIndex=1}}};assert(Content:Get(guide.id)==nil,"content is isolated by guild identity")
-local newsFile=assert(io.open(root.."Modules/News/News.lua","r"));local newsSource=newsFile:read("*a");newsFile:close();assert(newsSource:find('InputScrollFrameTemplate',1,true)and not newsSource:find('body:GetStringHeight()',1,true),"News editor must use Blizzard's scrolling EditBox contract")
+local newsFile=assert(io.open(featureRoot.."News.lua","r"));local newsSource=newsFile:read("*a");newsFile:close();assert(newsSource:find('InputScrollFrameTemplate',1,true)and not newsSource:find('body:GetStringHeight()',1,true),"News editor must use Blizzard's scrolling EditBox contract")
 print("Content model, revisions, visibility, rich links, map links and guild isolation tests passed")

@@ -92,7 +92,7 @@ for _,locale in ipairs({"enUS","deDE"})do
     for _,key in ipairs({"ADMINISTRATION_TITLE","ADMINISTRATION_DESCRIPTION","ADMIN_CATEGORY_GENERAL","ADMIN_CATEGORY_PERMISSIONS","ADMIN_CATEGORY_GROUPS","ADMIN_CATEGORY_RULES","ADMIN_CATEGORY_FILTERS","ADMIN_CATEGORY_MODULES","ADMIN_CATEGORY_SYSTEM"})do assert(text:find('["'..key..'"]',1,true),locale.." misses "..key)end
 end
 
-local overview=assert(io.open(root.."UI/Character/CharacterOverview.lua","rb"));local overviewSource=overview:read("*a");overview:close()
+local overview=assert(io.open(root.."../Holy_Storm_Characters/UI/CharacterOverview.lua","rb"));local overviewSource=overview:read("*a");overview:close()
 local metadata=overviewSource:match("ApplyModuleMetadata%([^\n]+")or""
 assert(metadata:find("permissions={}",1,true),"Character Overview must not declare a basic access permission")
 assert(not overviewSource:find('OpenCharacter.-HasPermission'),"Character Overview opening must not have an access gate")

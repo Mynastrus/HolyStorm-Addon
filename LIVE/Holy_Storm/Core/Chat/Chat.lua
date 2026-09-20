@@ -80,7 +80,7 @@ function Chat:GetRealName(characterUUID)
 end
 function Chat:PlayerLabel(characterUUID,original)
  local record=HolyStorm.Data.CharacterStore:Get(characterUUID)or{};local suffix={}
- if setting("showMain")then local identity=HolyStorm.TwinkCore:GetRosterIdentity(characterUUID,HolyStorm.Data.GuildStore:GetCurrent());local main=identity and identity.accountMain;if main and main~=characterUUID then local mainRecord=HolyStorm.Data.CharacterStore:Get(main);if mainRecord then suffix[#suffix+1]=splitName(mainRecord.name or mainRecord.fullName)end end end
+ if setting("showMain")and HolyStorm.TwinkCore then local identity=HolyStorm.TwinkCore:GetRosterIdentity(characterUUID,HolyStorm.Data.GuildStore:GetCurrent());local main=identity and identity.accountMain;if main and main~=characterUUID then local mainRecord=HolyStorm.Data.CharacterStore:Get(main);if mainRecord then suffix[#suffix+1]=splitName(mainRecord.name or mainRecord.fullName)end end end
  if setting("showRealName")then local realName=self:GetRealName(characterUUID);if realName then suffix[#suffix+1]=realName end end
  local canonical=record.fullName or record.name or original;local canonicalName,embeddedRealm=splitName(canonical);local _,requestedRealm=splitName(original);local canonicalRealm=embeddedRealm or record.realm;local label=requestedRealm and canonicalRealm and(canonicalName.."-"..canonicalRealm)or canonicalName;if#suffix>0 then label=label.." ("..table.concat(suffix," / ")..")"end
  return safeText(label)

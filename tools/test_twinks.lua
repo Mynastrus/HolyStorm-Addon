@@ -1,5 +1,6 @@
 -- Offline contracts for TwinkCore scenarios A-J.
 local root=(arg[0]:gsub("tools[/\\]test_twinks.lua$","")).."LIVE/Holy_Storm/"
+local featureRoot=(arg[0]:gsub("tools[/\\]test_twinks.lua$","")).."LIVE/Holy_Storm_Characters/"
 local clock,currentGuid=1000,"Maristi"
 function time()return clock end;function GetTime()return clock end;function UnitGUID()return currentGuid end
 function IsInGuild()return true end;function GetGuildInfo()return"Guild",nil,0 end
@@ -29,7 +30,7 @@ function HolyStorm.Tasks:Queue(id,o)self.queued[#self.queued+1]={id=id,options=o
 function HolyStorm.Tasks:ScheduleRecurring()return true end
 HolyStorm.Comms={available=true,Send=function()return true end};HolyStorm.Policy={Can=function()return true end}
 assert(loadfile(root.."Sync/SyncManager.lua"))();HolyStorm.Sync:Initialize()
-assert(loadfile(root.."Modules/Characters/TwinkCore.lua"))();HolyStorm.TwinkCore:Initialize()
+assert(loadfile(featureRoot.."TwinkCore.lua"))();HolyStorm.TwinkCore:Initialize()
 local core=HolyStorm.TwinkCore;local accountUUID=core:GetLocalAccountUUID()
 
 -- A: a later login learns a second character without changing AccountUUID.

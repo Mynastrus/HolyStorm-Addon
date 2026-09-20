@@ -1,4 +1,5 @@
 local root=(arg[0]:gsub("tools[/\\]test_character_ui.lua$","")).."LIVE/Holy_Storm/"
+local featureRoot=(arg[0]:gsub("tools[/\\]test_character_ui.lua$","")).."LIVE/Holy_Storm_Characters/"
 local function deepCopy(value,seen)if type(value)~="table"then return value end;seen=seen or{};if seen[value]then return seen[value]end;local out={};seen[value]=out;for key,child in pairs(value)do out[deepCopy(key,seen)]=deepCopy(child,seen)end;return out end
 local records={A={guid="A",name="Alpha",realm="Realm",classFile="PALADIN",level=80,equipment={itemLevel=710,slots={}},itemLevel=710,stats={spec={id=70,name="Retribution",icon=98765,index=3,role="DAMAGER"}}},B={guid="B",name="Beta-OtherRealm",classFile="MAGE",class="Mage",level=75,faction="Horde"},C={guid="C",name="Gamma",stats={primary={}}},D={guid="D",name="Delta",realm="Realm",classFile="DRUID",level=70}}
 local metas={A={equipment={version=2,updatedAt=100}}}
@@ -22,7 +23,7 @@ function HolyStorm.Policy:Can()return true end
 function HolyStorm.Policy:IsGuildModuleEnabled()return true end
 RAID_CLASS_COLORS={PALADIN={r=1,g=.5,b=.8,WrapTextInColorCode=function(_,text)return"|cffff80cc"..text.."|r"end},MAGE={r=.2,g=.8,b=1}};LEVEL="Level";GameTooltip={lines={},wraps={}};function GameTooltip:SetOwner()end;function GameTooltip:SetText(text,r,g,b)self.title,self.titleColor=text,{r=r,g=g,b=b}end;function GameTooltip:AddLine(text,r,g,b,wrap)self.lines[#self.lines+1]=text;self.wraps[#self.lines]=wrap end;function GameTooltip:Show()self.shown=true end
 
-assert(loadfile(root.."UI/Character/CharacterUI.lua"))()
+assert(loadfile(featureRoot.."UI/CharacterUI.lua"))()
 local C=HolyStorm.CharacterUI
 
 local dummy=function()end

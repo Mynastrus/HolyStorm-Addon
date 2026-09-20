@@ -1,0 +1,11 @@
+local L=LibStub("AceLocale-3.0"):NewLocale("Holy_Storm_CharacterUI","enUS",true)
+L["WINDOW_TITLE"]="Holy Storm     |cffBFBFBFCharacter|r"
+L["FACTION_ALLIANCE"]="Alliance";L["FACTION_HORDE"]="Horde"
+L["TAB_SUMMARY"]="Summary";L["TAB_STATS"]="Stats";L["TAB_TWINKS"]="Twinks"
+L["REFRESH"]="Refresh";L["BACK"]="Back";L["BACK_WITH_ARROW"]="‹  Back";L["LEVEL"]="Level";L["GUILD_RANK"]="Guild rank";L["ACCOUNT_MAIN"]="Main character";L["GUILD_MAIN"]="Guild main character";L["SHADOW_MAIN"]="Guild fallback character";L["TWINK"]="Twink";L["UNKNOWN"]="Unknown";L["NOT_AVAILABLE"]="Not available";L["NO_DATA"]="No data available"
+L["STATUS_CURRENT"]="Data current";L["STATUS_STALE"]="Cached data is stale";L["STATUS_MISSING"]="No cached data";L["STATUS_REFRESHING"]="Refreshing data";L["LAST_UPDATED"]="Last updated: %s";L["PERMISSION_DENIED"]="You do not have permission to view this content.";L["MODULE_DISABLED"]="This module is disabled.";L["TAB_ERROR"]="This tab could not be displayed. Other character tabs remain available."
+L["SUMMARY_IDENTITY"]="Identity";L["SUMMARY_TWINKS"]="Twinks";L["KNOWN_CHARACTERS"]="Known characters"
+L["NO_STATS"]="No persistent stats available.";L["NO_TWINKS"]="No known twinks."
+L["COLUMN_STAT"]="Stat";L["COLUMN_BASE"]="Base";L["COLUMN_EFFECTIVE"]="Effective / total";L["COLUMN_LIVE_BUFFS"]="Live temporary buffs";L["LIVE_BUFFS_UNAVAILABLE"]="Exact temporary stat contributions are not reliably exposed by the WoW API.";L["STAT_STRENGTH"]="Strength";L["STAT_AGILITY"]="Agility";L["STAT_STAMINA"]="Stamina";L["STAT_INTELLECT"]="Intellect";L["STAT_ARMOR"]="Armor";L["STAT_CRITICALSTRIKE"]="Critical strike";L["STAT_HASTE"]="Haste";L["STAT_MASTERY"]="Mastery";L["STAT_VERSATILITY"]="Versatility"
+L["COLUMN_CHARACTER"]="Character";L["COLUMN_CLASS"]="Class";L["COLUMN_LEVEL"]="Level";L["COLUMN_GUILD"]="Guild";L["COLUMN_RELATIONSHIP"]="Relationship";L["OWNER_CONFIRMED"]="Owner confirmed";L["ADMINISTRATIVE"]="Administrative";L["IN_GUILD"]="In guild";L["NOT_IN_GUILD"]="Not in guild";L["CHARACTER_COUNT"]="%d known characters"
+L["TASK_CHARACTER_REFRESH"]="Refresh character data"

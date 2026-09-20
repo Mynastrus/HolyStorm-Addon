@@ -2,7 +2,9 @@
 param(
     [Parameter(Mandatory = $false)]
     [ValidateNotNullOrEmpty()]
-    [string]$Version
+    [string]$Version,
+    [Parameter(Mandatory = $false)]
+    [switch]$ValidateOnly
 )
 
 Set-StrictMode -Version Latest
@@ -12,7 +14,14 @@ Add-Type -AssemblyName System.IO.Compression
 Add-Type -AssemblyName System.IO.Compression.FileSystem
 
 $projectRoot = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
-$sourceRoot = Join-Path $projectRoot 'LIVE\Holy_Storm'
+$liveRoot = Join-Path $projectRoot 'LIVE'
+$addonNames = @(
+    'Holy_Storm', 'Holy_Storm_Characters', 'Holy_Storm_Equipment', 'Holy_Storm_Raids',
+    'Holy_Storm_MythicPlus', 'Holy_Storm_Delves', 'Holy_Storm_Calendar',
+    'Holy_Storm_Professions', 'Holy_Storm_Guild', 'Holy_Storm_GuildLog',
+    'Holy_Storm_News', 'Holy_Storm_Achievements', 'Holy_Storm_POI', 'Holy_Storm_Positions'
+)
+$sourceRoot = Join-Path $liveRoot 'Holy_Storm'
 $tocPath = Join-Path $sourceRoot 'Holy_Storm.toc'
 $releaseRoot = Join-Path $projectRoot 'RELEASES'
 
@@ -84,11 +93,16 @@ function Assert-TocFilesExist {
     }
 }
 
-if (-not (Test-Path -LiteralPath $sourceRoot -PathType Container)) {
-    throw "Addon-Quellordner nicht gefunden: $sourceRoot"
-}
-if (-not (Test-Path -LiteralPath $tocPath -PathType Leaf)) {
-    throw "TOC-Datei nicht gefunden: $tocPath"
+$tocContracts = New-Object System.Collections.Generic.List[object]
+foreach ($addonName in $addonNames) {
+    $addonRoot = Join-Path $liveRoot $addonName
+    $addonToc = Join-Path $addonRoot ($addonName + '.toc')
+    if (-not (Test-Path -LiteralPath $addonRoot -PathType Container)) { throw "Addon-Quellordner nicht gefunden: $addonRoot" }
+    if (-not (Test-Path -LiteralPath $addonToc -PathType Leaf)) { throw "TOC-Datei nicht gefunden: $addonToc" }
+    $references = @(Get-TocReferences -Path $addonToc)
+    if ($references.Count -eq 0) { throw "Die TOC-Datei enthaelt keine referenzierten Addon-Dateien: $addonToc" }
+    Assert-TocFilesExist -Root $addonRoot -References $references -Context $addonName
+    $tocContracts.Add([pscustomobject]@{ Name=$addonName; Root=$addonRoot; Toc=$addonToc; References=$references })
 }
 
 $tocVersionMatch = Select-String -LiteralPath $tocPath -Pattern '^\s*##\s*Version\s*:\s*(\S.*?)\s*$' | Select-Object -First 1
@@ -104,11 +118,12 @@ if ($packageVersion.IndexOfAny([System.IO.Path]::GetInvalidFileNameChars()) -ge 
     throw "Die Paketversion enthaelt ungueltige Zeichen fuer einen Dateinamen: $packageVersion"
 }
 
-$tocReferences = @(Get-TocReferences -Path $tocPath)
-if ($tocReferences.Count -eq 0) {
-    throw "Die TOC-Datei enthaelt keine referenzierten Addon-Dateien: $tocPath"
+$tocReferences = @($tocContracts | ForEach-Object { $_.References })
+
+if ($ValidateOnly) {
+    Write-Host "Quellvalidierung: Erfolgreich ($($tocReferences.Count) referenzierte Dateien in $($addonNames.Count) Addons vorhanden)"
+    return
 }
-Assert-TocFilesExist -Root $sourceRoot -References $tocReferences -Context 'Quelle'
 
 if (-not (Test-Path -LiteralPath $releaseRoot -PathType Container)) {
     New-Item -ItemType Directory -Path $releaseRoot | Out-Null
@@ -116,47 +131,49 @@ if (-not (Test-Path -LiteralPath $releaseRoot -PathType Container)) {
 
 $releasePath = Join-Path $releaseRoot ("Holy Storm v{0}.zip" -f $packageVersion)
 $stagingRoot = Join-Path ([System.IO.Path]::GetTempPath()) ("HolyStorm-Release-{0}" -f [guid]::NewGuid().ToString('N'))
-$stagedAddonRoot = Join-Path $stagingRoot 'Holy_Storm'
 $temporaryZip = Join-Path ([System.IO.Path]::GetTempPath()) ("HolyStorm-Release-{0}.zip" -f [guid]::NewGuid().ToString('N'))
 $archive = $null
 $zipStream = $null
 
 try {
-    New-Item -ItemType Directory -Path $stagedAddonRoot -Force | Out-Null
+    New-Item -ItemType Directory -Path $stagingRoot -Force | Out-Null
 
-    $sourceItems = Get-ChildItem -LiteralPath $sourceRoot -Recurse -Force
-    foreach ($item in $sourceItems) {
-        $relativePath = Get-RelativePath -BasePath $sourceRoot -Path $item.FullName
-        if (Test-IsExcluded -RelativePath $relativePath) { continue }
-        if (($item.Attributes -band [System.IO.FileAttributes]::ReparsePoint) -ne 0) {
-            throw "Verknuepfte Datei oder Verzeichnis im Addon wird aus Sicherheitsgruenden nicht paketiert: $relativePath"
-        }
-
-        $destination = Join-Path $stagedAddonRoot $relativePath
-        if ($item.PSIsContainer) {
-            New-Item -ItemType Directory -Path $destination -Force | Out-Null
-        }
-        else {
-            $destinationDirectory = Split-Path -Parent $destination
-            if (-not (Test-Path -LiteralPath $destinationDirectory -PathType Container)) {
-                New-Item -ItemType Directory -Path $destinationDirectory -Force | Out-Null
+    foreach ($contract in $tocContracts) {
+        $stagedAddonRoot = Join-Path $stagingRoot $contract.Name
+        New-Item -ItemType Directory -Path $stagedAddonRoot -Force | Out-Null
+        $sourceItems = Get-ChildItem -LiteralPath $contract.Root -Recurse -Force
+        foreach ($item in $sourceItems) {
+            $relativePath = Get-RelativePath -BasePath $contract.Root -Path $item.FullName
+            if (Test-IsExcluded -RelativePath $relativePath) { continue }
+            if (($item.Attributes -band [System.IO.FileAttributes]::ReparsePoint) -ne 0) {
+                throw "Verknuepfte Datei oder Verzeichnis im Addon wird aus Sicherheitsgruenden nicht paketiert: $($contract.Name)/$relativePath"
             }
-            Copy-Item -LiteralPath $item.FullName -Destination $destination
-        }
-    }
 
-    Assert-TocFilesExist -Root $stagedAddonRoot -References $tocReferences -Context 'Staging'
+            $destination = Join-Path $stagedAddonRoot $relativePath
+            if ($item.PSIsContainer) {
+                New-Item -ItemType Directory -Path $destination -Force | Out-Null
+            }
+            else {
+                $destinationDirectory = Split-Path -Parent $destination
+                if (-not (Test-Path -LiteralPath $destinationDirectory -PathType Container)) {
+                    New-Item -ItemType Directory -Path $destinationDirectory -Force | Out-Null
+                }
+                Copy-Item -LiteralPath $item.FullName -Destination $destination
+            }
+        }
+        Assert-TocFilesExist -Root $stagedAddonRoot -References $contract.References -Context ("Staging " + $contract.Name)
+    }
 
     $zipStream = [System.IO.File]::Open($temporaryZip, [System.IO.FileMode]::CreateNew, [System.IO.FileAccess]::ReadWrite, [System.IO.FileShare]::None)
     $archive = New-Object System.IO.Compression.ZipArchive($zipStream, [System.IO.Compression.ZipArchiveMode]::Create, $true)
 
-    $stagedDirectories = Get-ChildItem -LiteralPath $stagedAddonRoot -Directory -Recurse | Sort-Object FullName
+    $stagedDirectories = Get-ChildItem -LiteralPath $stagingRoot -Directory -Recurse | Sort-Object FullName
     foreach ($directory in $stagedDirectories) {
         $relativePath = (Get-RelativePath -BasePath $stagingRoot -Path $directory.FullName).Replace('\', '/') + '/'
         [void]$archive.CreateEntry($relativePath)
     }
 
-    $stagedFiles = Get-ChildItem -LiteralPath $stagedAddonRoot -File -Recurse | Sort-Object FullName
+    $stagedFiles = Get-ChildItem -LiteralPath $stagingRoot -File -Recurse | Sort-Object FullName
     foreach ($file in $stagedFiles) {
         $entryName = (Get-RelativePath -BasePath $stagingRoot -Path $file.FullName).Replace('\', '/')
         [void][System.IO.Compression.ZipFileExtensions]::CreateEntryFromFile(
@@ -185,20 +202,23 @@ try {
         $fileEntryNames = @($entryNames | Where-Object { -not $_.EndsWith('/') })
         if ($fileEntryNames.Count -eq 0) { throw 'Die ZIP-Datei enthaelt keine Dateien.' }
 
-        $wrongTopLevel = @($entryNames | Where-Object { $_ -ne 'Holy_Storm/' -and -not $_.StartsWith('Holy_Storm/') })
+        $wrongTopLevel = @($entryNames | Where-Object {
+            $entryName = $_
+            -not ($addonNames | Where-Object { $entryName -eq ($_ + '/') -or $entryName.StartsWith($_ + '/') } | Select-Object -First 1)
+        })
         if ($wrongTopLevel.Count -gt 0) {
-            throw "Unerwartete Eintraege ausserhalb von Holy_Storm/: $($wrongTopLevel -join ', ')"
+            throw "Unerwartete Eintraege ausserhalb der Addon-Ordner: $($wrongTopLevel -join ', ')"
         }
 
         $requiredEntries = @(
             'Holy_Storm/Holy_Storm.toc',
             'Holy_Storm/Core/',
-            'Holy_Storm/Data/',
             'Holy_Storm/Libs/',
             'Holy_Storm/Locales/',
-            'Holy_Storm/Modules/',
+            'Holy_Storm/Persistence/',
             'Holy_Storm/UI/'
         )
+        $requiredEntries += @($addonNames | Where-Object { $_ -ne 'Holy_Storm' } | ForEach-Object { $_ + '/' + $_ + '.toc' })
         foreach ($requiredEntry in $requiredEntries) {
             $exists = if ($requiredEntry.EndsWith('/')) {
                 @($entryNames | Where-Object { $_.StartsWith($requiredEntry, [System.StringComparison]::OrdinalIgnoreCase) }).Count -gt 0
@@ -222,9 +242,11 @@ try {
         $archiveEntrySet = New-Object 'System.Collections.Generic.HashSet[string]' ([System.StringComparer]::OrdinalIgnoreCase)
         foreach ($entryName in $fileEntryNames) { [void]$archiveEntrySet.Add($entryName) }
         $missingTocEntries = New-Object System.Collections.Generic.List[string]
-        foreach ($reference in $tocReferences) {
-            $expectedEntry = 'Holy_Storm/' + $reference.Replace('\', '/')
-            if (-not $archiveEntrySet.Contains($expectedEntry)) { $missingTocEntries.Add($reference) }
+        foreach ($contract in $tocContracts) {
+            foreach ($reference in $contract.References) {
+                $expectedEntry = $contract.Name + '/' + $reference.Replace('\', '/')
+                if (-not $archiveEntrySet.Contains($expectedEntry)) { $missingTocEntries.Add($expectedEntry) }
+            }
         }
         if ($missingTocEntries.Count -gt 0) {
             throw "TOC-Validierung im ZIP fehlgeschlagen. Fehlende Dateien:`n - $($missingTocEntries -join "`n - ")"
@@ -246,8 +268,8 @@ try {
     Write-Host "Erzeugte ZIP-Datei: $($releaseFile.FullName)"
     Write-Host "Dateigroesse: $($releaseFile.Length) Bytes"
     Write-Host "Enthaltene Dateien: $containedFileCount"
-    Write-Host "TOC-Validierung: Erfolgreich ($($tocReferences.Count) referenzierte Dateien vorhanden)"
-    Write-Host 'ZIP-Strukturpruefung: Erfolgreich (oberster Ordner ist exakt Holy_Storm)'
+    Write-Host "TOC-Validierung: Erfolgreich ($($tocReferences.Count) referenzierte Dateien in $($addonNames.Count) Addons vorhanden)"
+    Write-Host 'ZIP-Strukturpruefung: Erfolgreich (nur die erwarteten Holy-Storm-Addonordner enthalten)'
     Write-Host "Build-Skript: $PSCommandPath"
 }
 finally {

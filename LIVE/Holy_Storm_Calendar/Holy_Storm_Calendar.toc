@@ -1,0 +1,13 @@
+## Interface: 120100
+## Title: Holy Storm: |cff24a7deCalendar|r
+## Notes: Guild calendar management for Holy Storm.
+## Notes-deDE: Gildenkalender-Verwaltung für Holy Storm.
+## Author: Mynastrus - Norgannon - EU
+## Category: Holy Storm
+## DefaultState: enabled
+## Version: @project-version@
+## RequiredDeps: Holy_Storm
+
+Locales\enUS.lua
+Locales\deDE.lua
+Calendar.lua

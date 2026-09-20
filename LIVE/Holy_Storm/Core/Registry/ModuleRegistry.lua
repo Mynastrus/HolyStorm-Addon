@@ -7,6 +7,8 @@ HolyStorm.optionalModuleFactories = {}
 HolyStorm.moduleCapabilities = {}
 HolyStorm.pendingModulePermissions = HolyStorm.pendingModulePermissions or {}
 HolyStorm.pendingAdministrationSections = HolyStorm.pendingAdministrationSections or {}
+HolyStorm.pendingCharacterTabs = HolyStorm.pendingCharacterTabs or {}
+HolyStorm.pendingCharacterSummarySections = HolyStorm.pendingCharacterSummarySections or {}
 
 local function copyMetadata(metadata)
     local copy = {}
@@ -22,6 +24,7 @@ function HolyStorm:NormalizeModuleMetadata(metadata, fallbackId, defaultCategory
     normalized.name = normalized.name or normalized.internalName
     normalized.displayName = normalized.displayName or normalized.name
     normalized.description = normalized.description or normalized.displayName
+    normalized.icon = normalized.icon or "Interface\\Icons\\INV_Misc_QuestionMark"
     normalized.version = normalized.version or "0.0.0"
     normalized.moduleType = normalized.moduleType or (normalized.category == "core" and "core" or "feature")
     normalized.category = normalized.category or defaultCategory or "required"
@@ -34,6 +37,8 @@ function HolyStorm:NormalizeModuleMetadata(metadata, fallbackId, defaultCategory
     normalized.sync = type(normalized.sync) == "table" and normalized.sync or {}
     normalized.permissions = type(normalized.permissions) == "table" and normalized.permissions or {}
     normalized.ruleFields = type(normalized.ruleFields) == "table" and normalized.ruleFields or {}
+    normalized.schemaVersion = normalized.schemaVersion or normalized.data.schemaVersion
+    normalized.snapshotVersion = normalized.snapshotVersion or normalized.data.snapshotVersion or normalized.data.dataVersion
     assert(type(normalized.id) == "string" and normalized.id ~= "", L["ERROR_MODULE_INTERNAL_NAME"])
     assert(type(normalized.name) == "string" and normalized.name ~= "", L["ERROR_MODULE_INTERNAL_NAME"])
     assert(type(normalized.displayName) == "string", L["ERROR_MODULE_DISPLAY_NAME"])
@@ -128,6 +133,30 @@ function HolyStorm:FlushAdministrationSections()
     return registered
 end
 
+function HolyStorm:RegisterCharacterTab(owner, definition)
+    if type(owner)~="string"or type(definition)~="table"or type(definition.id)~="string"then return false,"INVALID_CHARACTER_TAB"end
+    definition.owner=definition.owner or owner
+    self.pendingCharacterTabs[definition.id]=definition
+    if self.CharacterUI then return self.CharacterUI:RegisterTab(definition)end
+    return true,"PENDING_CHARACTERS"
+end
+
+function HolyStorm:RegisterCharacterSummarySection(owner, definition)
+    if type(owner)~="string"or type(definition)~="table"or type(definition.id)~="string"or type(definition.render)~="function"then return false,"INVALID_CHARACTER_SUMMARY_SECTION"end
+    definition.owner=definition.owner or owner
+    self.pendingCharacterSummarySections[definition.id]=definition
+    if self.CharacterUI then return self.CharacterUI:RegisterSummarySection(definition)end
+    return true,"PENDING_CHARACTERS"
+end
+
+function HolyStorm:FlushCharacterExtensions()
+    if not self.CharacterUI then return 0 end
+    local count=0
+    for _,definition in pairs(self.pendingCharacterTabs)do local ok=self.CharacterUI:RegisterTab(definition);if ok then count=count+1 end end
+    for _,definition in pairs(self.pendingCharacterSummarySections)do local ok=self.CharacterUI:RegisterSummarySection(definition);if ok then count=count+1 end end
+    return count
+end
+
 function HolyStorm:ApplyModuleMetadata(module, metadata)
     local normalized = self:NormalizeModuleMetadata(metadata, module and module:GetName(), "required")
     module.metadata = normalized
@@ -161,6 +190,7 @@ end
 function HolyStorm:RegisterCapability(moduleName, capability, handler)
     assert(type(moduleName) == "string" and type(capability) == "string", "Invalid module capability")
     assert(type(handler) == "function", "Invalid capability handler")
+    local module=self:GetLoadedModuleById(moduleName);moduleName=module and module:GetName()or moduleName
     self.moduleCapabilities[capability] = self.moduleCapabilities[capability] or {}
     self.moduleCapabilities[capability][moduleName] = handler
     if self.Events then self.Events:Emit("HS_CAPABILITY_REGISTERED",capability,moduleName) end
@@ -168,6 +198,7 @@ function HolyStorm:RegisterCapability(moduleName, capability, handler)
 end
 
 function HolyStorm:UnregisterCapability(moduleName, capability)
+    local module=self:GetLoadedModuleById(moduleName);moduleName=module and module:GetName()or moduleName
     local handlers=self.moduleCapabilities[capability]
     if not handlers or not handlers[moduleName] then return false end
     handlers[moduleName]=nil; if not next(handlers) then self.moduleCapabilities[capability]=nil end
@@ -190,6 +221,23 @@ function HolyStorm:IsModuleAvailable(id, requireEnabled)
     return requireEnabled==false or not module.IsEnabled or module:IsEnabled()
 end
 
+function HolyStorm:IsDeclaredDependencyAvailable(dependency)
+    if dependency=="core"then return true end
+    if dependency=="ui"then return self:GetModule("UI",true)~=nil end
+    if dependency=="options"then return self:GetModule("Options",true)~=nil end
+    if dependency=="synchronization"then return self.Sync~=nil end
+    return self:IsModuleAvailable(dependency,true)or self:IsCapabilityAvailable(dependency)
+end
+
+function HolyStorm:GetModuleStatus(id)
+    local module=self:GetLoadedModuleById(id);local metadata=module and module.metadata or self:GetModuleEntry(id)
+    if not metadata then return{loaded=false,enabled=false,available=false,missingDependencies={},capabilities={}}end
+    local missing={};for _,dependency in ipairs(metadata.dependencies or{})do if not self:IsDeclaredDependencyAvailable(dependency)then missing[#missing+1]=dependency end end
+    local capabilities={};for capability,owners in pairs(self.moduleCapabilities or{})do for owner in pairs(owners)do local ownerModule=self:GetLoadedModuleById(owner);if ownerModule==module then capabilities[#capabilities+1]=capability end end end;table.sort(capabilities)
+    local enabled=module~=nil and(not module.IsEnabled or module:IsEnabled())
+    return{metadata=metadata,loaded=module~=nil,enabled=enabled,available=module~=nil and#missing==0,missingDependencies=missing,capabilities=capabilities}
+end
+
 function HolyStorm:IsCapabilityAvailable(capability, moduleId)
     local handlers=self.moduleCapabilities[capability]
     if type(handlers)~="table" then return false end
@@ -207,7 +255,7 @@ function HolyStorm:CallCapability(capability, ...)
     if not handlers then return {} end
     local results = {}
     for moduleName, handler in pairs(handlers) do
-        local module = self:GetModule(moduleName, true)
+        local module = self:GetLoadedModuleById(moduleName)
         if module and module:IsEnabled() then local ok,result=HolyStorm.Utils.SafeCall("capability:"..capability..":"..moduleName,handler,module,...); if ok then results[moduleName]=result else HolyStorm.Logger:ERROR("ModuleRegistry","Capability %s failed in %s",capability,moduleName) end end
     end
     return results
@@ -265,7 +313,7 @@ function HolyStorm:ProtectModule(module)
             module[methodName]=function(self,...)
                 if methodName=="OnInitialize" then
                     for _,dependency in ipairs((self.metadata and self.metadata.dependencies) or {}) do
-                        local available=dependency=="core" or (dependency=="ui" and HolyStorm:GetModule("UI",true)~=nil) or (dependency=="options" and HolyStorm:GetModule("Options",true)~=nil) or (dependency=="synchronization" and HolyStorm.Sync~=nil)
+                        local available=HolyStorm:IsDeclaredDependencyAvailable(dependency)
                         if not available then HolyStorm.Logger:WARN("ModuleRegistry","%s disabled: dependency %s is unavailable",self:GetName(),dependency); self:SetEnabledState(false); return end
                     end
                 end

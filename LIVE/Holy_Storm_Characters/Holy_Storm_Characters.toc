@@ -1,0 +1,22 @@
+## Interface: 120100
+## Title: Holy Storm: |cff24a7deCharacters|r
+## Notes: Character identities, profiles, statistics and character overview for Holy Storm.
+## Notes-deDE: Charakteridentitäten, Profile, Werte und Charakterübersicht für Holy Storm.
+## Author: Mynastrus - Norgannon - EU
+## Category: Holy Storm
+## DefaultState: enabled
+## Version: @project-version@
+## RequiredDeps: Holy_Storm
+
+Locales\enUS.lua
+Locales\deDE.lua
+UI\Locales\enUS.lua
+UI\Locales\deDE.lua
+TwinkCore.lua
+UI\CharacterUI.lua
+CharacterActions.lua
+Characters.lua
+UI\CharacterOverview.lua
+RuleDataProvider.lua
+Profiles.lua
+Stats.lua

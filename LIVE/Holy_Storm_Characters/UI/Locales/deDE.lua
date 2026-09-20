@@ -1,0 +1,11 @@
+local L=LibStub("AceLocale-3.0"):NewLocale("Holy_Storm_CharacterUI","deDE");if not L then return end
+L["WINDOW_TITLE"]="Holy Storm     |cffBFBFBFCharakter|r"
+L["FACTION_ALLIANCE"]="Allianz";L["FACTION_HORDE"]="Horde"
+L["TAB_SUMMARY"]="Übersicht";L["TAB_STATS"]="Werte";L["TAB_TWINKS"]="Twinks"
+L["REFRESH"]="Aktualisieren";L["BACK"]="Zurück";L["BACK_WITH_ARROW"]="‹  Zurück";L["LEVEL"]="Stufe";L["GUILD_RANK"]="Gildenrang";L["ACCOUNT_MAIN"]="Hauptcharakter";L["GUILD_MAIN"]="Gilden-Hauptcharakter";L["SHADOW_MAIN"]="Gilden-Ersatzcharakter";L["TWINK"]="Twink";L["UNKNOWN"]="Unbekannt";L["NOT_AVAILABLE"]="Nicht verfügbar";L["NO_DATA"]="Keine Daten verfügbar"
+L["STATUS_CURRENT"]="Daten aktuell";L["STATUS_STALE"]="Zwischengespeicherte Daten sind veraltet";L["STATUS_MISSING"]="Keine Daten im Cache";L["STATUS_REFRESHING"]="Daten werden aktualisiert";L["LAST_UPDATED"]="Zuletzt aktualisiert: %s";L["PERMISSION_DENIED"]="Du besitzt keine Berechtigung für diese Inhalte.";L["MODULE_DISABLED"]="Dieses Modul ist deaktiviert.";L["TAB_ERROR"]="Dieser Tab konnte nicht dargestellt werden. Die übrigen Charakter-Tabs bleiben verfügbar."
+L["SUMMARY_IDENTITY"]="Identität";L["SUMMARY_TWINKS"]="Twinks";L["KNOWN_CHARACTERS"]="Bekannte Charaktere"
+L["NO_STATS"]="Keine persistenten Werte verfügbar.";L["NO_TWINKS"]="Keine bekannten Twinks."
+L["COLUMN_STAT"]="Wert";L["COLUMN_BASE"]="Basis";L["COLUMN_EFFECTIVE"]="Effektiv / Gesamt";L["COLUMN_LIVE_BUFFS"]="Temporäre Live-Buffs";L["LIVE_BUFFS_UNAVAILABLE"]="Exakte temporäre Attributsbeiträge werden von der WoW-API nicht zuverlässig bereitgestellt.";L["STAT_STRENGTH"]="Stärke";L["STAT_AGILITY"]="Beweglichkeit";L["STAT_STAMINA"]="Ausdauer";L["STAT_INTELLECT"]="Intelligenz";L["STAT_ARMOR"]="Rüstung";L["STAT_CRITICALSTRIKE"]="Kritischer Trefferwert";L["STAT_HASTE"]="Tempo";L["STAT_MASTERY"]="Meisterschaft";L["STAT_VERSATILITY"]="Vielseitigkeit"
+L["COLUMN_CHARACTER"]="Charakter";L["COLUMN_CLASS"]="Klasse";L["COLUMN_LEVEL"]="Stufe";L["COLUMN_GUILD"]="Gilde";L["COLUMN_RELATIONSHIP"]="Beziehung";L["OWNER_CONFIRMED"]="Vom Besitzer bestätigt";L["ADMINISTRATIVE"]="Administrativ";L["IN_GUILD"]="In der Gilde";L["NOT_IN_GUILD"]="Nicht in der Gilde";L["CHARACTER_COUNT"]="%d bekannte Charaktere"
+L["TASK_CHARACTER_REFRESH"]="Charakterdaten aktualisieren"

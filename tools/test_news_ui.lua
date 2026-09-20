@@ -1,11 +1,12 @@
 local root=(arg[0]:gsub("tools[/\\]test_news_ui.lua$","")).."LIVE/Holy_Storm/"
+local featureRoot=(arg[0]:gsub("tools[/\\]test_news_ui.lua$","")).."LIVE/Holy_Storm_News/"
 local News={}
 local HolyStorm={}
 function HolyStorm:RegisterRequiredModule()return News end
 function HolyStorm:RegisterModule(_,factory)factory(News);return News end
 function HolyStorm:ApplyModuleMetadata()end
 function LibStub(name)if name=="AceAddon-3.0"then return{GetAddon=function()return HolyStorm end}elseif name=="AceLocale-3.0"then return{GetLocale=function()return setmetatable({},{__index=function(_,key)return key end})end}end end
-assert(loadfile(root.."Modules/News/News.lua"))()
+assert(loadfile(featureRoot.."News.lua"))()
 local renders=0
 News.page={IsShown=function()return true end}
 News.RenderList=function()renders=renders+1 end

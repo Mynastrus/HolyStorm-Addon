@@ -20,23 +20,14 @@ function HolyStorm:OnInitialize()
     self.Rules:RegisterField("core","holystorm.version",{type="string",name=L["RULE_FIELD_ADDON_VERSION"],nameKey="RULE_FIELD_ADDON_VERSION",description=L["RULE_FIELD_ADDON_VERSION_DESC"],descriptionKey="RULE_FIELD_ADDON_VERSION_DESC",category=L["CORE_DISPLAY_NAME"],dependencies={"addon"},resolver=function(context)return context.character and context.character.addon and context.character.addon.version end})
     self.Rules:RegisterAlias("core","addonVersion","holystorm.version")
     self.Rules:Initialize(); self.Permissions:Initialize()
-    self.TwinkCore:Initialize()
     local policyReady,policyError=self.Policy:Initialize()
     if policyReady==false then error("Holy Storm policy initialization: "..tostring(policyError)) end
     self.MapLinks.temporaryMarker=nil
     self.RichContent:Initialize()
     self.Notifications:Initialize()
-    self.Achievements:Initialize()
-    self.Content:Initialize()
-    self.POI:Initialize()
-    self.POIMap:Initialize()
-    self.CharacterActions:Initialize()
-    self.GuildPositions:Initialize()
-    self.GuildPositionMap:Initialize()
     self.Hooks:Initialize()
     self.Chat:Initialize()
     self.Commands:Initialize()
-    if self.LoadConfiguredOptionalModules then self:LoadConfiguredOptionalModules() end
     if self.ProtectRegisteredModules then self:ProtectRegisteredModules() end
     self.State:Set("addonLoaded", true)
 end
@@ -60,10 +51,8 @@ function HolyStorm:QueueInitialCollection()
         local character = self.Data.CharacterStore:CaptureCurrent()
         if character then self.Data.PlayerStore:LinkLocalCharacter(character.guid) end
     end, { priority = 1, debounce = 0.2, startupPhase = 1 })
-    self.Tasks:Enqueue("character.equipment", function() self:CallCapability("character.scan.equipment", false) end, { priority = 2, debounce = 0.5, startupPhase = 2, dependencies = { "character.identity" } })
-    self.Tasks:Enqueue("character.raids", function() self:CallCapability("character.scan.raids", false) end, { priority = 3, debounce = 1, startupPhase = 2, dependencies = { "character.identity" } })
-    self.Tasks:Enqueue("character.mythicplus", function() self:CallCapability("character.scan.mythicplus", false) end, { priority = 4, debounce = 1.5, startupPhase = 3, dependencies = { "character.identity" } })
-    self.Tasks:Enqueue("character.additional", function() self:CallCapability("character.scan.additional", false) end, { priority = 5, debounce = 2, startupPhase = 3, dependencies = { "character.identity" } })
+    local capabilities={};for capability in pairs(self.moduleCapabilities or{})do if capability:match("^character%.scan%.")then capabilities[#capabilities+1]=capability end end;table.sort(capabilities)
+    for index,capability in ipairs(capabilities)do local current=capability;self.Tasks:Enqueue("capability."..current,function()self:CallCapability(current,false)end,{priority=index+1,debounce=.5+(index*.25),startupPhase=2,dependencies={"character.identity"}})end
     self:QueueGuildCollection(true)
 end
 

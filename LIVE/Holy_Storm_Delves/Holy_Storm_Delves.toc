@@ -1,0 +1,14 @@
+## Interface: 120100
+## Title: Holy Storm: |cff24a7deDelves|r
+## Notes: Delve snapshots and character progress views for Holy Storm.
+## Notes-deDE: Tiefen-Snapshots und Charakterfortschritt für Holy Storm.
+## Author: Mynastrus - Norgannon - EU
+## Category: Holy Storm
+## DefaultState: enabled
+## Version: @project-version@
+## RequiredDeps: Holy_Storm
+
+Locales\enUS.lua
+Locales\deDE.lua
+Delves.lua
+UI\CharacterTab.lua

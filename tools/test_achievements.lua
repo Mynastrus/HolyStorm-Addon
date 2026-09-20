@@ -1,4 +1,5 @@
 local root=(arg[0]:gsub("tools[/\\]test_achievements.lua$","")).."LIVE/Holy_Storm/"
+local featureRoot=(arg[0]:gsub("tools[/\\]test_achievements.lua$","")).."LIVE/Holy_Storm_Achievements/"
 unpack=unpack or table.unpack
 local clock=1000;local allowed=true;local records={};local published={};local registeredDomain;local links={};local queued={};local listeners={}
 function time()return clock end;function UnitGUID(unit)if unit==nil or unit=="player"then return"Player-Local"end end;function IsInGuild()return true end
@@ -26,7 +27,7 @@ function HolyStorm.Tasks:Queue(id,options)queued[#queued+1]={id=id,options=optio
 function HolyStorm.RichLinks:RegisterType(definition)links[definition.type]=definition;return true end
 function HolyStorm.Database:RegisterArea()return true end
 function HolyStorm.Database:Get()return false end
-assert(loadfile(root.."Core/Permissions/RuleEngine.lua"))();HolyStorm.Rules:Initialize();assert(loadfile(root.."Persistence/AchievementStore.lua"))();assert(loadfile(root.."Modules/Achievements/AchievementService.lua"))();HolyStorm.Achievements:Initialize();HolyStorm.Rules:RegisterField("test-equipment","equipment.itemLevel",{type="number",dependencies={"equipment"},resolver=function(c)return c.character and c.character.itemLevel end});HolyStorm.Rules:RegisterField("test-character","character.level",{type="number",resolver=function(c)return c.character and c.character.level end});HolyStorm.Rules:RegisterField("test-character","character.spec",{type="string",resolver=function(c)return c.character and c.character.spec end})
+assert(loadfile(root.."Core/Permissions/RuleEngine.lua"))();HolyStorm.Rules:Initialize();assert(loadfile(featureRoot.."Persistence/AchievementStore.lua"))();assert(loadfile(featureRoot.."AchievementService.lua"))();HolyStorm.Achievements:Initialize();HolyStorm.Rules:RegisterField("test-equipment","equipment.itemLevel",{type="number",dependencies={"equipment"},resolver=function(c)return c.character and c.character.itemLevel end});HolyStorm.Rules:RegisterField("test-character","character.level",{type="number",resolver=function(c)return c.character and c.character.level end});HolyStorm.Rules:RegisterField("test-character","character.spec",{type="string",resolver=function(c)return c.character and c.character.spec end})
 local A=HolyStorm.Achievements
 records["Player-Local"]={guid="Player-Local",level=90,itemLevel=705};HolyStorm.Data.GuildStore:GetCurrent().roster["Player-Local"]={name="Local"}
 local complex={logic="AND",children={{field="equipment.itemLevel",operator=">=",value=700},{logic="OR",children={{field="character.level",operator=">=",value=90},{field="character.spec",operator="=",value="Restoration"}}}}};local status=HolyStorm.Rules:EvaluateDetailed(complex,HolyStorm.Policy:BuildContext(nil,"Player-Local"));assert(status=="PASS","complex AND/OR rule: "..tostring(status))

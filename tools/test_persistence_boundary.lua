@@ -5,19 +5,19 @@ local allow = {
     ["LIVE/Holy_Storm/Core/Permissions/RuleEngine.lua"] = { 0, 0, 0, 2 },
     ["LIVE/Holy_Storm/Core/Tasks/TaskManager.lua"] = { 0, 0, 0, 3 },
     ["LIVE/Holy_Storm/Core/Workflows/WorkflowManager.lua"] = { 0, 0, 0, 1 },
-    ["LIVE/Holy_Storm/Modules/Characters/RuleDataProvider.lua"] = { 0, 0, 0, 8 },
-    ["LIVE/Holy_Storm/Modules/Characters/TwinkCore.lua"] = { 0, 0, 0, 4 },
-    ["LIVE/Holy_Storm/Modules/News/Content.lua"] = { 0, 0, 0, 1 },
-    ["LIVE/Holy_Storm/Modules/POI/POIService.lua"] = { 0, 0, 0, 4 },
-    ["LIVE/Holy_Storm/Modules/Positions/GuildPositions.lua"] = { 0, 0, 0, 3 },
-    ["LIVE/Holy_Storm/Persistence/AchievementStore.lua"] = { 0, 0, 0, 2 },
-    ["LIVE/Holy_Storm/Persistence/ContentStore.lua"] = { 0, 0, 0, 2 },
+    ["LIVE/Holy_Storm_Characters/RuleDataProvider.lua"] = { 0, 0, 0, 8 },
+    ["LIVE/Holy_Storm_Characters/TwinkCore.lua"] = { 0, 0, 0, 4 },
+    ["LIVE/Holy_Storm_News/Content.lua"] = { 0, 0, 0, 1 },
+    ["LIVE/Holy_Storm_POI/POIService.lua"] = { 0, 0, 0, 4 },
+    ["LIVE/Holy_Storm_Positions/GuildPositions.lua"] = { 0, 0, 0, 3 },
+    ["LIVE/Holy_Storm_Achievements/Persistence/AchievementStore.lua"] = { 0, 0, 0, 2 },
+    ["LIVE/Holy_Storm_News/Persistence/ContentStore.lua"] = { 0, 0, 0, 2 },
     ["LIVE/Holy_Storm/Persistence/Database.lua"] = { 4, 6, 6, 8 },
     ["LIVE/Holy_Storm/Persistence/GuildStore.lua"] = { 0, 0, 7, 2 },
     ["LIVE/Holy_Storm/Persistence/Migrations.lua"] = { 1, 40, 0, 0 },
     ["LIVE/Holy_Storm/Persistence/PlayerDataStore.lua"] = { 1, 8, 0, 3 },
     ["LIVE/Holy_Storm/Persistence/PlayerStore.lua"] = { 0, 0, 0, 3 },
-    ["LIVE/Holy_Storm/Persistence/POIStore.lua"] = { 0, 0, 0, 3 },
+    ["LIVE/Holy_Storm_POI/Persistence/POIStore.lua"] = { 0, 0, 0, 3 },
     ["LIVE/Holy_Storm/UI/Pages/Logs.lua"] = { 0, 0, 0, 4 },
     ["LIVE/Holy_Storm/UI/Pages/Options.lua"] = { 0, 0, 0, 1 },
     ["LIVE/Holy_Storm/UI/Pages/SavedVariables.lua"] = { 2, 1, 1, 0 },
@@ -37,7 +37,7 @@ local function countPlain(content, token)
     end
 end
 
-local process = assert(io.popen('rg --files "LIVE/Holy_Storm" -g "*.lua"', "r"))
+local process = assert(io.popen('rg --files "LIVE" -g "*.lua"', "r"))
 for path in process:lines() do
     path = path:gsub("\\", "/")
     local file = assert(io.open(path, "rb"))

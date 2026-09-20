@@ -14,7 +14,12 @@ HolyStorm.Events={listeners={},emitted={}}
 function HolyStorm.Events:Register(event,owner,fn)self.listeners[event]=self.listeners[event]or{};self.listeners[event][owner]=fn end
 function HolyStorm.Events:Emit(event,...)self.emitted[#self.emitted+1]=event;for _,fn in pairs(self.listeners[event]or{})do fn(event,...)end end
 HS_Player_DB={ ["Player-Legacy"]={guid="Player-Legacy",equipment={slots={},version=4},mythicPlus={seasonId=18,dungeons={{name="Legacy Dungeon",challengeMapId=1,timeLimit=1800}},version=4,updatedAt=900},version=4,updatedAt=400} }
-assert(loadfile(root.."Persistence/PlayerDataStore.lua"))();HolyStorm.PlayerData:Initialize()
+assert(loadfile(root.."Persistence/PlayerDataStore.lua"))()
+HolyStorm.PlayerData:RegisterBlock("equipment",{fields={"equipment","itemLevel"},event="HS_EQUIPMENT_UPDATED"})
+HolyStorm.PlayerData:RegisterBlock("raid",{fields={"raidLockouts"},event="HS_RAIDLOCKS_UPDATED"})
+HolyStorm.PlayerData:RegisterBlock("stats",{fields={"stats"},event="HS_STATS_UPDATED"})
+HolyStorm.PlayerData:RegisterBlock("mythicPlus",{fields={"mythicPlus"},event="HS_MYTHICPLUS_UPDATED",validate=function(data)if type(data)~="table"then return false,"INVALID_MYTHICPLUS_DATA"end;if data.dungeons~=nil and type(data.dungeons)~="table"then return false,"INVALID_MYTHICPLUS_DUNGEONS"end;local count=0;for _,dungeon in pairs(type(data.dungeons)=="table"and data.dungeons or{})do if type(dungeon)~="table"then return false,"INVALID_MYTHICPLUS_DUNGEON"end;count=count+1 end;if data.seasonId==nil and data.overallScore==nil and data.ownedKey==nil and count==0 then return false,"EMPTY_MYTHICPLUS_DATA"end;return true end})
+HolyStorm.PlayerData:Initialize()
 assert(HS_Player_DB.schemaVersion==2 and HS_Player_DB.characters["Player-Legacy"])
 local legacyMythic,legacyMythicMeta=HolyStorm.PlayerData:GetBlock("Player-Legacy","mythicPlus");assert(legacyMythic and legacyMythic.seasonId==18 and legacyMythicMeta.updatedAt==900,"legacy Mythic+ snapshot survives reload with its block timestamp")
 assert(loadfile(root.."Persistence/CharacterStore.lua"))();assert(loadfile(root.."Persistence/PlayerStore.lua"))();HolyStorm.Data.PlayerStore:Initialize();HolyStorm.Data.CharacterStore:Initialize();HolyStorm.Data.PlayerStore:LinkLocalCharacter("Player-Local")

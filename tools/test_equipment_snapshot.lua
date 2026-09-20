@@ -1,4 +1,5 @@
 local root=(arg[0]:gsub("tools[/\\]test_equipment_snapshot.lua$","")).."LIVE/Holy_Storm/"
+local featureRoot=(arg[0]:gsub("tools[/\\]test_equipment_snapshot.lua$","")).."LIVE/Holy_Storm_Equipment/"
 local HolyStorm={Utils={Now=function()return 100 end,DeepCopy=function(value)return value end},Workflows={workflows={}},Serializer={Serialize=function()return"snapshot"end}}
 function LibStub(name)if name=="AceAddon-3.0"then return{GetAddon=function()return HolyStorm end}end;return{GetLocale=function()return setmetatable({},{__index=function(_,key)return key end})end}end
 function HolyStorm:RegisterModule(_,factory)local module={};factory(module);self.Equipment=module end
@@ -17,7 +18,7 @@ C_Item={GetItemNumSockets=function()return 1 end,GetItemGem=function()return"Qui
 C_SpecializationInfo={GetSpecialization=function()return 1 end,GetSpecializationInfo=function()return 70 end}
 Enum={TooltipDataLineType={GemSocket=3,ItemEnchantmentPermanent=15}}
 C_TooltipInfo={GetInventoryItem=function()return{lines={{type=15,leftText="Sophic Devotion"},{type=3,leftText="Prismatic Socket"}}}end}
-assert(loadfile(root.."Modules/Equipment/Equipment.lua"))()
+assert(loadfile(featureRoot.."Equipment.lua"))()
 local snapshot=HolyStorm.Equipment:Collect();local item=snapshot.slots[INVSLOT_HEAD]
 assert(snapshot.snapshotVersion==4 and item.isTier==true and item.setID==77,"item-set metadata is captured")
 assert(item.enchantId==42 and item.enchantName=="Sophic Devotion","enchantment ID and tooltip name are captured")

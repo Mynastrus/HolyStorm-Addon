@@ -1,0 +1,50 @@
+local addonVersion="1.1.0"
+local HolyStorm=LibStub("AceAddon-3.0"):GetAddon("Holy_Storm")
+local L=LibStub("AceLocale-3.0"):GetLocale("Holy_Storm_POI")
+local Map={version=addonVersion,worldProvider=nil,minimapPins={},renderState={},activeEntries={},loggedTransformFailures={},elapsed=0,installed=false,worldMapUnavailableLogged=false,worldMapFailed=false}
+local function remaining(seconds)if not seconds then return L["POI_PERMANENT"]end;if seconds<60 then return string.format(L["POI_SECONDS"],math.ceil(seconds))elseif seconds<3600 then return string.format(L["POI_MINUTES"],math.ceil(seconds/60))end;return string.format(L["POI_HOURS"],math.ceil(seconds/3600))end
+function Map:GetEntries()
+ local out=HolyStorm.POI:GetVisible();local marker=HolyStorm.MapLinks.temporaryMarker;if marker then if marker.expiresAt and marker.expiresAt<=HolyStorm.Utils.Now()then HolyStorm.MapLinks:ClearTemporaryMarker()else marker.name=marker.name or L["POI_TEMPORARY_MARKER"];marker.icon="marker";marker.color={r=1,g=.82,b=0,a=1};marker.category="note";marker.creatorName=UnitName("player");out[#out+1]=marker end end;return out
+end
+function Map:ShowTooltip(owner,entry)
+ local title,description,meta=HolyStorm.POI:GetTooltip(entry);if entry.temporary then title,description,meta=entry.name,nil,{category=L["POI_TEMPORARY"],creator=UnitName("player"),remaining=entry.expiresAt and(entry.expiresAt-HolyStorm.Utils.Now()),target="PERSONAL"}end;GameTooltip:SetOwner(owner,"ANCHOR_CURSOR_RIGHT");GameTooltip:SetText(title or entry.poiID);if description and description~=""then GameTooltip:AddLine(description,1,1,1,true)end;GameTooltip:AddDoubleLine(L["POI_TOOLTIP_CATEGORY"],meta.category or"-",1,.82,0,1,1,1);GameTooltip:AddDoubleLine(L["POI_TOOLTIP_TARGET"],L["POI_TARGET_"..meta.target]or meta.target,1,.82,0,1,1,1);if meta.creator then GameTooltip:AddDoubleLine(L["POI_TOOLTIP_CREATOR"],meta.creator,1,.82,0,1,1,1)end;GameTooltip:AddDoubleLine(L["POI_TOOLTIP_LIFETIME"],remaining(meta.remaining),1,.82,0,1,1,1);GameTooltip:Show()
+end
+function Map:ConfirmDelete(entry)if not StaticPopupDialogs then return end;StaticPopupDialogs.HOLYSTORM_POI_DELETE={text=L["POI_CONFIRM_DELETE"],button1=YES,button2=NO,OnAccept=function()HolyStorm.POI:Delete(entry.poiID,entry.revision)end,timeout=0,whileDead=true,hideOnEscape=true};StaticPopup_Show("HOLYSTORM_POI_DELETE",entry.name)end
+function Map:OpenContext(owner,entry)
+ if not MenuUtil or not MenuUtil.CreateContextMenu then HolyStorm:CallCapability("poi.open",entry.poiID);return end;MenuUtil.CreateContextMenu(owner,function(_,root)root:CreateTitle(entry.name);root:CreateButton(L["POI_DETAILS"],function()HolyStorm:CallCapability("poi.open",entry.poiID)end);root:CreateButton(L["POI_SHOW_ON_MAP"],function()HolyStorm.POI:Open(entry.poiID)end);if not entry.temporary then root:CreateButton(L["POI_HIDE_LOCAL"],function()HolyStorm.POI:SetHidden(entry.poiID,true)end);if HolyStorm.POI:CanMutate(entry,"edit")then root:CreateButton(L["POI_EDIT"],function()HolyStorm:CallCapability("poi.edit",entry.poiID)end)end;if entry.target~="PERSONAL"then root:CreateButton(L["POI_SHARE"],function()HolyStorm.POI:Share(entry.poiID)end)end;if HolyStorm.POI:CanMutate(entry,"delete")then root:CreateButton(entry.target=="PERSONAL"and L["POI_DELETE_LOCAL"]or L["POI_DELETE_GLOBAL"],function()Map:ConfirmDelete(entry)end)end else root:CreateButton(L["POI_CLEAR_TEMPORARY"],function()HolyStorm.MapLinks:ClearTemporaryMarker();Map:Refresh()end)end end)
+end
+function Map:ConfigureVisual(frame,entry,size)
+ frame.entry=entry;frame:SetSize(size,size);local icon=HolyStorm.POI:GetIcon(entry);frame.icon:SetTexture(icon and icon.texture or"Interface\\Icons\\INV_Misc_Map_01");frame.icon:SetTexCoord(.07,.93,.07,.93);local c=entry.color or{r=1,g=.82,b=0,a=1};frame.glow:SetVertexColor(c.r or 1,c.g or 1,c.b or 1,c.a or 1)
+end
+function Map:GetRenderState(id)self.renderState[id]=self.renderState[id]or{};return self.renderState[id]end
+function Map:ProjectToMinimap(entry)
+ return HolyStorm.MapLinks:ProjectToMinimap(entry.mapID,entry.x,entry.y,false)
+end
+function Map:RefreshMinimap()
+ local settings=HolyStorm.POI:GetSettings();local entries=settings.minimapEnabled and self.activeEntries or{};local used=0;for _,entry in ipairs(entries)do local x,y,mode,mapID=self:ProjectToMinimap(entry);local state=self:GetRenderState(entry.poiID);state.minimapPin=false;state.minimapTransform=mode;if x then used=used+1;local pin=self.minimapPins[used];if not pin then pin=CreateFrame("Button",nil,Minimap);pin:SetFrameLevel(Minimap:GetFrameLevel()+5);pin.glow=pin:CreateTexture(nil,"BACKGROUND");pin.glow:SetTexture("Interface\\Buttons\\UI-ActionButton-Border");pin.glow:SetBlendMode("ADD");pin.glow:SetPoint("CENTER");pin.icon=pin:CreateTexture(nil,"ARTWORK");pin.icon:SetAllPoints();pin:SetScript("OnEnter",function(p)Map:ShowTooltip(p,p.entry)end);pin:SetScript("OnLeave",function()GameTooltip:Hide()end);pin:SetScript("OnClick",function(p,button)if button=="RightButton"then Map:OpenContext(p,p.entry)else HolyStorm:CallCapability("poi.open",p.entry.poiID)end end);pin:RegisterForClicks("LeftButtonUp","RightButtonUp");self.minimapPins[used]=pin end;self:ConfigureVisual(pin,entry,settings.minimapSize);pin.glow:SetSize(settings.minimapSize+12,settings.minimapSize+12);pin:ClearAllPoints();pin:SetPoint("CENTER",Minimap,"CENTER",x,y);pin:Show();state.minimapPin=true;state.viewedMapID=mapID end end;for index=used+1,#self.minimapPins do self.minimapPins[index]:Hide()end
+end
+function Map:LogWorldMapFailure(reason)
+ if self.worldMapUnavailableLogged then return end
+ self.worldMapUnavailableLogged=true
+ if HolyStorm.Logger then HolyStorm.Logger:Write("WARN","POI","map","World map POI provider unavailable",{reason=reason})end
+end
+function Map:Refresh()self.activeEntries=self:GetEntries();if self.worldProvider and not self.worldMapFailed and self.worldProvider.RefreshAllData then local ok,reason=pcall(self.worldProvider.RefreshAllData,self.worldProvider);if not ok then self.worldMapFailed=true;self:LogWorldMapFailure(reason)end end;self:RefreshMinimap();HolyStorm.Events:Emit("HS_POI_MAP_REFRESHED")end
+function Map:InstallWorldMap()
+ if self.installed or self.worldMapFailed then return false end
+ if not WorldMapFrame or not MapCanvasDataProviderMixin or not MapCanvasPinMixin or not CreateFromMixins or type(WorldMapFrame.AddDataProvider)~="function" then self:LogWorldMapFailure("MAPCANVAS_NOT_READY");return false end
+ local provider=CreateFromMixins(MapCanvasDataProviderMixin)
+ function provider:RemoveAllData()local canvas=self:GetMap();if canvas and type(canvas.RemoveAllPinsByTemplate)=="function" then canvas:RemoveAllPinsByTemplate("HolyStormPOIPinTemplate")end end
+ function provider:RefreshAllData()self:RemoveAllData();if not HolyStorm.POI:GetSettings().worldMapEnabled then return end;local canvas=self:GetMap();local viewed=canvas and canvas:GetMapID();if not viewed or type(canvas.AcquirePin)~="function" then return end;for _,entry in ipairs(Map.activeEntries)do local x,y,mode=HolyStorm.MapLinks:TransformCoordinate(entry.mapID,entry.x,entry.y,viewed);local state=Map:GetRenderState(entry.poiID);state.worldPin=false;state.viewedMapID=viewed;state.transform=mode;if x then local pin=canvas:AcquirePin("HolyStormPOIPinTemplate",entry);if not pin then error("ACQUIRE_PIN_FAILED")end;pin:SetPosition(x,y);state.worldPin=true;state.transformedX=x;state.transformedY=y else local key=entry.poiID..":"..viewed..":"..tostring(mode);if not Map.loggedTransformFailures[key]then Map.loggedTransformFailures[key]=true;HolyStorm.Logger:Write("DEBUG","POI","map","POI coordinate transformation unavailable",{poiID=entry.poiID,sourceMapID=entry.mapID,viewedMapID=viewed,reason=mode})end end end end
+ local ok,reason=pcall(WorldMapFrame.AddDataProvider,WorldMapFrame,provider);if not ok then self:LogWorldMapFailure(reason);return false end;self.worldProvider=provider;self.installed=true;self.worldMapUnavailableLogged=false;return true
+end
+function Map:Initialize()
+ self.activeEntries=self:GetEntries();self:InstallWorldMap();HolyStorm.MapLinks:RegisterMinimapUpdater("poi",function()Map:RefreshMinimap()end);HolyStorm.Events:Register("ADDON_LOADED","poi-map-load",function(_,name)if name=="Blizzard_WorldMap"then Map:InstallWorldMap();Map:Refresh()end end);for _,event in ipairs({"HS_POI_CREATED","HS_POI_UPDATED","HS_POI_DELETED","HS_POI_EXPIRED","HS_POI_VISIBILITY_CHANGED","HS_POI_FILTER_CHANGED","HS_POI_SYNCED","HS_MAP_TEMPORARY_MARKER_CHANGED","ZONE_CHANGED_NEW_AREA"})do HolyStorm.Events:Register(event,"poi-map",function()HolyStorm.POI:Refresh(event)end)end
+end
+HolyStorm.POIMap=Map
+
+HolyStormPOIPinMixin={}
+function HolyStormPOIPinMixin:OnAcquired(entry)Map:ConfigureVisual(self,entry,HolyStorm.POI:GetSettings().worldMapSize);self.glow:SetSize(HolyStorm.POI:GetSettings().worldMapSize+14,HolyStorm.POI:GetSettings().worldMapSize+14);self:Show()end
+function HolyStormPOIPinMixin:OnReleased()self.entry=nil;self:Hide();GameTooltip:Hide()end
+function HolyStormPOIPinMixin:OnEnter()if self.entry then Map:ShowTooltip(self,self.entry)end end
+function HolyStormPOIPinMixin:OnLeave()GameTooltip:Hide()end
+function HolyStormPOIPinMixin:OnClick(button)if not self.entry then return end;if button=="RightButton"then Map:OpenContext(self,self.entry)else HolyStorm:CallCapability("poi.open",self.entry.poiID)end end

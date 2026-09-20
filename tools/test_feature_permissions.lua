@@ -11,11 +11,11 @@ assert(not registry:match('%["mythicplus%-read"%]="Mythic%+"'),"Mythic+ permissi
 assert(not groups:match('%["news%-view"%]=true'),"feature defaults remain hardcoded in GroupManager")
 assert(modules:find("RegisterModulePermissions",1,true),"module permission registration hook missing")
 for _,path in ipairs({
-    "Modules/News/News.lua","Modules/Calendar/Calendar.lua","Modules/Raids/Raids.lua",
-    "Modules/MythicPlus/MythicPlus.lua","Modules/Delves/Delves.lua","Modules/Equipment/Equipment.lua",
-    "Modules/POI/POI.lua","Modules/Positions/Positions.lua","Modules/Achievements/Achievements.lua",
-    "Modules/Guild/Guild.lua","Modules/Professions/Professions.lua",
+    "Holy_Storm_News/News.lua","Holy_Storm_Calendar/Calendar.lua","Holy_Storm_Raids/Raids.lua",
+    "Holy_Storm_MythicPlus/MythicPlus.lua","Holy_Storm_Delves/Delves.lua","Holy_Storm_Equipment/Equipment.lua",
+    "Holy_Storm_POI/POI.lua","Holy_Storm_Positions/Positions.lua","Holy_Storm_Achievements/Achievements.lua",
+    "Holy_Storm_Guild/Guild.lua","Holy_Storm_Professions/Professions.lua",
 }) do
-    assert(read("LIVE/Holy_Storm/"..path):find("permissions",1,true),"missing modular permissions: "..path)
+    assert(read("LIVE/"..path):find("permissions",1,true),"missing modular permissions: "..path)
 end
 print("Module-owned feature permission contracts passed")

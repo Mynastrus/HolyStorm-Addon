@@ -164,9 +164,7 @@ function Engine:Recalculate()
     local blocks={}
     local function addDependencies(object)
         local root=object and(object.root or object.rules or object)
-        for _,dependency in ipairs(HolyStorm.Rules:GetDependencies(root)) do
-            if dependency=="identity"or dependency=="equipment"or dependency=="mythicPlus"or dependency=="raid"or dependency=="delves"or dependency=="stats"or dependency=="profile"or dependency=="professions"or dependency=="addon"or dependency=="demands" then blocks[dependency]=true end
-        end
+        for _,dependency in ipairs(HolyStorm.Rules:GetDependencies(root)) do if HolyStorm.PlayerData and HolyStorm.PlayerData:HasBlock(dependency)then blocks[dependency]=true end end
     end
     for _,group in pairs(state.groups or{}) do
         for _,filterId in ipairs(group.filterIds or{}) do addDependencies(state.filters and state.filters[filterId]) end

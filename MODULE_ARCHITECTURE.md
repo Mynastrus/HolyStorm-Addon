@@ -1,81 +1,83 @@
-# Holy Storm – Modulvertrag
+# Holy Storm – Addon- und Modulvertrag
 
-Diese Referenz trennt klar zwischen **A: implementiert**, **B: vorbereitet** und **C: zukünftiges Ziel**.
+Holy Storm wird als Addon-Familie ausgeliefert. `Holy_Storm` ist der eigenständig
+ladefähige Core. Jedes Feature liegt in einem eigenen WoW-Addon und deklariert
+`## RequiredDeps: Holy_Storm`:
 
-## Metadatenvertrag
+- `Holy_Storm_Characters`
+- `Holy_Storm_Equipment`
+- `Holy_Storm_Raids`
+- `Holy_Storm_MythicPlus`
+- `Holy_Storm_Delves`
+- `Holy_Storm_Calendar`
+- `Holy_Storm_Professions`
+- `Holy_Storm_Guild`
+- `Holy_Storm_GuildLog`
+- `Holy_Storm_News`
+- `Holy_Storm_Achievements`
+- `Holy_Storm_POI`
+- `Holy_Storm_Positions`
 
-`ModuleRegistry:NormalizeModuleMetadata` normalisiert folgende Felder:
+Alle Addons verwenden die TOC-Kategorie `Holy Storm`. Die bestehenden
+SavedVariables bleiben unverändert im Core-TOC; Feature-Addons erzeugen keine
+zweiten Datenbanken.
 
-- `id`, `internalName`
-- `name`, `displayName`, `description`, `icon`, `version`
-- `moduleType`, `category`
-- `dependencies`, `capabilities`
-- `ui`, `options`, `administration`, `data`, `sync`
-- `permissions`, `ruleFields`
+## Core-Verantwortung
 
-`id` und `internalName` sind stabile technische Identitäten. Sichtbare Namen und Beschreibungen sollen lokalisiert werden. `version` ist SemVer. `category` unterscheidet derzeit insbesondere `required` und `optional`; `moduleType` beschreibt etwa `core` oder `feature`.
+Der Core besitzt Infrastruktur, gemeinsame Stores und Hosts: Registry, Events,
+Tasks, Workflows, Actions, Permissions, Sync, Logging, Rich Content sowie die
+generische UI. Er lädt keine Feature-Runtime- oder Feature-UI-Dateien.
 
-## A – aktuell implementiert
+`ModuleRegistry:NormalizeModuleMetadata` normalisiert `id`, `internalName`,
+`name`, `displayName`, `description`, `icon`, `version`, `moduleType`,
+`category`, `dependencies`, `capabilities`, `ui`, `options`, `administration`,
+`data`, `sync`, `permissions`, `ruleFields`, `schemaVersion` und
+`snapshotVersion`.
 
-### Registrierung und Lifecycle
+## Feature-Registrierung
 
-- `HolyStorm:RegisterModule(metadata, factory)` ist der einheitliche Einstieg. Required-Module werden sofort als AceAddon-Modul erzeugt; Optional-Module hinterlegen zunächst ihre Factory.
-- `HolyStorm:RegisterRequiredModule(name)` bleibt für vorhandene feste Komponenten verfügbar.
-- `HolyStorm:RegisterOptionalModule(name, metadata, factory)` bleibt als Compatibility-API verfügbar.
-- `HolyStorm:ApplyModuleMetadata(module, metadata)` versieht vorhandene Module mit normalisierten Metadaten.
-- Persönliche Optional-Modul-Aktivierung läuft über `IsOptionalModuleEnabled`/`SetOptionalModuleEnabled`; das Permission-System ergänzt den gildenweiten Modulstatus.
+Feature-Addons registrieren sich mit `HolyStorm:RegisterModule(metadata,
+factory)`. Die Kategorie `feature` erzeugt das AceAddon-Modul beim Laden des
+Feature-Addons; die frühere interne Optional-Modul-Schaltung ist nur noch eine
+Compatibility-API. Aktivierung und Deaktivierung erfolgen über den WoW-Addon-
+Manager und die normalen AceAddon-Lifecycles.
 
-### Capabilities
+Feature-spezifische Verantwortungen verbleiben beim jeweiligen Addon:
 
-`RegisterCapability(moduleName, capability, handler)` registriert einen benannten Handler. `CallCapability` ruft ausschließlich geladene und aktivierte Module auf. Character-Scans verwenden aktuell unter anderem `character.scan.equipment`, `character.scan.raids`, `character.scan.mythicplus`, `character.scan.delves`, `character.scan.stats` und `character.scan.additional`.
+- Permissions und Rule-Felder über Modulmetadaten
+- Datenblock-Schemas über `HolyStorm.PlayerData:RegisterBlock`
+- Snapshot-, Task-, Workflow- und Sync-Registrierung
+- UI-Seiten, Navigation und Administrationserweiterungen
+- Feature-Locale-Namespaces in Englisch und Deutsch
+- Rich-Link-Typen und Slash-Unterbefehle
 
-### UI und Administration
+Der Core entdeckt Character-Scan-Capabilities dynamisch. Es gibt keine
+featurebezogenen Startup-Zweige im Bootstrap.
 
-Module können Seiten über `HolyStorm.UI:RegisterPage` und Navigation über `AddNavigation` registrieren. CharacterOverview stellt eine eigene Tab-Registry bereit. Administrative Erweiterungen deklarieren `metadata.administration` oder verwenden `HolyStorm:RegisterAdministrationSection`. Die ModuleRegistry übergibt deklarierte Sections an den zentralen Host; dieser prüft Permission, geladenes/aktiviertes Modul, Capability und optionale Verfügbarkeit. Der vollständige Vertrag steht in `ADMINISTRATION_ARCHITECTURE.md`.
+## Dynamische Erweiterungspunkte
 
-### Daten, Snapshots und Sync
+- `RegisterCapability` / `CallCapability` für fachliche Aktionen
+- `RegisterCharacterTab` für CharacterOverview-Tabs
+- `RegisterCharacterSummarySection` für Summary-Blöcke
+- `RegisterAdministrationSection` beziehungsweise `metadata.administration`
+- `Commands:RegisterSubcommand` für `/hs`-Unterbefehle
+- `RichLinks:RegisterType` und `RegisterToken` für Inhalte und Chatlinks
+- `PlayerData:RegisterBlock` für featureeigene Character-Daten
+- `Rules:RegisterField` sowie `metadata.ruleFields` für Filterregeln
 
-- Character-Datenblöcke werden über `HolyStorm.PlayerData:RegisterBlock` beschrieben.
-- Snapshot-Abläufe verwenden `HolyStorm.Snapshots:Queue` und damit TaskManager/WorkflowManager.
-- Sync-Domains registrieren sich über `HolyStorm.Sync:RegisterDomain` mit Metadaten, Export, Validierung, Autorisierung und Import.
-- Tasks und Workflows besitzen stabile registrierte IDs; Module erzeugen keine eigene parallele Scheduler-Infrastruktur.
+Character-Erweiterungen sind load-order-sicher: Sie können vor oder nach
+`Holy_Storm_Characters` geladen werden und werden über die Core-Registry
+nachregistriert. Fehlt ein Feature-Addon, fehlen nur dessen Tabs, Seiten,
+Capabilities und Datenregistrierungen; der Core bleibt funktionsfähig.
 
-### Permissions, Locales und Commands
+## Anforderungen an neue Feature-Addons
 
-- Permissions können mit `HolyStorm.PermissionRegistry:RegisterPermission` registriert werden.
-- Effektive Rechte werden über `PermissionEngine` geprüft; alte Verbraucher dürfen Compatibility-APIs verwenden.
-- Modulspezifische Locales liegen unter `Modules/<Modul>/Locales` und werden vor dem Modul geladen.
-- Slash Commands werden zentral über die Commands-Infrastruktur angebunden; Module sollen keine konkurrierenden Root-Kommandos erzeugen.
-
-### Rule-Felder
-
-Module deklarieren Rule-Felder bevorzugt in `metadata.ruleFields` oder registrieren sie explizit über `HolyStorm.Rules:RegisterField(owner, fieldID, definition)`. Eine Definition unterstützt `type`, lokalisierten Namen und Beschreibung, Kategorie, `resolver`, optionale `availability`, `dependencies`, `allowedOperators`, `valueProvider`/`enumProvider`, Einheit-/Anzeige-Metadaten und einen optionalen Demand-Collector. `RegisterAlias` hält alte Feld-IDs kompatibel.
-
-Öffentliche Lifecycle- und Lese-APIs sind `RegisterField`, `RegisterAlias`, `UnregisterField`, `UnregisterOwner`, `GetField`, `GetFields`, `GetFieldsByOwner` und `GetAllowedOperators`. Module verändern keine internen Registry-Tabellen. Die ModuleRegistry registriert deklarierte Felder erneut beim Aktivieren und entfernt beim Deaktivieren nur die Felder des betreffenden Owners.
-
-## B – vorbereitet, aber nicht flächendeckend genutzt
-
-- Die Metadatenfelder `ui`, `options`, `data` und `sync` existieren, treiben aber noch nicht automatisch alle Registrierungen und Lifecycle-Schritte. `administration` wird bereits automatisch vom zentralen Host registriert.
-- Die Administration-Registry akzeptiert externe Modul-Sections und blendet fehlende oder gildenweit deaktivierte Module sicher aus.
-- Feature-Module deklarieren ihre Permissions als Metadaten. Die ModuleRegistry registriert sie über die zentrale PermissionRegistry und übernimmt dabei Owner, Kategorie und Systemgruppen-Defaults.
-- RuleEngine besitzt ausschließlich die generische Feld-/Provider-Registry; alle fachlichen Felder einschließlich Character, Guild, Profile, Quest-/Achievement-Demand, Equipment, MythicPlus, Raids, Delves, Calendar, Content und POI werden durch ihre Owner registriert.
-- Capabilities reduzieren Bootstrap-Kopplung, während einige Services noch direkt in Bootstrap initialisiert werden.
-- Sync-Domains sind generisch registrierbar; geschützte Feature-Domains autorisieren über PermissionEngine, während normale ownergebundene Character-Daten ohne separates Share-Recht auskommen.
-
-## C – Target / Planned
-
-- Metadaten können Lifecycle, UI, Administration, Datenblöcke und Sync-Domains vollständiger deklarativ verbinden.
-- Externe Drittanbieter-Module verwenden nur öffentliche Core-Verträge und keine internen Tabellen.
-- Feature-Pakete können als separate WoW-Addons ausgeliefert werden, beispielsweise `Holy_Storm_Equipment`, `Holy_Storm_MythicPlus`, `Holy_Storm_Raid` oder `Holy_Storm_POI`.
-
-Für separate Addons bleiben `Holy_Storm` als Required Dependency, eine TOC-seitige Load-Order, eigene Locale-Dateien und eine saubere Deaktivierung bei fehlendem Core erforderlich. Diese Pakettrennung ist noch nicht erfolgt.
-
-## Anforderungen an neue Module
-
-1. Stabile Metadaten mit eindeutiger ID und SemVer bereitstellen.
-2. Nur öffentliche Store-, Event-, Task-, Workflow-, Capability-, UI-, Administration-, Permission- und Sync-APIs verwenden.
-3. Keine SavedVariables direkt verändern und keine zweite Datenbank oder Queue einführen.
-4. Sichtbare Texte in der Modul-Lokalisierung mindestens auf Deutsch und Englisch bereitstellen.
-5. Tasks, Workflows, Capabilities, Permissions, Sync-Domains und UI-Seiten mit stabilen IDs registrieren.
-6. Fachlogik im Modul halten; Core-Hosts erhalten nur Verträge und Callbacks.
-7. Modulverhalten und Ingame-Prüfschritte dokumentieren und Offline-Vertragstests ergänzen.
+1. Eigenen Ordner und eigenes TOC mit `RequiredDeps: Holy_Storm` anlegen.
+2. Stabile Modul-ID, SemVer, Icon, Abhängigkeiten und Datenversionen deklarieren.
+3. Nur öffentliche Store-, Event-, Task-, Workflow-, Capability-, UI-,
+   Permission- und Sync-APIs verwenden.
+4. Keine SavedVariables direkt verändern und keine zweite Queue einführen.
+5. Featuretexte mindestens in `enUS` und `deDE` im Feature-Addon pflegen.
+6. Ohne andere Feature-Addons sicher laden; optionale Integration ausschließlich
+   über Registries, Capabilities oder nil-sichere Abfragen herstellen.
+7. TOC-, Syntax-, Locale-, Offline- und Ingame-Vertragstests ergänzen.
