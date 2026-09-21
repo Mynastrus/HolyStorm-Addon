@@ -56,6 +56,7 @@ HolyStorm.db.global.logs = {
 -- Init
 Logger:Initialize(false)
 assert(Logger._schemaRegistered == true, "core-logs schema should be registered")
+assert(Logger.history == HolyStorm.db.global.logs.entries, "logger must retain the single owner-managed persistent entries table")
 pass = pass + 1
 
 local hInit = Logger:GetHistory()
@@ -72,6 +73,7 @@ local ok = Logger:Write("INFO", "Test", "general", "First message")
 assert(ok, "Log should return true")
 local h1 = Logger:GetHistory()
 assert(#h1 == 1, "History length should be 1")
+assert(Logger.history == HolyStorm.db.global.logs.entries, "logging must not replace the persistent history with a copied root")
 assert(h1[1].message == "First message", "Message should match")
 assert(h1[1].level == "INFO", "Level should match")
 pass = pass + 1
@@ -120,6 +122,7 @@ pass = pass + 1
 HolyStorm.db = { global = { logs = { entries = {} } } }
 Logger._schemaRegistered = false
 Logger:Initialize(false)
+assert(Logger.history == HolyStorm.db.global.logs.entries, "reinitialized logger must bind directly to the new persistent root")
 for i = 1, 2005 do
     Logger:Write("DEBUG", "Spam", "general", "Msg " .. i)
 end

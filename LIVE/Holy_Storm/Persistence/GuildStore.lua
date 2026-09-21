@@ -1,6 +1,6 @@
-local addonVersion = "1.1.1"
+local addonVersion = "1.2.0"
 local HolyStorm = LibStub("AceAddon-3.0"):GetAddon("Holy_Storm")
-local Store = { version=addonVersion, currentId = nil }
+local Store = { version=addonVersion, currentId = nil, normalized = setmetatable({}, {__mode="v"}) }
 local function validateGuildData(data)
     return type(data) == "table" and type(data.roster) == "table" and type(data.ranks) == "table"
 end
@@ -10,11 +10,20 @@ HolyStorm.DataManager:RegisterSchema({
     storage={backend="database", scope="global", path={"data", "guilds"}},
 })
 
-function Store:Initialize() local data=HolyStorm.db.global.data; data.guilds=type(data.guilds)=="table" and data.guilds or {}; for id,guild in pairs(data.guilds) do if type(id)~="string" or type(guild)~="table" then data.guilds[id]=nil else guild.id=id; guild.roster=type(guild.roster)=="table" and guild.roster or {}; guild.ranks=type(guild.ranks)=="table" and guild.ranks or {}; guild.version=tonumber(guild.version)or 0 end end end
-function Store:_GetAllLive() return HolyStorm.db.global.data.guilds end
-function Store:_GetLive(id) return id and self:_GetAllLive()[id] or nil end
-function Store:GetAll() return HolyStorm.DataManager:SafeCopy(self:_GetAllLive()) end
-function Store:Get(id) return id and HolyStorm.DataManager:Get("guild-roster", id) or nil end
+function Store:Initialize()local data=HolyStorm.db.global.data;data.guilds=type(data.guilds)=="table"and data.guilds or{};self.normalized=setmetatable({},{__mode="v"})end
+function Store:_Normalize(id,guild)
+    if type(id)~="string"or type(guild)~="table"then return nil end
+    if self.normalized[id]~=guild then guild.id=id;guild.roster=type(guild.roster)=="table"and guild.roster or{};guild.ranks=type(guild.ranks)=="table"and guild.ranks or{};guild.version=tonumber(guild.version)or 0;self.normalized[id]=guild end
+    return guild
+end
+function Store:_GetAllLive(normalize)
+    local guilds=HolyStorm.db.global.data.guilds
+    if normalize then for id,guild in pairs(guilds)do if not self:_Normalize(id,guild)then guilds[id]=nil;self.normalized[id]=nil end end end
+    return guilds
+end
+function Store:_GetLive(id)return id and self:_Normalize(id,self:_GetAllLive()[id])or nil end
+function Store:GetAll()return HolyStorm.DataManager:SafeCopy(self:_GetAllLive(true))end
+function Store:Get(id)if not self:_GetLive(id)then return nil end;return HolyStorm.DataManager:Get("guild-roster",id)end
 function Store:GetCurrent() return self:Get(self.currentId) end
 function Store:GetCurrentRosterSummary()
     local guild=self:_GetLive(self.currentId);if not guild then return nil end
@@ -24,6 +33,7 @@ function Store:GetCurrentRosterSummary()
     end
     return summary
 end
+function Store:GetDiagnostics()return{guilds=HolyStorm.Utils.TableCount(self:_GetAllLive()),normalized=HolyStorm.Utils.TableCount(self.normalized),currentId=self.currentId}end
 function Store:ResolveSenderGuid(sender)
     if type(sender)~="string" then return nil end; local full,short=string.lower(sender),string.lower(sender:match("^[^-]+")or sender); local qualified=sender:find("-",1,true)~=nil
     local guild=self:GetCurrent(); for guid,member in pairs(guild and guild.roster or {}) do local name=member.name; if name then local candidateFull,candidateShort=string.lower(name),string.lower(name:match("^[^-]+")or name); if candidateFull==full or (not qualified and candidateShort==short) then return guid end end end

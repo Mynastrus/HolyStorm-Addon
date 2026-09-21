@@ -1,4 +1,4 @@
-local addonVersion = "3.1.1"
+local addonVersion = "3.2.0"
 local HolyStorm = LibStub("AceAddon-3.0"):GetAddon("Holy_Storm")
 local L = LibStub("AceLocale-3.0"):GetLocale("Holy_Storm")
 
@@ -23,15 +23,22 @@ local function mergeId(id,mode,key)if mode=="MULTI"then return nil elseif mode==
 local function sortQueue(a,b)local n=clock();local ap=a.priority-math.min(10,math.floor(math.max(0,n-a.queuedClock)/30));local bp=b.priority-math.min(10,math.floor(math.max(0,n-b.queuedClock)/30));if ap==bp then return a.sequence<b.sequence end return ap<bp end
 local function addLimited(t,v,n)t[#t+1]=v;while #t>n do table.remove(t,1)end end
 local function clean(task)local r=copy(task);r.callback,r.timer=nil,nil;return r end
-local diagnosticFields={transmissionId=true,correlationId=true,packetPart=true,packetTotal=true,bytes=true,channel=true,target=true,direction=true,from=true,to=true,domain=true,objectId=true,messageKind=true,version=true,reason=true,requestId=true}
+local diagnosticFields={transmissionId=true,correlationId=true,packetPart=true,packetTotal=true,bytes=true,channel=true,target=true,direction=true,from=true,to=true,domain=true,objectId=true,messageKind=true,version=true,reason=true,requestId=true,workflowAction=true,changed=true,valid=true,committed=true,unchanged=true,gotoStep=true,delay=true,maxRetries=true,errorCode=true}
 local function diagnostics(metadata)local out={};local function take(source)if type(source)~="table"then return end;for field in pairs(diagnosticFields)do local value=source[field];if type(value)=="string"or type(value)=="number"or type(value)=="boolean"then out[field]=value end end end;take(metadata);take(type(metadata)=="table"and metadata.diagnostics);take(type(metadata)=="table"and type(metadata.packet)=="table"and metadata.packet.diagnostics);return out end
 local function taskContext(task,extra)local out=diagnostics(task and task.metadata);out.taskId=task and task.uniqueId;out.workflowId=task and task.workflowId;if type(extra)=="table"then for key,value in pairs(extra)do out[key]=value end end;return out end
-local function referenced(self,id)for _,task in ipairs(self.queue)do for _,dep in ipairs(task.dependencies or{})do local depId=type(dep)=="table"and dep.taskId or dep;if depId==id then return true end end end;return false end
+local function referenced(self,id)local completed=self.tasks[id];for _,task in ipairs(self.queue)do for _,dep in ipairs(task.dependencies or{})do local depId=type(dep)=="table"and(dep.taskId or dep.registryId)or dep;if depId==id or(completed and depId==completed.registryId and task.workflowId==completed.workflowId)then return true end end end;return false end
 local function archived(self,id)for _,candidate in ipairs(self.history)do if candidate==id then return true end end;return false end
+local function compactCompleted(task,preserveResult)
+ if not task then return end
+ task.callback,task.timer,task.extraResult=nil,nil,nil
+ task.metadata=diagnostics(task.metadata)
+ for _,item in ipairs(task.triggerHistory or{})do item.metadata=diagnostics(item.metadata)end
+ if not preserveResult and type(task.result)=="table"then task.result=diagnostics(task.result)end
+end
 local function archive(self,id)
  if#self.history>=math.max(1,self.maxHistory)then table.remove(self.history,1)end;self.history[#self.history+1]=id
  -- DE/EN: completed dependency results outlive history eviction only while referenced.
- for taskId,task in pairs(self.tasks)do if taskId~=id and(task.status=="COMPLETED"or task.status=="FAILED"or task.status=="CANCELLED")and not archived(self,taskId)and not referenced(self,taskId)then self.tasks[taskId]=nil end end
+ for taskId,task in pairs(self.tasks)do if taskId~=id and(task.status=="COMPLETED"or task.status=="FAILED"or task.status=="CANCELLED")and not referenced(self,taskId)then compactCompleted(task,false);if not archived(self,taskId)then self.tasks[taskId]=nil end end end
 end
 
 function Tasks:Initialize()
@@ -52,7 +59,7 @@ function Tasks:RegisterTaskType(id,d)
  self.registry[id]={registryId=id,name=d.name or id,localizedNameKey=d.localizedNameKey or id,module=d.module or"Core",priority=tonumber(d.priority)or 50,executionMode=mode,conditions=copy(d.conditions or{}),dependencies=copy(d.dependencies or{}),maxRetries=math.max(0,tonumber(d.maxRetries)or 3),execute=d.execute,failurePolicy=d.failurePolicy or"FAIL",metadata=copy(d.metadata or{})};return true
 end
 function Tasks:GetTaskType(id)return self.registry[id]end
-local function trigger(self,t,s,m)s=tostring(s or"UNKNOWN");t.triggerCount=t.triggerCount+1;t.triggerSources[s]=(t.triggerSources[s]or 0)+1;t.lastTriggeredAt=wall();if self.maxTriggerHistory>0 then addLimited(t.triggerHistory,{source=s,at=t.lastTriggeredAt,metadata=copy(m)},self.maxTriggerHistory)end end
+local function trigger(self,t,s,m)s=tostring(s or"UNKNOWN");t.triggerCount=t.triggerCount+1;t.triggerSources[s]=(t.triggerSources[s]or 0)+1;t.lastTriggeredAt=wall();if self.maxTriggerHistory>0 then addLimited(t.triggerHistory,{source=s,at=t.lastTriggeredAt,metadata=diagnostics(m)},self.maxTriggerHistory)end end
 
 -- DE: Queue implementiert UNIQUE, MULTI und MERGE_BY_KEY generisch. Ein Merge
 -- veraendert nie die Fachprioritaet; er aktualisiert Trigger und Debounce.
@@ -125,9 +132,9 @@ end
 function Tasks:Complete(uid,success,result,extra)
  local task=self.tasks[uid];if not task or(task.status~="RUNNING"and task.status~="WAITING_ASYNC")then return false end;task.finishedAt,task.finishedClock=wall(),clock();task.duration=math.max(0,task.finishedClock-(task.startedClock or task.finishedClock));task.result,task.extraResult=result,extra;task.status=success and"COMPLETED"or"FAILED";task.lastError=success and nil or tostring(result);self.lastRun[task.registryId]=task.finishedClock;if task.indexKey and self.mergeIndex[task.indexKey]==uid then self.mergeIndex[task.indexKey]=nil end;self.runningTaskId=nil
  local p=self.performance[task.registryId]or{runs=0,totalDuration=0,maxDuration=0,errors=0,merges=0,triggers=0};p.runs=p.runs+1;p.totalDuration=p.totalDuration+task.duration;p.maxDuration=math.max(p.maxDuration,task.duration);p.triggers=p.triggers+task.triggerCount;if not success then p.errors=p.errors+1 end;self.performance[task.registryId]=p;archive(self,uid)
-  HolyStorm.Logger:Write(success and"DEBUG"or"ERROR",task.module,"task",success and("Task completed: "..task.registryId)or("Task failed: "..task.registryId),taskContext(task,{duration=task.duration,error=task.lastError}),task.workflowId or uid);HolyStorm.Events:Emit(success and"HS_TASK_COMPLETED"or"HS_TASK_FAILED",task,result,extra);self:Schedule(clock());return true
+  HolyStorm.Logger:Write(success and"DEBUG"or"ERROR",task.module,"task",success and("Task completed: "..task.registryId)or("Task failed: "..task.registryId),taskContext(task,{duration=task.duration,error=task.lastError}),task.workflowId or uid);HolyStorm.Events:Emit(success and"HS_TASK_COMPLETED"or"HS_TASK_FAILED",task,result,extra);compactCompleted(task,referenced(self,uid));self:Schedule(clock());return true
 end
-function Tasks:Cancel(id,reason)local task=self.tasks[id]or(self.mergeIndex[id]and self.tasks[self.mergeIndex[id]]);if not task or task.status=="COMPLETED"or task.status=="FAILED"or task.status=="CANCELLED"then return false end;if task.uniqueId==self.runningTaskId then self.runningTaskId=nil end;self:RemoveQueued(task);task.status="CANCELLED";task.finishedAt=wall();task.lastError=reason or"CANCELLED";if task.indexKey and self.mergeIndex[task.indexKey]==task.uniqueId then self.mergeIndex[task.indexKey]=nil end;archive(self,task.uniqueId);HolyStorm.Events:Emit("HS_TASK_CANCELLED",task,reason);self:Schedule(clock());return true end
+function Tasks:Cancel(id,reason)local task=self.tasks[id]or(self.mergeIndex[id]and self.tasks[self.mergeIndex[id]]);if not task or task.status=="COMPLETED"or task.status=="FAILED"or task.status=="CANCELLED"then return false end;if task.uniqueId==self.runningTaskId then self.runningTaskId=nil end;self:RemoveQueued(task);task.status="CANCELLED";task.finishedAt=wall();task.lastError=reason or"CANCELLED";if task.indexKey and self.mergeIndex[task.indexKey]==task.uniqueId then self.mergeIndex[task.indexKey]=nil end;archive(self,task.uniqueId);HolyStorm.Events:Emit("HS_TASK_CANCELLED",task,reason);compactCompleted(task,false);self:Schedule(clock());return true end
 -- DE/EN Public controls: Pause/Resume affect dispatch only; Cancel/Clear are eventful and observable.
 function Tasks:Pause()if self.paused then return false end;self.paused=true;if self.timer then self.timer:Cancel();self.timer,self.timerDue=nil,nil end;HolyStorm.Events:Emit("HS_TASK_QUEUE_PAUSED");return true end
 function Tasks:Resume()if not self.paused then return false end;self.paused=false;HolyStorm.Events:Emit("HS_TASK_QUEUE_RESUMED");self:Schedule(clock());return true end
@@ -143,4 +150,5 @@ function Tasks:GetLiveTasks()local out={};for _,t in pairs(self.tasks)do if t.st
 function Tasks:GetHistory()local out={};for i=#self.history,1,-1 do local t=self.tasks[self.history[i]];if t then out[#out+1]=clean(t)end end;return out end
 function Tasks:GetPerformance()local out=copy(self.performance);for id,p in pairs(out)do p.averageDuration=p.runs>0 and p.totalDuration/p.runs or 0;p.module=self.registry[id]and self.registry[id].module or"-"end;return out end
 function Tasks:GetEventHistory()return copy(self.eventHistory)end
+function Tasks:GetDiagnostics()local active=0;for _,task in pairs(self.tasks)do if task.status~="COMPLETED"and task.status~="FAILED"and task.status~="CANCELLED"then active=active+1 end end;return{active=active,queued=#self.queue,history=#self.history,eventHistory=#self.eventHistory,historyLimit=self.maxHistory}end
 HolyStorm.Tasks,HolyStorm.TaskManager=Tasks,Tasks

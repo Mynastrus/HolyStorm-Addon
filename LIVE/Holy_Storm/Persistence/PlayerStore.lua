@@ -1,9 +1,9 @@
-local addonVersion="2.0.0"
+local addonVersion="2.0.1"
 local HolyStorm=LibStub("AceAddon-3.0"):GetAddon("Holy_Storm")
 local Store={version=addonVersion}
 local function copy(value)return HolyStorm.Utils.DeepCopy(value)end
 function Store:Initialize()
- local players,owners=HolyStorm.PlayerData:GetPlayers(),HolyStorm.PlayerData:GetOwners();for id,player in pairs(players)do if type(id)~="string"or#id>128 or type(player)~="table"then players[id]=nil else player.id=id;player.characters=type(player.characters)=="table"and player.characters or{};player.roles=type(player.roles)=="table"and player.roles or{};player.version=tonumber(player.version)or 0;player.updatedAt=tonumber(player.updatedAt)or 0 end end;for guid,id in pairs(owners)do if type(guid)~="string"or type(id)~="string"then owners[guid]=nil end end;self:Create(HolyStorm.db.global.localPlayerId,HolyStorm.db.global.installId)
+ self:Create(HolyStorm.db.global.localPlayerId,HolyStorm.db.global.installId)
 end
 function Store:GetAll()return HolyStorm.PlayerData:GetPlayers()end
 function Store:GetLocalPlayerId()return HolyStorm.db.global.localPlayerId end

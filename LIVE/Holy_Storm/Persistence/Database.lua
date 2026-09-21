@@ -1,4 +1,4 @@
-local addonVersion = "1.1.0"
+local addonVersion = "1.2.0"
 local HolyStorm = LibStub("AceAddon-3.0"):GetAddon("Holy_Storm")
 
 local Database = { version=addonVersion, areas = {}, diagnosticSources = {}, initialized = false }
@@ -414,6 +414,28 @@ function DataManager:Get(schemaId, key)
 end
 
 function DataManager:GetCopy(schemaId, key) return self:Get(schemaId, key) end
+
+-- Schema owners may retain their persistent root when an append-only or
+-- similarly bounded store would otherwise require a full transactional copy
+-- for every small mutation. Callers outside the registered owner are denied.
+function DataManager:GetOwnedRoot(schemaId, owner)
+    local operation = "get-owned-root"
+    local schema, schemaError = self:_Schema(schemaId, operation)
+    if not schema then return nil, schemaError end
+    if owner ~= schema.owner then return nil, self:_Failure(schema, schemaId, operation, "OWNER_MISMATCH", owner) end
+    local root, exists, readError = self:_ReadLive(schema)
+    if readError then return nil, self:_Failure(schema, schemaId, operation, readError, readError) end
+    if not exists then
+        local default, defaultError = self:_Default(schema, { owner=owner }, operation)
+        if not default then return nil, defaultError end
+        local validation = self:_Validate(schema, default, { owner=owner }, operation)
+        if validation ~= true then return nil, validation end
+        local replaced, replaceError = self:_ReplaceLive(schema, default)
+        if not replaced then return nil, self:_Failure(schema, schemaId, operation, "PERSISTENCE_REPLACE_FAILED", replaceError, nil, "ERROR") end
+        root = default
+    end
+    return root, self:_Success(schema, operation, not exists, { owner=owner })
+end
 
 function DataManager:Exists(schemaId, key)
     local operation = "exists"

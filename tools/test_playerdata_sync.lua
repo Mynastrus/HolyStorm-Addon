@@ -23,6 +23,8 @@ HolyStorm.PlayerData:RegisterBlock("stats",{fields={"stats"},event="HS_STATS_UPD
 HolyStorm.PlayerData:RegisterBlock("mythicPlus",{fields={"mythicPlus"},event="HS_MYTHICPLUS_UPDATED",validate=function(data)if type(data)~="table"then return false,"INVALID_MYTHICPLUS_DATA"end;if data.dungeons~=nil and type(data.dungeons)~="table"then return false,"INVALID_MYTHICPLUS_DUNGEONS"end;local count=0;for _,dungeon in pairs(type(data.dungeons)=="table"and data.dungeons or{})do if type(dungeon)~="table"then return false,"INVALID_MYTHICPLUS_DUNGEON"end;count=count+1 end;if data.seasonId==nil and data.overallScore==nil and data.ownedKey==nil and count==0 then return false,"EMPTY_MYTHICPLUS_DATA"end;return true end})
 HolyStorm.PlayerData:Initialize()
 assert(HS_Player_DB.schemaVersion==2 and HS_Player_DB.characters["Player-Legacy"])
+assert(HS_Player_DB.normalizationVersion==1 and HS_Player_DB.normalizedBlocks.mythicPlus==true,"player data migration work is persistently marked after the combined normalization pass")
+local playerDiagnostics=HolyStorm.PlayerData:GetDiagnostics();assert(playerDiagnostics.characters==1 and playerDiagnostics.blocks>=1,"player data diagnostics expose record and block counts")
 local legacyMythic,legacyMythicMeta=HolyStorm.PlayerData:GetBlock("Player-Legacy","mythicPlus");assert(legacyMythic and legacyMythic.seasonId==18 and legacyMythicMeta.updatedAt==900,"legacy Mythic+ snapshot survives reload with its block timestamp")
 assert(loadfile(root.."Persistence/CharacterStore.lua"))();assert(loadfile(root.."Persistence/PlayerStore.lua"))();HolyStorm.Data.PlayerStore:Initialize();HolyStorm.Data.CharacterStore:Initialize();HolyStorm.Data.PlayerStore:LinkLocalCharacter("Player-Local")
 local ok,meta=HolyStorm.PlayerData:WriteOwnedBlock("Player-Local","equipment",{equipment={slots={}},itemLevel=700},"blizzard");assert(ok and meta.version==1)
@@ -67,6 +69,7 @@ function HolyStorm.Tasks:Queue(id,o)self.queued[#self.queued+1]={id=id,options=o
 function HolyStorm.Tasks:Cancel()return true end
 function HolyStorm.Tasks:ScheduleRecurring()error("Sync must not register an idle recurring cleanup")end
 assert(loadfile(root.."Sync/SyncManager.lua"))();HolyStorm.Sync:Initialize();assert(#timers==0,"Sync initialization must not schedule cleanup without expirable state")
+local selfEnvelope=assert(HolyStorm.Serializer:Serialize({protocol=3,kind="PRESENCE",sender="Player-Local",data={version=1},sentAt=clock}));local selfLogCount=#HolyStorm.Logger.history;assert(not HolyStorm.Sync:Receive(selfEnvelope,"Local-Realm","GUILD")and#HolyStorm.Logger.history==selfLogCount,"Sync receive must retain the UnitGUID sender defense")
 assert(HolyStorm.Sync:Publish("character",foreign.."\031equipment","TEST"))
 local publish=HolyStorm.Tasks.queued[#HolyStorm.Tasks.queued];assert(publish.id=="Sync.Publish");HolyStorm.Sync:RunPublish({metadata=publish.options.metadata,priority=65})
 local announce=HolyStorm.Tasks.queued[#HolyStorm.Tasks.queued];assert(announce.id=="Sync.Send"and announce.options.metadata.envelope.kind=="ANNOUNCE");assert(announce.options.metadata.envelope.data.offers[1].data==nil)

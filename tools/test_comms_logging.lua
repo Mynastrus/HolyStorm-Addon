@@ -20,10 +20,14 @@ function HolyStorm.Events:Emit(event,...)events[#events+1]={event,...};local cal
 function HolyStorm.Events:Unregister()end;function HolyStorm.Events:UnregisterOwner()end
 function CreateFrame()local frame={};function frame:SetScript(_,callback)self.callback=callback end;function frame:RegisterEvent(event)self.event=event end;function frame:UnregisterEvent()self.event=nil end;eventFrame=frame;return frame end
 C_Timer={NewTimer=function(delay,callback)local timer={delay=delay,callback=callback,cancelled=false};function timer:Cancel()self.cancelled=true end;timers[#timers+1]=timer;return timer end}
-function GetUnitName()return"Alpha-Realm"end;function IsInGuild()return true end;function IsInRaid()return false end;function IsInGroup()return false end
+function GetUnitName()return"Alpha-Realm"end;function Ambiguate(name,mode)if mode=="none"and not name:find("-",1,true)then return name.."-Realm"elseif mode=="short"then return name:match("^[^-]+")end;return name end;function IsInGuild()return true end;function IsInRaid()return false end;function IsInGroup()return false end
 C_ChatInfo={RegisterAddonMessagePrefix=function()return true end,SendAddonMessage=function(prefix,message,channel,target)sent[#sent+1]={prefix=prefix,message=message,channel=channel,target=target}end}
 assert(loadfile(root.."Sync/Comms.lua"))();local Comms=HolyStorm.Comms;assert(Comms:Initialize());Comms.chunkSize=3
 assert((recurringCalls or 0)==0 and#timers==0,"idle Comms must not schedule recurring or expiry cleanup")
+local deserializes=0;HolyStorm.Events:Register("HS_COMMS_MESSAGE","deserialize-probe",function()deserializes=deserializes+1 end)
+local selfPacket="HSC1|HSC1-self|1|1|payload"
+for _,sender in ipairs({"Alpha","Alpha-Realm"})do local logCount,eventCount,timerCount=#logs,#events,#timers;eventFrame.callback(eventFrame,"CHAT_MSG_ADDON",Comms.prefix,selfPacket,"GUILD",sender);assert(#logs==logCount and#events==eventCount and#timers==timerCount and next(Comms.incoming)==nil and deserializes==0,"self traffic must stop before logging, fragment state, timers, events, and deserialize")end
+assert(not Comms:IsSelfSender("Alpha-OtherRealm"),"a qualified same-name character on another realm must not be treated as self")
 local handled=0;local onMessage=Comms.OnMessage;Comms.OnMessage=function(self,...)handled=handled+1;return onMessage(self,...)end
 eventFrame.callback(eventFrame,"CHAT_MSG_ADDON","OtherAddon","ignored","GUILD","Noise-Realm");assert(handled==0 and#logs==0 and#queued==0,"foreign addon traffic must be filtered before Comms processing")
 eventFrame.callback(eventFrame,"CHAT_MSG_ADDON",Comms.prefix,"invalid","GUILD","Beta-Realm");assert(handled==1,"Holy Storm addon traffic must reach Comms processing");Comms.OnMessage=onMessage
@@ -34,6 +38,7 @@ local sendLogCount=#logs
 for _,packet in ipairs(sent)do Comms:OnMessage(packet.prefix,packet.message,"WHISPER","Beta-Realm")end
 assert(#logs==sendLogCount+7,"every received multipart packet is logged");for index=1,7 do local entry=logs[sendLogCount+index];local c=entry.context;assert(entry.level=="DEBUG"and entry.category=="receive"and c.direction=="RECEIVE"and c.from=="Beta-Realm"and c.to=="Alpha-Realm"and c.packetPart==index and c.packetTotal==7,"RECEIVE packet diagnostics are complete");assert(c.transmissionId==transmissionId and entry.correlationId==transmissionId,"RECEIVE chunks share their transmission correlation");assert(not c.payload and not c.data and not c.message,"RECEIVE context contains no payload")end
 local completed;for _,event in ipairs(events)do if event[1]=="HS_COMMS_MESSAGE"then completed=event end end;assert(completed and completed[5].transmissionId==transmissionId and completed[5].packetTotal==7,"reassembled message forwards compact transport diagnostics")
+assert(deserializes==1,"foreign multipart traffic must still reach the deserialize listener exactly once")
 assert(#timers==1 and timers[1].cancelled,"completed transmissions cancel their fragment expiry timer")
 Comms:OnMessage(Comms.prefix,"HSC1|HSC1-partial|1|2|abc","GUILD","Beta-Realm");assert(next(Comms.incoming)and#timers==2 and not timers[2].cancelled,"partial transmission schedules one state-based expiry timer")
 clock=2030;timers[2].callback();local cleanup=queued[#queued];assert(cleanup.id=="Comms.Cleanup"and cleanup.options.triggerSource=="COMMS_FRAGMENT_EXPIRY","expired fragment state queues cleanup exactly when due")

@@ -1,4 +1,4 @@
-local addonVersion="3.4.0"
+local addonVersion="3.5.0"
 local HolyStorm=LibStub("AceAddon-3.0"):GetAddon("Holy_Storm")
 local L=LibStub("AceLocale-3.0"):GetLocale("Holy_Storm")
 local Sync={version=addonVersion,protocol=3,domains={},requests={},activeRequests={},heard={},heardAt={},sequence=0,maxOffers=100,knownOnline={},requestTimeout=60,presenceTimeout=300,cleanupTimer=nil,cleanupDue=nil,cleanupTaskId=nil}
@@ -50,7 +50,7 @@ function Sync:QueueEnvelope(kind,domain,data,channel,target,priority,delay)
 end
 function Sync:SendNow(task)
  local m=task.metadata or{};local payload,err=HolyStorm.Serializer:Serialize(m.envelope);if not payload then log("WARN","validation","Sync envelope serialization failed",{error=err,messageKind=m.envelope and m.envelope.kind,domain=m.envelope and m.envelope.domain,correlationId=m.correlationId},m.correlationId);return false end
- local diagnostics=copy(m.diagnostics or envelopeDiagnostics(m.envelope,m.channel,m.target,m.correlationId));diagnostics.bytes=#payload;local sent,transmissionId=HolyStorm.Comms:Send(payload,m.channel,m.target,task.priority,diagnostics);diagnostics.transmissionId=transmissionId;if sent then log("DEBUG",string.lower(tostring(diagnostics.messageKind or"sync")),"Sync envelope queued",diagnostics,diagnostics.correlationId)else local retry=tonumber(task.retryCount)or 0;diagnostics.retry=retry;log("WARN","retries","Sync envelope was not queued",diagnostics,diagnostics.correlationId);if retry<(tonumber(task.maxRetries)or 0)then HolyStorm.Tasks:Queue("Sync.Send",{executionMode="MULTI",priority=task.priority,delay=math.min(8,2^(retry+1)),retryCount=retry+1,maxRetries=task.maxRetries,triggerSource="SYNC_RETRY",metadata=copy(m)})end end;return sent
+ local diagnostics=m.diagnostics or envelopeDiagnostics(m.envelope,m.channel,m.target,m.correlationId);diagnostics.bytes=#payload;local sent,transmissionId=HolyStorm.Comms:Send(payload,m.channel,m.target,task.priority,diagnostics);diagnostics.transmissionId=transmissionId;if sent then log("DEBUG",string.lower(tostring(diagnostics.messageKind or"sync")),"Sync envelope queued",diagnostics,diagnostics.correlationId)else local retry=tonumber(task.retryCount)or 0;diagnostics.retry=retry;log("WARN","retries","Sync envelope was not queued",diagnostics,diagnostics.correlationId);if retry<(tonumber(task.maxRetries)or 0)then HolyStorm.Tasks:Queue("Sync.Send",{executionMode="MULTI",priority=task.priority,delay=math.min(8,2^(retry+1)),retryCount=retry+1,maxRetries=task.maxRetries,triggerSource="SYNC_RETRY",metadata=m})end end;return sent
 end
 function Sync:Publish(domainId,objectId,reason)
  local domain=self.domains[domainId];local meta=domain and domain.getMetadata(objectId);if not meta then return false,"OBJECT_NOT_FOUND"end
@@ -58,7 +58,7 @@ function Sync:Publish(domainId,objectId,reason)
  local channel=domain.getChannel and domain.getChannel(meta,"publish")or"GUILD";return HolyStorm.Tasks:Queue("Sync.Publish",{mergeKey=key(domainId,objectId),delay=1,startupPhase=startupActive() and startupPhase(domainId)or nil,priority=65,triggerSource=reason or"LOCAL_UPDATE",metadata={domain=domainId,objectId=objectId,channel=channel}})
 end
 function Sync:RunLivePublish(task)
- local m=task.metadata or{};local domain=self.domains[m.domain];local meta=domain and domain.getMetadata(m.objectId);local payload=domain and domain.export(m.objectId);if not meta or payload==nil then return false end;local channel=domain.getChannel and domain.getChannel(meta,"live")or"GUILD";local envelope={protocol=self.protocol,kind="LIVE",domain=m.domain,data={objectId=m.objectId,metadata=copy(meta),payload=copy(payload)},sentAt=now(),sender=UnitGUID("player")};log("DEBUG","live","Publishing latest ephemeral state",{domain=m.domain,objectId=m.objectId,version=meta.version,channel=channel});return self:SendNow({metadata={envelope=envelope,channel=channel},priority=domain.priority or 110,retryCount=0,maxRetries=1})
+ local m=task.metadata or{};local domain=self.domains[m.domain];local meta=domain and domain.getMetadata(m.objectId);local payload=domain and domain.export(m.objectId);if not meta or payload==nil then return false end;local channel=domain.getChannel and domain.getChannel(meta,"live")or"GUILD";local envelope={protocol=self.protocol,kind="LIVE",domain=m.domain,data={objectId=m.objectId,metadata=meta,payload=payload},sentAt=now(),sender=UnitGUID("player")};log("DEBUG","live","Publishing latest ephemeral state",{domain=m.domain,objectId=m.objectId,version=meta.version,channel=channel});return self:SendNow({metadata={envelope=envelope,channel=channel},priority=domain.priority or 110,retryCount=0,maxRetries=1})
 end
 function Sync:RunPublish(task)
  local m=task.metadata;local domain=self.domains[m.domain];local meta=domain and domain.getMetadata(m.objectId);if not meta then return false end;meta=copy(meta);meta.direct=meta.owner==UnitGUID("player")
@@ -83,7 +83,7 @@ function Sync:MetadataForRequest(domain,request)
 end
 function Sync:OnDiscover(domainId,request,sender,channel)
  local domain=self.domains[domainId];if not domain or type(request)~="table"or type(request.requestId)~="string"then return false end;local offers=self:MetadataForRequest(domain,request);if#offers==0 then return false end
- local delay=.15+(math.random()*1.1);HolyStorm.Tasks:Queue("Sync.Offer",{mergeKey=request.requestId.."\031"..sender,delay=delay,priority=domain.priority or 85,triggerSource="DISCOVERY_RESPONSE",metadata={domain=domainId,request=copy(request),requester=sender,responseChannel=channel}});return true
+ local delay=.15+(math.random()*1.1);HolyStorm.Tasks:Queue("Sync.Offer",{mergeKey=request.requestId.."\031"..sender,delay=delay,priority=domain.priority or 85,triggerSource="DISCOVERY_RESPONSE",metadata={domain=domainId,request=request,requester=sender,responseChannel=channel}});return true
 end
 function Sync:RunOffer(task)
  local m=task.metadata;local domain=self.domains[m.domain];if not domain then return false end;local offers=self:MetadataForRequest(domain,m.request);local heard=self.heard[m.request.requestId]or{};local filtered={}
@@ -94,7 +94,7 @@ function Sync:RecordOffers(domainId,data,sender,isAnnouncement)
  if type(data)~="table"or type(data.offers)~="table"then return false end;local requestId=data.requestId;local senderId=senderGuid(sender);if requestId then self.heard[requestId]=self.heard[requestId]or{};self.heardAt[requestId]=now();self:ScheduleCleanup()end;local pending=requestId and self.requests[requestId]
  for _,meta in ipairs(data.offers)do
   if type(meta)=="table"and validId(meta.objectId)and validId(meta.owner)and tonumber(meta.version)then meta=copy(meta);meta.direct=senderId~=nil and senderId==meta.owner
-   if requestId then local old=self.heard[requestId][meta.objectId];if not old or HolyStorm.PlayerData:CompareMetadata(old,meta)>0 then self.heard[requestId][meta.objectId]=copy(meta)end end
+   if requestId then local old=self.heard[requestId][meta.objectId];if not old or HolyStorm.PlayerData:CompareMetadata(old,meta)>0 then self.heard[requestId][meta.objectId]=meta end end
    if pending and pending.domain==domainId and(not pending.objectId or pending.objectId==meta.objectId)and(not data.requester or samePlayerName(data.requester,GetUnitName("player",true)))then pending.candidates[meta.objectId]=pending.candidates[meta.objectId]or{};pending.candidates[meta.objectId][sender]={sender=sender,senderGuid=senderId,meta=meta};HolyStorm.Tasks:Queue("Sync.SelectSource",{mergeKey=requestId.."\031"..meta.objectId,delay=.75,priority=self.domains[domainId].priority or 82,triggerSource="SYNC_OFFER",metadata={requestId=requestId,objectId=meta.objectId}})
    elseif not data.requester then self:ConsiderPassive(domainId,meta,sender)end
   end
@@ -127,6 +127,7 @@ function Sync:ConsiderPassive(domainId,meta,sender)
 end
 function Sync:RunPassive(task)local m=task.metadata;local domain=self.domains[m.domain];local localMeta=domain and domain.getMetadata(m.objectId);if localMeta and(tonumber(localMeta.version)or 0)>=(tonumber(m.version)or 0)and not(domain.freshness=="revision-chain"and localMeta.revisionID~=m.revisionID)then return true end;return self:QueueFetch(m.domain,m.objectId,m.sender,localMeta and localMeta.version or-1,"PASSIVE_HEALING",localMeta and localMeta.revisionID)~=nil end
 function Sync:GetOnlineName(guid)if type(guid)~="string"then return nil end;local guild=HolyStorm.Data.GuildStore:GetCurrent();local member=guild and guild.roster and guild.roster[guid];return member and member.online and member.name or nil end
+function Sync:GetDiagnostics()return{requests=HolyStorm.Utils.TableCount(self.requests),activeRequests=HolyStorm.Utils.TableCount(self.activeRequests),heard=HolyStorm.Utils.TableCount(self.heard),knownOnline=HolyStorm.Utils.TableCount(self.knownOnline),domains=HolyStorm.Utils.TableCount(self.domains),cleanupScheduled=self.cleanupTimer~=nil or self.cleanupTaskId~=nil}end
 function Sync:Cleanup()
  local current=now();local requestCutoff=current-self.requestTimeout;for requestId,request in pairs(self.requests)do if(request.createdAt or 0)<=requestCutoff then self.activeRequests[request.key or key(request.domain,request.objectId)]=nil;self.requests[requestId]=nil end end;for requestId,at in pairs(self.heardAt)do if at<=requestCutoff then self.heardAt[requestId]=nil;self.heard[requestId]=nil end end;local presenceCutoff=current-self.presenceTimeout;for guid,at in pairs(self.knownOnline)do if at<=presenceCutoff then self.knownOnline[guid]=nil end end;self:ScheduleCleanup();return true
 end

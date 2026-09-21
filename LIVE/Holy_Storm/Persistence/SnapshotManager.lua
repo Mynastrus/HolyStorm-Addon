@@ -1,4 +1,4 @@
-local addonVersion="2.0.1"
+local addonVersion="2.1.0"
 local HolyStorm=LibStub("AceAddon-3.0"):GetAddon("Holy_Storm")
 local L=LibStub("AceLocale-3.0"):GetLocale("Holy_Storm")
 local Snapshots={version=addonVersion,registered={},fingerprints={}}
@@ -7,7 +7,7 @@ local Snapshots={version=addonVersion,registered={},fingerprints={}}
 -- keine eigene Queue mehr, sondern werden als drei echte Workflow-Tasks registriert.
 -- EN: Compatibility adapter for existing modules. Snapshot flows no longer own a
 -- queue; they are registered as three real workflow tasks.
-function Snapshots:Fingerprint(value)local c=HolyStorm.Utils.DeepCopy(value);if type(c)=="table"then c.updatedAt=nil;c.version=nil;c.snapshotVersion=nil end;return HolyStorm.Serializer:Serialize(c)end
+function Snapshots:Fingerprint(value)local projected=value;if type(value)=="table"then projected={};for key,child in pairs(value)do if key~="updatedAt"and key~="version"and key~="snapshotVersion"then projected[key]=child end end end;return HolyStorm.Serializer:Serialize(projected)end
 local function context(task)local w=HolyStorm.Workflows.workflows[task.workflowId];return w and w.context end
 function Snapshots:Register(id)
  if self.registered[id]then return true end;local prefix="Snapshot."..id
@@ -20,7 +20,7 @@ end
 function Snapshots:Queue(id,scanner,validator,commit,options)
  if type(id)~="string"or type(scanner)~="function"or type(validator)~="function"or type(commit)~="function"then return false end;options=options or{};self:Register(id)
 local function startupActive() return HolyStorm.Tasks and type(HolyStorm.Tasks.IsStartupActive)=="function" and HolyStorm.Tasks:IsStartupActive() or false end
- local workflowId=HolyStorm.Workflows:Request("SNAPSHOT_"..string.upper(id),{priority=options.priority or 50,debounce=options.delay or options.debounce or 1,startupPhase=options.startupPhase or(startupActive() and 3 or nil),triggerSource=options.triggerSource or(HolyStorm.Events and HolyStorm.Events.currentEvent)or options.source or id,context={scanner=scanner,validator=validator,commit=commit,options=HolyStorm.Utils.DeepCopy(options)}});return workflowId~=nil,workflowId
+ local workflowId=HolyStorm.Workflows:Request("SNAPSHOT_"..string.upper(id),{priority=options.priority or 50,debounce=options.delay or options.debounce or 1,startupPhase=options.startupPhase or(startupActive() and 3 or nil),triggerSource=options.triggerSource or(HolyStorm.Events and HolyStorm.Events.currentEvent)or options.source or id,context={scanner=scanner,validator=validator,commit=commit,options=options}});return workflowId~=nil,workflowId
 end
 function Snapshots:Cancel(id)local workflowId=HolyStorm.Workflows.activeByType["SNAPSHOT_"..string.upper(tostring(id))];return workflowId and HolyStorm.Workflows:Cancel(workflowId,"MODULE_DISABLED")or false end
 HolyStorm.Snapshots=Snapshots

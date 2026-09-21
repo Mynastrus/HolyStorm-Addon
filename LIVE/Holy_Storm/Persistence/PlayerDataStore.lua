@@ -1,4 +1,4 @@
-local addonVersion = "1.0.1"
+local addonVersion = "1.1.0"
 local HolyStorm = LibStub("AceAddon-3.0"):GetAddon("Holy_Storm")
 
 -- HS_Player_DB is the canonical persistent owner-controlled data store.  The
@@ -16,7 +16,14 @@ local function copy(value) return HolyStorm.Utils.DeepCopy(value) end
 local function now() return HolyStorm.Utils.Now() end
 local function validId(value) return type(value)=="string" and #value>0 and #value<=128 end
 local function same(left,right)
-    local function comparable(value)local result=copy(value);if type(result)=="table"then result.version=nil;result.updatedAt=nil;for _,child in pairs(result)do if type(child)=="table"then child.version=nil;child.updatedAt=nil end end end;return result end
+    local function comparable(value)
+        if type(value)~="table"then return value end
+        local result={}
+        for key,child in pairs(value)do if key~="version"and key~="updatedAt"then
+            if type(child)=="table"then local projected={};for childKey,nested in pairs(child)do if childKey~="version"and childKey~="updatedAt"then projected[childKey]=nested end end;result[key]=projected else result[key]=child end
+        end end
+        return result
+    end
     local a=HolyStorm.Serializer and HolyStorm.Serializer:Serialize(comparable(left))
     local b=HolyStorm.Serializer and HolyStorm.Serializer:Serialize(comparable(right))
     return a~=nil and a==b
@@ -38,7 +45,13 @@ function PlayerData:RegisterBlock(id,definition)
     if self.blocks[id]then return false,"BLOCK_EXISTS"end
     local fields={};for _,field in ipairs(definition.fields)do if type(field)~="string"or self.fieldToBlock[field]then return false,"INVALID_BLOCK_FIELD"end;fields[#fields+1]=field;self.fieldToBlock[field]=id end
     self.blocks[id]={id=id,fields=fields,validate=definition.validate,event=definition.event or("HS_"..id:upper().."_UPDATED"),staleAfter=tonumber(definition.staleAfter)or 21600}
-    if self.root and type(self.root.characters)=="table"then for guid,record in pairs(self.root.characters)do if validId(guid)and type(record)=="table"then ensureBlockMetadata(record,guid,id,self.blocks[id])end end end
+    if self.root and type(self.root.characters)=="table"then
+        self.root.normalizedBlocks=type(self.root.normalizedBlocks)=="table"and self.root.normalizedBlocks or{}
+        if self.root.normalizedBlocks[id]~=true then
+            for guid,record in pairs(self.root.characters)do if validId(guid)and type(record)=="table"then ensureBlockMetadata(record,guid,id,self.blocks[id])end end
+            self.root.normalizedBlocks[id]=true
+        end
+    end
     return true
 end
 function PlayerData:HasBlock(id)return self.blocks[id]~=nil end
@@ -47,24 +60,41 @@ function PlayerData:Initialize()
     HS_Player_DB=type(HS_Player_DB)=="table"and HS_Player_DB or{}
     local legacyFlat=HS_Player_DB.characters==nil and HS_Player_DB or nil
     local root=legacyFlat and{}or HS_Player_DB
-    root.schemaVersion=self.schemaVersion;root.characters=type(root.characters)=="table"and root.characters or{};root.players=type(root.players)=="table"and root.players or{};root.characterOwners=type(root.characterOwners)=="table"and root.characterOwners or{};root.sync=type(root.sync)=="table"and root.sync or{};root.sync.foreignWatermark=tonumber(root.sync.foreignWatermark)or 0;root.sync.foreignWatermarks=type(root.sync.foreignWatermarks)=="table"and root.sync.foreignWatermarks or{}
+    root.schemaVersion=self.schemaVersion;root.characters=type(root.characters)=="table"and root.characters or{};root.players=type(root.players)=="table"and root.players or{};root.characterOwners=type(root.characterOwners)=="table"and root.characterOwners or{};root.sync=type(root.sync)=="table"and root.sync or{};root.sync.foreignWatermark=tonumber(root.sync.foreignWatermark)or 0;root.sync.foreignWatermarks=type(root.sync.foreignWatermarks)=="table"and root.sync.foreignWatermarks or{};root.normalizedBlocks=type(root.normalizedBlocks)=="table"and root.normalizedBlocks or{}
     if legacyFlat then for guid,record in pairs(legacyFlat)do if validId(guid)and type(record)=="table"then root.characters[guid]=copy(record)end end;HS_Player_DB=root end
     local old=HolyStorm.db.global.data or{}
-    for guid,record in pairs(type(old.characters)=="table"and old.characters or{})do if validId(guid)and type(record)=="table"and not root.characters[guid]then root.characters[guid]=copy(record)end end
-    for id,record in pairs(type(old.players)=="table"and old.players or{})do if validId(id)and type(record)=="table"and not root.players[id]then root.players[id]=copy(record)end end
-    for guid,id in pairs(type(old.characterOwners)=="table"and old.characterOwners or{})do if validId(guid)and validId(id)and not root.characterOwners[guid]then root.characterOwners[guid]=id end end
+    local oldCharacters=type(old.characters)=="table"and old.characters or{}
+    local oldPlayers=type(old.players)=="table"and old.players or{}
+    local oldOwners=type(old.characterOwners)=="table"and old.characterOwners or{}
+    if oldCharacters~=root.characters then for guid,record in pairs(oldCharacters)do if validId(guid)and type(record)=="table"and not root.characters[guid]then root.characters[guid]=copy(record)end end end
+    if oldPlayers~=root.players then for id,record in pairs(oldPlayers)do if validId(id)and type(record)=="table"and not root.players[id]then root.players[id]=copy(record)end end end
+    if oldOwners~=root.characterOwners then for guid,id in pairs(oldOwners)do if validId(guid)and validId(id)and not root.characterOwners[guid]then root.characterOwners[guid]=id end end end
     HolyStorm.db.global.data=old;old.characters=root.characters;old.players=root.players;old.characterOwners=root.characterOwners
     self.root=root
-    for guid,record in pairs(root.characters)do
-        if not validId(guid)or type(record)~="table"then root.characters[guid]=nil else
-            record.guid=guid;record.blockMeta=type(record.blockMeta)=="table"and record.blockMeta or{}
-            for blockId,definition in pairs(self.blocks)do ensureBlockMetadata(record,guid,blockId,definition)end
+    if tonumber(root.normalizationVersion)~=1 then
+        -- One migration pass replaces the former independent character/profile
+        -- traversals. Subsequent logins trust the persisted normalization marker.
+        for guid,record in pairs(root.characters)do
+            if not validId(guid)or type(record)~="table"then root.characters[guid]=nil else
+                record.guid=guid;record.blockMeta=type(record.blockMeta)=="table"and record.blockMeta or{}
+                for blockId,definition in pairs(self.blocks)do ensureBlockMetadata(record,guid,blockId,definition)end
+                local ownerId=root.characterOwners[guid];local player=ownerId and root.players[ownerId]
+                if player then
+                    player.characters=type(player.characters)=="table"and player.characters or{};if player.characters[guid]==nil then player.characters[guid]=true end
+                    player.metadata=type(player.metadata)=="table"and player.metadata or{}
+                    if not player.metadata.realName and type(record.realName)=="string"then player.metadata.realName=record.realName end
+                    if not player.metadata.birthday and type(record.birthday)=="string"then player.metadata.birthday=record.birthday end
+                    for twinkGuid,known in pairs(type(record.knownTwinks)=="table"and record.knownTwinks or{})do if known==true and validId(twinkGuid)then if player.characters[twinkGuid]==nil then player.characters[twinkGuid]=true end;root.characterOwners[twinkGuid]=ownerId end end
+                end
+            end
         end
+        for id,player in pairs(root.players)do
+            if not validId(id)or type(player)~="table"then root.players[id]=nil else player.id=id;player.characters=type(player.characters)=="table"and player.characters or{};player.roles=type(player.roles)=="table"and player.roles or{};player.version=tonumber(player.version)or 0;player.updatedAt=tonumber(player.updatedAt)or 0;if not player.ownerGuid then player.ownerGuid=player.mainCharacter or next(player.characters)end end
+        end
+        for guid,id in pairs(root.characterOwners)do if not validId(guid)or not validId(id)then root.characterOwners[guid]=nil end end
+        for blockId in pairs(self.blocks)do root.normalizedBlocks[blockId]=true end
+        root.normalizationVersion=1
     end
-    -- Preserve legacy voluntary profile fields and twink relationships inside
-    -- the account store. The character records remain untouched for rollback.
-    for guid,record in pairs(root.characters)do if type(record)=="table"then local ownerId=root.characterOwners[guid];local player=ownerId and root.players[ownerId];if player then player.characters=type(player.characters)=="table"and player.characters or{};if player.characters[guid]==nil then player.characters[guid]=true end;player.metadata=type(player.metadata)=="table"and player.metadata or{};if not player.metadata.realName and type(record.realName)=="string"then player.metadata.realName=record.realName end;if not player.metadata.birthday and type(record.birthday)=="string"then player.metadata.birthday=record.birthday end;for twinkGuid,known in pairs(type(record.knownTwinks)=="table"and record.knownTwinks or{})do if known==true and validId(twinkGuid)then if player.characters[twinkGuid]==nil then player.characters[twinkGuid]=true end;root.characterOwners[twinkGuid]=ownerId end end end end end
-    for _,player in pairs(root.players)do if type(player)=="table"then player.characters=type(player.characters)=="table"and player.characters or{};if not player.ownerGuid then player.ownerGuid=player.mainCharacter or next(player.characters)end end end
     return true
 end
 
@@ -78,6 +108,10 @@ function PlayerData:GetOrCreateCharacter(guid)
 end
 function PlayerData:GetPlayers() return self.root.players end
 function PlayerData:GetOwners() return self.root.characterOwners end
+function PlayerData:GetDiagnostics()
+    local blocks=0;for _,record in pairs(self.root.characters)do for _ in pairs(type(record)=="table"and record.blockMeta or{})do blocks=blocks+1 end end
+    return{characters=HolyStorm.Utils.TableCount(self.root.characters),players=HolyStorm.Utils.TableCount(self.root.players),owners=HolyStorm.Utils.TableCount(self.root.characterOwners),blocks=blocks,normalizationVersion=self.root.normalizationVersion}
+end
 function PlayerData:GetForeignWatermark(domain)if domain then return tonumber(self.root.sync.foreignWatermarks[domain])or 0 end;local value=tonumber(self.root.sync.foreignWatermark)or 0;for _,watermark in pairs(self.root.sync.foreignWatermarks)do value=math.max(value,tonumber(watermark)or 0)end;return value end
 function PlayerData:AdvanceForeignWatermark(owner,timestamp,domain)if type(owner)=="string"and not self:IsLocallyOwned(owner)then local value=tonumber(timestamp)or 0;domain=domain or"global";self.root.sync.foreignWatermarks[domain]=math.max(self:GetForeignWatermark(domain),value);self.root.sync.foreignWatermark=math.max(tonumber(self.root.sync.foreignWatermark)or 0,value)end;return self:GetForeignWatermark(domain)end
 function PlayerData:IsLocallyOwned(guid)
@@ -112,8 +146,8 @@ function PlayerData:ApplyBlock(guid,blockId,data,meta,mode)
         if self:IsLocallyOwned(guid)and meta.direct~=true then return false,"LOCAL_OWNER_PROTECTED"end
     elseif not self:IsLocallyOwned(guid)then return false,"NOT_LOCAL_OWNER" end
     local clean=copy(data);if mode~="remote"and#definition.fields>1 then for _,field in ipairs(definition.fields)do if clean[field]==nil then clean[field]=copy(record[field])end end end;local version=mode=="remote"and tonumber(meta.version)or((tonumber(current and current.version)or 0)+1);local updatedAt=mode=="remote"and(tonumber(meta.updatedAt)or 0)or now()
-    if mode~="remote"and current then local existing=self:GetBlock(guid,blockId);if same(existing,clean)then return false,"UNCHANGED"end end
-    if #definition.fields==1 then record[definition.fields[1]]=clean else for _,field in ipairs(definition.fields)do record[field]=copy(clean[field])end end
+    if mode~="remote"and current then local existing;if#definition.fields==1 then existing=record[definition.fields[1]]else existing={};for _,field in ipairs(definition.fields)do existing[field]=record[field]end end;if same(existing,clean)then return false,"UNCHANGED"end end
+    if #definition.fields==1 then record[definition.fields[1]]=clean else for _,field in ipairs(definition.fields)do record[field]=clean[field]end end
     -- Keep block-local metadata visible to compatible readers without making it authoritative.
     for _,field in ipairs(definition.fields)do if type(record[field])=="table"then record[field].version=version;record[field].updatedAt=updatedAt end end
     record.blockMeta[blockId]={owner=guid,version=version,updatedAt=updatedAt,source=meta.source or(mode=="remote"and"sync"or"local"),receivedFrom=meta.receivedFrom,direct=mode~="remote"or meta.direct==true}

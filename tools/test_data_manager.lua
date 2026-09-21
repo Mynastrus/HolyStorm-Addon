@@ -114,6 +114,10 @@ assert(HolyStorm.db.global.phase1InvalidMigration == invalidMigrationPointer and
 -- Defensive reads and missing values.
 local firstRead, firstReadResult = DataManager:Get("phase1.core")
 assert(firstReadResult.ok and firstReadResult.exists and firstRead.items.one.value == 1, "safe get")
+local ownedRoot, ownedResult = DataManager:GetOwnedRoot("phase1.core", "DataManagerTest")
+assert(ownedResult.ok and ownedRoot == HolyStorm.db.global.phase1Core, "schema owner may acquire the live root without a defensive copy")
+local deniedRoot, deniedResult = DataManager:GetOwnedRoot("phase1.core", "Other")
+assert(deniedRoot == nil and deniedResult.errorCode == "OWNER_MISMATCH", "non-owner live-root access must be denied")
 firstRead.items.one.value = 99
 assert(HolyStorm.db.global.phase1Core.items.one.value == 1, "get must not expose live root")
 local secondRead = DataManager:GetCopy("phase1.core")
@@ -186,6 +190,15 @@ local rosterRead, rosterResult = DataManager:Get("phase1.roster", {"guild", "ros
 assert(rosterResult.ok and rosterResult.exists and rosterRead["Player-250"].history.flags.online == true, "large roster subtree safe read")
 rosterRead["Player-1"].identity.level = 1
 assert(roster.guild.roster["Player-1"].identity.level == 80 and rosterRead.unrelated == nil, "roster read is detached and scoped")
+
+-- Guild records are normalized only when a consumer asks for them.
+HolyStorm.Utils = { TableCount=function(value) local count=0;for _ in pairs(value or {})do count=count+1 end;return count end }
+HolyStorm.db.global.data = { guilds={ ["realm:guild"]={ roster={}, ranks={} }, [7]="invalid" } }
+assert(loadfile(root .. "Persistence/GuildStore.lua"))()
+local GuildStore=HolyStorm.Data.GuildStore;GuildStore:Initialize()
+assert(HolyStorm.db.global.data.guilds["realm:guild"].id==nil and GuildStore:GetDiagnostics().normalized==0,"GuildStore initialization must not traverse and normalize saved guild records")
+assert(GuildStore:_GetLive("realm:guild").id=="realm:guild"and GuildStore:GetDiagnostics().normalized==1,"an accessed guild is normalized lazily")
+local allGuilds=GuildStore:GetAll();assert(allGuilds[7]==nil and allGuilds["realm:guild"].id=="realm:guild","explicit all-guild reads normalize and filter the complete store")
 
 assert(#logEntries >= 7, "structured failures must be logged")
 for _, entry in ipairs(logEntries) do
