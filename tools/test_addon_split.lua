@@ -3,6 +3,7 @@ local script=arg[0]:gsub("\\","/")
 local workspace=script:match("^(.*)/tools/[^/]+$")or"."
 local live=workspace.."/LIVE/"
 local features={
+ {folder="Holy_Storm_Chat",title="Chat",module="Chat.lua"},
  {folder="Holy_Storm_Characters",title="Characters",module="Characters.lua"},
  {folder="Holy_Storm_Equipment",title="Equipment",module="Equipment.lua",block="equipment"},
  {folder="Holy_Storm_Raids",title="Raids",module="Raids.lua",block="raid"},
@@ -77,12 +78,22 @@ for _,contract in ipairs({"X-HolyStorm-ID","X-HolyStorm-Requires","X-HolyStorm-L
 for _,path in ipairs({"Holy_Storm_Equipment/UI/CharacterTab.lua","Holy_Storm_Raids/UI/CharacterTab.lua","Holy_Storm_MythicPlus/UI/CharacterTab.lua","Holy_Storm_Delves/UI/CharacterTab.lua"})do local source=read(live..path);assert(source:find("RegisterCharacterTab",1,true)and source:find("RegisterCharacterSummarySection",1,true),path.." does not extend Characters dynamically")end
 local achievementSource=read(live.."Holy_Storm_Achievements/Achievements.lua");assert(achievementSource:find("RegisterCharacterTab",1,true),"Achievements does not use the late-load character registry")
 local characterLocale=read(live.."Holy_Storm_Characters/UI/Locales/enUS.lua");for _,key in ipairs({"TAB_EQUIPMENT","TAB_MYTHICPLUS","TAB_RAID","TAB_DELVES"})do assert(not characterLocale:find(key,1,true),"Characters still owns feature locale "..key)end
+assert(not characterLocale:find('L["CHAT_',1,true),"Characters still owns Chat locale keys")
+assert(not coreToc:find("Holy_Storm_Chat",1,true)and not uiToc:find("Holy_Storm_Chat",1,true),"Core or UI depends on Chat")
+local charactersToc=read(live.."Holy_Storm_Characters/Holy_Storm_Characters.toc")
+assert(not charactersToc:find("Chat.lua",1,true)and not charactersToc:find("ChatOptions.lua",1,true)and not charactersToc:find("Holy_Storm_Chat",1,true),"Characters still owns or requires Chat")
+assert(not exists(live.."Holy_Storm_Characters/Chat.lua")and not exists(live.."Holy_Storm_Characters/UI/ChatOptions.lua"),"obsolete Characters Chat files still exist")
+local chatToc=read(live.."Holy_Storm_Chat/Holy_Storm_Chat.toc")
+assert(chatToc:find("## RequiredDeps: Holy_Storm",1,true)and not chatToc:find("## OptionalDeps:",1,true),"Chat must depend only on Core")
+local chatSource=read(live.."Holy_Storm_Chat/Chat.lua")
+for _,reference in ipairs({"HolyStorm.Data.CharacterStore","HolyStorm.Data.GuildStore","HolyStorm.TwinkCore","HolyStorm.CharacterUI","HolyStorm.CharacterActions"})do assert(not chatSource:find(reference,1,true),"Chat directly references Characters implementation: "..reference)end
 local packageMeta=read(coreRoot.."/.pkgmeta");for _,feature in ipairs(features)do assert(packageMeta:find("Holy_Storm/LIVE/"..feature.folder..": "..feature.folder,1,true),"release package omits "..feature.folder)end
 assert(packageMeta:find("Holy_Storm/LIVE/Holy_Storm_UI: Holy_Storm_UI",1,true),"release package omits UI addon")
 
 -- Validate the complete addon graph, not only the known feature list above.
 local addonNames={"Holy_Storm","Holy_Storm_UI"}
 for _,feature in ipairs(features)do addonNames[#addonNames+1]=feature.folder end
+assert(#addonNames==16,"standalone addon inventory must contain the current 16 addons")
 local manifests={}
 for _,addonName in ipairs(addonNames)do
  local toc=read(live..addonName.."/"..addonName..".toc")

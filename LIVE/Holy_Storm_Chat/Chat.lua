@@ -1,8 +1,8 @@
 local addonVersion="1.0.0"
 local HolyStorm=LibStub("AceAddon-3.0"):GetAddon("Holy_Storm")
-local L=LibStub("AceLocale-3.0"):GetLocale("Holy_Storm")
+local L=LibStub("AceLocale-3.0"):GetLocale("Holy_Storm_Chat")
 
-local Chat={version=addonVersion,index={full={},short={}},indexSize=0,processors={},filters={},lastMentionAt=0,recentMessages={},stats={processed=0,errors=0,mentions=0,players=0,urls=0,tokens=0}}
+local Chat={version=addonVersion,index={full={},short={}},characters={},indexSize=0,indexDirty=true,processors={},filters={},lastMentionAt=0,recentMessages={},stats={processed=0,errors=0,mentions=0,players=0,urls=0,tokens=0}}
 local events={CHAT_MSG_GUILD="GUILD",CHAT_MSG_OFFICER="OFFICER",CHAT_MSG_PARTY="PARTY",CHAT_MSG_PARTY_LEADER="PARTY_LEADER",CHAT_MSG_RAID="RAID",CHAT_MSG_RAID_LEADER="RAID_LEADER",CHAT_MSG_INSTANCE_CHAT="INSTANCE_CHAT",CHAT_MSG_INSTANCE_CHAT_LEADER="INSTANCE_CHAT_LEADER",CHAT_MSG_WHISPER="WHISPER",CHAT_MSG_WHISPER_INFORM="WHISPER_INFORM",CHAT_MSG_SAY="SAY",CHAT_MSG_YELL="YELL"}
 local orderedEvents={"CHAT_MSG_GUILD","CHAT_MSG_OFFICER","CHAT_MSG_PARTY","CHAT_MSG_PARTY_LEADER","CHAT_MSG_RAID","CHAT_MSG_RAID_LEADER","CHAT_MSG_INSTANCE_CHAT","CHAT_MSG_INSTANCE_CHAT_LEADER","CHAT_MSG_WHISPER","CHAT_MSG_WHISPER_INFORM","CHAT_MSG_SAY","CHAT_MSG_YELL"}
 local sounds={"TELL_MESSAGE","READY_CHECK","RAID_WARNING"}
@@ -13,6 +13,11 @@ local function splitName(value)local name,realm=tostring(value or""):match("^([^
 local function normalizedFull(name,realm)local base,embedded=splitName(name);realm=embedded or realm;return lower(base)..(realm and realm~=""and("-"..normalizeRealm(realm))or"")end
 local function setting(path)return HolyStorm.Database:Get("chat."..path,"profile")end
 local function safeText(value)return tostring(value or""):gsub("[|\r\n]"," ")end
+local function capability(id,...)
+ if not HolyStorm.IsCapabilityAvailable or not HolyStorm:IsCapabilityAvailable(id)then return nil end
+ local results=HolyStorm:CallCapability(id,...)
+ for _,result in pairs(results or{})do if result~=nil then return result end end
+end
 local function markupSegments(text)
  local out,i,start={},1,1;local length=#text
  local function plain(to)if to>=start then out[#out+1]={plain=true,text=text:sub(start,to)}end end
@@ -42,12 +47,19 @@ function Chat:GetProcessors()local out={};for _,definition in pairs(self.process
 function Chat:GetSettings()return HolyStorm.Database:Get("chat","profile")end
 function Chat:IsEnabled(event)local channel=events[event];return setting("enabled")==true and HolyStorm.Database:Get("enabled","profile")~=false and(not HolyStorm.Policy or HolyStorm.Policy:IsGuildModuleEnabled("chat"))and channel and setting("channels."..channel)==true end
 function Chat:RebuildPlayerIndex()
- local full,short,guild={}, {},HolyStorm.Data.GuildStore:GetCurrent();local guildMatches={}
- for guid,record in pairs(HolyStorm.Data.CharacterStore:GetAll())do
-  local name=record and(record.fullName or record.name);if type(name)=="string"and name~=""then local base,embedded=splitName(name);local realm=embedded or record.realm;local fullKey=normalizedFull(base,realm);if realm and realm~=""then full[fullKey]=full[fullKey]and full[fullKey]~=guid and false or guid end;local key=lower(base);local bucket=short[key]or{};bucket[guid]=true;short[key]=bucket;if guild and guild.roster and guild.roster[guid]then local gb=guildMatches[key]or{};gb[guid]=true;guildMatches[key]=gb end end
+ local entries=capability("character.directory")
+ local full,short,characters={},{},{}
+ for _,record in pairs(type(entries)=="table"and entries or{})do
+  local guid=record and record.characterUUID;local name=record and(record.fullName or record.name)
+  if type(guid)=="string"and type(name)=="string"and name~=""then
+   characters[guid]=record
+   local base,embedded=splitName(name);local realm=embedded or record.realm;local fullKey=normalizedFull(base,realm)
+   if realm and realm~=""then local previous=full[fullKey];if previous==nil then full[fullKey]=guid elseif previous~=guid then full[fullKey]=false end end
+   local key=lower(base);local bucket=short[key]or{};bucket[guid]=true;short[key]=bucket
+  end
  end
- local resolved={};for key,bucket in pairs(short)do local only,count=nil,0;for guid in pairs(bucket)do only,count=guid,count+1 end;if count==1 then resolved[key]=only else local best,bestRank,bestName;for guid in pairs(guildMatches[key]or{})do local member=guild.roster[guid]or{};local rank=tonumber(member.rankIndex)or math.huge;local record=HolyStorm.Data.CharacterStore:Get(guid)or{};local name=normalizedFull(record.fullName or record.name or guid,record.realm);if not best or rank<bestRank or(rank==bestRank and(name<bestName or(name==bestName and guid<best)))then best,bestRank,bestName=guid,rank,name end end;resolved[key]=best or false end end
- self.index={full=full,short=resolved};self.indexSize=HolyStorm.Utils.TableCount(full)+HolyStorm.Utils.TableCount(resolved);self.indexDirty=false;return self.indexSize
+ local resolved={};for key,bucket in pairs(short)do local only,count=nil,0;for guid in pairs(bucket)do only,count=guid,count+1 end;if count==1 then resolved[key]=only else local best,bestRank,bestName;for guid in pairs(bucket)do local record=characters[guid]or{};if record.guildMember then local rank=tonumber(record.guildRankIndex)or math.huge;local name=normalizedFull(record.fullName or record.name or guid,record.realm);if not best or rank<bestRank or(rank==bestRank and(name<bestName or(name==bestName and guid<best)))then best,bestRank,bestName=guid,rank,name end end end;resolved[key]=best or false end end
+ self.index={full=full,short=resolved};self.characters=characters;self.indexSize=HolyStorm.Utils.TableCount(full)+HolyStorm.Utils.TableCount(resolved);self.indexDirty=false;return self.indexSize
 end
 function Chat:InvalidatePlayerIndex()self.indexDirty=true end
 function Chat:EnsurePlayerIndex()if self.indexDirty then self:RebuildPlayerIndex()end end
@@ -56,38 +68,46 @@ function Chat:ResolveCharacter(token)
  local name,realm=splitName(token);if realm then local guid=self.index.full[normalizedFull(name,realm)];return guid or nil,guid==false and"AMBIGUOUS"or guid and nil or"NOT_FOUND"end;local guid=self.index.short[lower(name)];return guid or nil,guid==false and"AMBIGUOUS"or guid and nil or"NOT_FOUND"
 end
 function Chat:IsNativePlayerLink(link)return type(link)=="string"and link:match("^player:[^:]+")~=nil end
+function Chat:ConfigurePlayerLink()
+ local definition=HolyStorm.RichLinks:GetType("player");if not definition or self.playerTooltipDefinition==definition or type(definition.showTooltip)~="function"then return false end
+ self:RestorePlayerLink();local original=definition.showTooltip;local wrapped=function(owner,target)if setting("playerTooltips")==false then return false end;return original(owner,target)end
+ definition.showTooltip=wrapped;self.playerTooltipDefinition=definition;self.playerTooltipOriginal=original;self.playerTooltipHandler=wrapped;return true
+end
+function Chat:RestorePlayerLink()
+ local definition=self.playerTooltipDefinition;if definition and definition.showTooltip==self.playerTooltipHandler then definition.showTooltip=self.playerTooltipOriginal end
+ self.playerTooltipDefinition=nil;self.playerTooltipOriginal=nil;self.playerTooltipHandler=nil
+end
 function Chat:ResolveNativePlayerLink(link)
  local name=type(link)=="string"and link:match("^player:([^:]+)");if not name then return nil,"INVALID_LINK"end
  return self:ResolveCharacter(name)
 end
 function Chat:ShowNativePlayerTooltip(owner,link)
  if setting("playerEnrichment")~=true or setting("playerTooltips")==false then return false end
- local characterUUID=self:ResolveNativePlayerLink(link);if not characterUUID or not HolyStorm.CharacterUI then return false end
- return HolyStorm.CharacterUI:ShowTooltip(owner,characterUUID)==true
+ local characterUUID=self:ResolveNativePlayerLink(link);local definition=characterUUID and HolyStorm.RichLinks:GetType("player");if not(definition and definition.showTooltip)then return false end
+ local ok,shown=HolyStorm.Utils.SafeCall("chat.native-player-tooltip",definition.showTooltip,owner,characterUUID);return ok and shown==true
 end
 function Chat:HandleNativePlayerLink(link,button,owner)
  if setting("playerEnrichment")~=true then return false end
  local characterUUID=self:ResolveNativePlayerLink(link);if not characterUUID then return false end
  if IsModifiedClick and IsModifiedClick("CHATLINK")then return false end
- if button=="RightButton"and HolyStorm.CharacterActions then return HolyStorm.CharacterActions:CreateContextMenu(owner or DEFAULT_CHAT_FRAME or UIParent,characterUUID)==true end
- if button=="LeftButton"then HolyStorm:CallCapability("character.open",characterUUID,"summary");return true end
- return false
+ if button~="LeftButton"and button~="RightButton"then return false end
+ local definition=HolyStorm.RichLinks:GetType("player");if not(definition and definition.onClick)then return false end
+ local ok,handled=HolyStorm.Utils.SafeCall("chat.native-player-click",definition.onClick,characterUUID,button,owner or DEFAULT_CHAT_FRAME or UIParent)
+ if not ok then return false end;if type(handled)=="table"then return next(handled)~=nil end;return handled==true
 end
 function Chat:GetRealName(characterUUID)
- if not HolyStorm.TwinkCore then return nil end;local accountUUID=HolyStorm.TwinkCore:GetAccountUUIDForCharacter(characterUUID);if not accountUUID then return nil end
- local visible=false;for _,entry in ipairs(HolyStorm.TwinkCore:GetVisibleCharactersForViewer(accountUUID,HolyStorm.Data.GuildStore:GetCurrent()))do if entry.characterUUID==characterUUID then visible=true;break end end;if not visible then return nil end
- local account=HolyStorm.TwinkCore:GetAccount(accountUUID);local value=account and account.metadata and account.metadata.realName;return type(value)=="string"and HolyStorm.Utils.Trim(value)~=""and HolyStorm.Utils.Trim(value)or nil
+ local description=capability("character.describe",characterUUID);return description and description.realName or nil
 end
 function Chat:PlayerLabel(characterUUID,original)
- local record=HolyStorm.Data.CharacterStore:Get(characterUUID)or{};local suffix={}
- if setting("showMain")and HolyStorm.TwinkCore then local identity=HolyStorm.TwinkCore:GetRosterIdentity(characterUUID,HolyStorm.Data.GuildStore:GetCurrent());local main=identity and identity.accountMain;if main and main~=characterUUID then local mainRecord=HolyStorm.Data.CharacterStore:Get(main);if mainRecord then suffix[#suffix+1]=splitName(mainRecord.name or mainRecord.fullName)end end end
- if setting("showRealName")then local realName=self:GetRealName(characterUUID);if realName then suffix[#suffix+1]=realName end end
+ local record=capability("character.describe",characterUUID)or self.characters[characterUUID]or{};local suffix={}
+ if setting("showMain")and record.accountMainName then suffix[#suffix+1]=splitName(record.accountMainName)end
+ if setting("showRealName")and record.realName then suffix[#suffix+1]=record.realName end
  local canonical=record.fullName or record.name or original;local canonicalName,embeddedRealm=splitName(canonical);local _,requestedRealm=splitName(original);local canonicalRealm=embeddedRealm or record.realm;local label=requestedRealm and canonicalRealm and(canonicalName.."-"..canonicalRealm)or canonicalName;if#suffix>0 then label=label.." ("..table.concat(suffix," / ")..")"end
  return safeText(label)
 end
 function Chat:EnrichPlayers(text,diagnostics)
- if not setting("playerEnrichment")then return text end;local matches=words(text);if#matches==0 then return text end;local out,last={},1
- for _,token in ipairs(matches)do local guid=self:ResolveCharacter(token.value);if guid then local record=HolyStorm.Data.CharacterStore:Get(guid)or{};local color=setting("classColors")and classHex(record.classFile)or nil;out[#out+1]=text:sub(last,token.s-1);out[#out+1]=HolyStorm.RichLinks:MakeHyperlink("player",guid,self:PlayerLabel(guid,token.value),color);last=token.e+1;diagnostics.players[#diagnostics.players+1]={token=token.value,characterUUID=guid};self.stats.players=self.stats.players+1 end end
+ if not setting("playerEnrichment")or not HolyStorm.RichLinks:GetType("player")or not HolyStorm:IsCapabilityAvailable("character.directory")then return text end;local matches=words(text);if#matches==0 then return text end;local out,last={},1
+ for _,token in ipairs(matches)do local guid=self:ResolveCharacter(token.value);if guid then local record=self.characters[guid]or{};local color=setting("classColors")and classHex(record.classFile)or nil;out[#out+1]=text:sub(last,token.s-1);out[#out+1]=HolyStorm.RichLinks:MakeHyperlink("player",guid,self:PlayerLabel(guid,token.value),color);last=token.e+1;diagnostics.players[#diagnostics.players+1]={token=token.value,characterUUID=guid};self.stats.players=self.stats.players+1 end end
  out[#out+1]=text:sub(last);return table.concat(out)
 end
 function Chat:EnrichURLs(text,diagnostics)
@@ -117,6 +137,7 @@ function Chat:ParseForDiagnostics(text,event)
 end
 function Chat:ProcessMessage(event,message,author,...)
  local diagnostics={event=event,protected=0,players={},mentions={},urls={},links={},tokens={},unresolved={},errors={}};if not self:IsEnabled(event)or type(message)~="string"then return message,diagnostics end
+ self:ConfigurePlayerLink()
  local args={...};local mentioned,mentionText=self:DetectMention(message);if mentioned then diagnostics.mentions[1]=mentionText;if setting("mentions.ownMessages")or not self:IsOwnMessage(event,author,args)then self:AlertMention(tostring(event).."\031"..tostring(author).."\031"..message)end end
  local output={};for _,segment in ipairs(markupSegments(message))do if segment.plain then local ok,value=HolyStorm.Utils.SafeCall("chat.pipeline",function()return self:ProcessPlain(segment.text,diagnostics)end);if ok then output[#output+1]=value else output[#output+1]=segment.text;diagnostics.errors[#diagnostics.errors+1]=tostring(value);self.stats.errors=self.stats.errors+1 end else diagnostics.protected=diagnostics.protected+1;output[#output+1]=segment.text end end
  self.stats.processed=self.stats.processed+1;self.stats.tokens=self.stats.tokens+#diagnostics.tokens;self.lastDiagnostics=diagnostics;return table.concat(output),diagnostics
@@ -131,18 +152,26 @@ function Chat:GetDiagnostics()
  local channels={};for _,event in ipairs(orderedEvents)do if self:IsEnabled(event)then channels[#channels+1]=events[event]end end;local types={};for id,definition in pairs(HolyStorm.RichLinks:GetTypes())do types[#types+1]={id=id,owner=definition.owner or"core",click=definition.onClick~=nil,tooltip=definition.tooltip~=nil or definition.showTooltip~=nil,fallback=definition.render~=nil}end;table.sort(types,function(a,b)return a.id<b.id end);local tokens={};for id in pairs(HolyStorm.RichLinks:GetTokens())do tokens[#tokens+1]=id end;table.sort(tokens);local processors={"protected-markup","mentions"};for _,definition in ipairs(self:GetProcessors())do processors[#processors+1]=definition.id end;return{enabled=setting("enabled")==true,processors=processors,linkTypes=types,tokens=tokens,indexSize=self.indexSize,indexDirty=self.indexDirty==true,supportedChannels=events,activeChannels=channels,mention=HolyStorm.Utils.DeepCopy(setting("mentions")),stats=HolyStorm.Utils.DeepCopy(self.stats),last=self.lastDiagnostics}
 end
 function Chat:Initialize()
+ if self.initialized then return true end;self.initialized=true;self.indexDirty=true
  local defaults={enabled=true,playerEnrichment=true,classColors=true,playerTooltips=true,showMain=false,showRealName=false,links=true,urls=true,mentions={enabled=true,characterName=true,realName=false,sound="TELL_MESSAGE",cooldown=2.5,ownMessages=false},channels={GUILD=true,OFFICER=true,PARTY=true,PARTY_LEADER=true,RAID=true,RAID_LEADER=true,INSTANCE_CHAT=true,INSTANCE_CHAT_LEADER=true,WHISPER=true,WHISPER_INFORM=true,SAY=true,YELL=true}}
  if type(HolyStorm.Database:Get("chat","profile"))~="table"then HolyStorm.Database:Set("chat",defaults,"profile")end
  self:RegisterProcessor("registered-tokens",10,function(text,diagnostics)if setting("links")then return HolyStorm.RichLinks:RenderRegisteredTokens(text,diagnostics)end;return text end)
  self:RegisterProcessor("rich-links",20,function(text,diagnostics)if setting("links")then return HolyStorm.RichLinks:RenderInline(text,diagnostics)end;return text end)
  self:RegisterProcessor("players",30,function(text,diagnostics)return Chat:EnrichPlayers(text,diagnostics)end)
  self:RegisterProcessor("urls",40,function(text,diagnostics)return Chat:EnrichURLs(text,diagnostics)end)
- self:RebuildPlayerIndex();local function invalidate()Chat:InvalidatePlayerIndex()end;for _,event in ipairs({"HS_CHARACTER_UPDATED","HS_ROSTER_UPDATED","HS_GUILD_UPDATED","HS_TWINKS_UPDATED","HS_ACCOUNT_UPDATED"})do HolyStorm.Events:Register(event,"chat-index",invalidate)end
- HolyStorm.RichLinks:RegisterType({type="url",owner="Chat",validate=function(url)return type(url)=="string"and#url<=320 and(url:match("^https?://")or url:match("^www%."))end,render=function(url,label)return label or url end,onClick=function(url)return Chat:ShowURL(url)end,tooltip=function(url)return L["CHAT_URL_TOOLTIP"],url end})
+ local function invalidate(event,changed)if(event=="HS_CAPABILITY_REGISTERED"or event=="HS_CAPABILITY_UNREGISTERED")and changed~="character.directory"and changed~="character.describe"then return end;Chat:ConfigurePlayerLink();Chat:InvalidatePlayerIndex()end;for _,event in ipairs({"HS_CHARACTER_UPDATED","HS_ROSTER_UPDATED","HS_GUILD_UPDATED","HS_TWINKS_UPDATED","HS_ACCOUNT_UPDATED","HS_CAPABILITY_REGISTERED","HS_CAPABILITY_UNREGISTERED"})do HolyStorm.Events:Register(event,"chat-index",invalidate)end
+ self:ConfigurePlayerLink()
+ if not HolyStorm.RichLinks:GetType("url")then HolyStorm.RichLinks:RegisterType({type="url",owner="Chat",validate=function(url)return type(url)=="string"and#url<=320 and(url:match("^https?://")or url:match("^www%."))end,render=function(url,label)return label or url end,onClick=function(url)return Chat:ShowURL(url)end,tooltip=function(url)return L["CHAT_URL_TOOLTIP"],url end})end
  self.filterFunction=function(...)return Chat:Filter(...)end;local add=ChatFrameUtil and ChatFrameUtil.AddMessageEventFilter or ChatFrame_AddMessageEventFilter;for _,event in ipairs(orderedEvents)do local ok=add and pcall(add,event,self.filterFunction);if ok then self.filters[event]=true elseif HolyStorm.Logger then HolyStorm.Logger:Write("WARN","Chat","event","Unsupported chat event",{event=event})end end
+ return true
 end
 function Chat:Shutdown()
- local remove=ChatFrameUtil and ChatFrameUtil.RemoveMessageEventFilter or ChatFrame_RemoveMessageEventFilter;if remove and self.filterFunction then for event in pairs(self.filters)do pcall(remove,event,self.filterFunction)end end;self.filters={};HolyStorm.Events:UnregisterOwner("chat-index")
+ local remove=ChatFrameUtil and ChatFrameUtil.RemoveMessageEventFilter or ChatFrame_RemoveMessageEventFilter;if remove and self.filterFunction then for event in pairs(self.filters)do pcall(remove,event,self.filterFunction)end end;self:RestorePlayerLink();self.filters={};self.filterFunction=nil;self.initialized=false;self.indexDirty=true;self.index={full={},short={}};self.characters={};self.indexSize=0;HolyStorm.Events:UnregisterOwner("chat-index")
 end
 function Chat:GetSounds()return sounds end
 HolyStorm.Chat=Chat
+HolyStorm:RegisterModule({id="Chat",name="Chat",displayName=L["DISPLAY_NAME"],internalName="chat",version=addonVersion,moduleType="feature",category="feature",description=L["DESCRIPTION"],dependencies={"core"},enabledByDefault=true},function(Module)
+ function Module:OnInitialize()Chat:Initialize();if HolyStorm.ChatOptions then HolyStorm.ChatOptions:RegisterExtension()end end
+ function Module:OnEnable()if not Chat.initialized then Chat:Initialize()end end
+ function Module:OnDisable()Chat:Shutdown()end
+end)

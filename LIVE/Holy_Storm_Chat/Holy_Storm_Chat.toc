@@ -1,0 +1,15 @@
+## Interface: 120100
+## Title: Holy Storm: |cff24a7deChat|r
+## Notes: Chat enrichment, links, URLs and mention alerts for Holy Storm.
+## Notes-deDE: Chat-Anreicherung, Links, URLs und Erwähnungsalarme für Holy Storm.
+## Author: Mynastrus - Norgannon - EU
+## Category: Holy Storm
+## DefaultState: enabled
+## Version: @project-version@
+## RequiredDeps: Holy_Storm
+## X-HolyStorm-ID: chat
+
+Locales\enUS.lua
+Locales\deDE.lua
+Chat.lua
+UI\ChatOptions.lua

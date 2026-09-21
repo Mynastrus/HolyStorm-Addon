@@ -14,8 +14,7 @@ Locales\deDE.lua
 UI\Locales\enUS.lua
 UI\Locales\deDE.lua
 TwinkCore.lua
-Chat.lua
-UI\ChatOptions.lua
+CharacterDirectory.lua
 UI\CharacterUI.lua
 CharacterActions.lua
 Characters.lua

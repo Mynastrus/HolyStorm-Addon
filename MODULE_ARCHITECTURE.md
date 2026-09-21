@@ -2,7 +2,7 @@
 
 Holy Storm wird als Addon-Familie ausgeliefert. `Holy_Storm` ist der
 eigenständig ladefähige, feature-blinde Kernel. Die fachlichen Addons sind
-`Holy_Storm_Characters`, `Holy_Storm_Equipment`, `Holy_Storm_Raids`,
+`Holy_Storm_Chat`, `Holy_Storm_Characters`, `Holy_Storm_Equipment`, `Holy_Storm_Raids`,
 `Holy_Storm_MythicPlus`, `Holy_Storm_Delves`, `Holy_Storm_Calendar`,
 `Holy_Storm_Professions`, `Holy_Storm_Guild`, `Holy_Storm_GuildLog`,
 `Holy_Storm_News`, `Holy_Storm_Achievements`, `Holy_Storm_POI` und

@@ -14,7 +14,7 @@ local function registerRichLinkTypes()
  local function tooltip(target)local record=HolyStorm.Data.CharacterStore:Get(target);return record and(record.fullName or record.name)or target,record and record.class end
  local function showTooltip(owner,target)return HolyStorm.CharacterUI:ShowTooltip(owner,target)end
  HolyStorm.RichLinks:RegisterType({type="character",render=render,chatText=chatText,onClick=click,tooltip=tooltip,showTooltip=showTooltip,owner="Characters"})
- HolyStorm.RichLinks:RegisterType({type="player",render=render,chatText=chatText,onClick=click,tooltip=tooltip,showTooltip=function(owner,target)if HolyStorm.Database:Get("chat.playerTooltips","profile")==false then return false end;return showTooltip(owner,target)end,owner="Characters"})
+ HolyStorm.RichLinks:RegisterType({type="player",render=render,chatText=chatText,onClick=click,tooltip=tooltip,showTooltip=showTooltip,owner="Characters"})
 end
 HolyStorm:RegisterModule({
  id="Twinks",name="Twinks",displayName=L["DISPLAY_NAME"],internalName="twinks",version=addonVersion,
@@ -58,8 +58,7 @@ function Twinks:InitializeUI()
  self.page,self.count,self.content,self.rows=page,count,content,{};HolyStorm.UI:RegisterPage("twinks",page,L["WINDOW_TITLE"],function()Twinks:Refresh()end,{"HS_CHARACTER_UPDATED","HS_ROSTER_UPDATED","HS_TWINKS_UPDATED","HS_ACCOUNT_MAIN_CHANGED","HS_GUILD_MAIN_CHANGED","HS_TWINK_VISIBILITY_CHANGED"});HolyStorm.UI:AddNavigation("twinks",5,"Interface\\Icons\\INV_Misc_GroupLooking",L["NAVIGATION_TITLE"],L["NAVIGATION_DESCRIPTION"],function()Twinks:RequestAndRefresh();HolyStorm.UI:ShowPage("twinks")end)
 end
 function Twinks:OnInitialize()
- HolyStorm.TwinkCore:Initialize();HolyStorm.CharacterActions:Initialize();registerRichLinkTypes();HolyStorm.Chat:Initialize()
- HolyStorm.ChatOptions:RegisterExtension()
+ HolyStorm.TwinkCore:Initialize();HolyStorm.CharacterActions:Initialize();registerRichLinkTypes();HolyStorm.CharacterDirectory:Initialize("Twinks")
  HolyStorm:RegisterUIExtension("Twinks",{id="characters.twinks",order=5,initialize=function()Twinks:InitializeUI()end})
 end
 function Twinks:QueueCollection(trigger)
@@ -67,8 +66,8 @@ function Twinks:QueueCollection(trigger)
  local capabilities={};for capability in pairs(HolyStorm.moduleCapabilities or{})do if capability:match("^character%.scan%.")then capabilities[#capabilities+1]=capability end end;table.sort(capabilities)
  for index,capability in ipairs(capabilities)do local current=capability;HolyStorm.Tasks:Enqueue("capability."..current,function()HolyStorm:CallCapability(current,false)end,{priority=index+1,debounce=.5+(index*.25),dependencies={"character.identity"},triggerSource=trigger})end
 end
-function Twinks:OnEnable()HolyStorm.Events:Register("PLAYER_LOGIN","characters",function(event)Twinks:QueueCollection(event)end);HolyStorm.Events:Register("PLAYER_ENTERING_WORLD","characters",function(event)Twinks:QueueCollection(event)end);if IsLoggedIn()then self:QueueCollection("CHARACTERS_ENABLE")end end
-function Twinks:OnDisable()HolyStorm.Events:UnregisterOwner("characters");if HolyStorm.Chat then HolyStorm.Chat:Shutdown()end end
+function Twinks:OnEnable()if not HolyStorm.CharacterDirectory.owner then HolyStorm.CharacterDirectory:Initialize("Twinks")end;HolyStorm.Events:Register("PLAYER_LOGIN","characters",function(event)Twinks:QueueCollection(event)end);HolyStorm.Events:Register("PLAYER_ENTERING_WORLD","characters",function(event)Twinks:QueueCollection(event)end);if IsLoggedIn()then self:QueueCollection("CHARACTERS_ENABLE")end end
+function Twinks:OnDisable()HolyStorm.Events:UnregisterOwner("characters");HolyStorm.CharacterDirectory:Shutdown()end
 function Twinks:RequestAndRefresh()self:StoreCurrentCharacter();if _G.GuildRoster then _G.GuildRoster()end;self:Refresh()end
 function Twinks:Refresh()
  local core,accountUUID=HolyStorm.TwinkCore,HolyStorm.TwinkCore:GetLocalAccountUUID();local guild=HolyStorm.Data.GuildStore:GetCurrent();local visibility=core:GetVisibility(accountUUID);self.allRadio:SetChecked(visibility==core.visibility.ALL);self.guildRadio:SetChecked(visibility==core.visibility.GUILD_ONLY)

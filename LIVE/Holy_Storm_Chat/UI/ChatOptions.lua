@@ -1,5 +1,5 @@
 local HolyStorm=LibStub("AceAddon-3.0"):GetAddon("Holy_Storm")
-local L=LibStub("AceLocale-3.0"):GetLocale("Holy_Storm_CharacterUI")
+local L=LibStub("AceLocale-3.0"):GetLocale("Holy_Storm_Chat")
 local ChatOptions={parserResult=nil,registered=false}
 
 local function get(path)return HolyStorm.Database:Get("chat."..path,"profile")end
@@ -36,7 +36,7 @@ end
 
 function ChatOptions:RegisterExtension()
  if self.registered then return true end;self.registered=true
- return HolyStorm:RegisterUIExtension("CharactersChatOptions",{id="characters.chat-options",order=2,initialize=function()
+ return HolyStorm:RegisterUIExtension("Chat",{id="chat.options",order=2,initialize=function()
   local options=HolyStorm:GetModule("Options",true);return options and options:RegisterOptionsTab("chat",ChatOptions:Build())
  end})
 end

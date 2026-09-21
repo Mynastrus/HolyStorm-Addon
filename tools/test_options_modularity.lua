@@ -1,7 +1,7 @@
 local script=arg[0]:gsub("\\","/")
 local workspace=script:match("^(.*)/tools/[^/]+$")or"."
 local optionsPath=workspace.."/LIVE/Holy_Storm_UI/UI/Pages/Options.lua"
-local chatOptionsPath=workspace.."/LIVE/Holy_Storm_Characters/UI/ChatOptions.lua"
+local chatOptionsPath=workspace.."/LIVE/Holy_Storm_Chat/UI/ChatOptions.lua"
 
 local function createEnvironment()
  local modules,extensions,notified={},{},0
@@ -30,30 +30,30 @@ local function createEnvironment()
  return HolyStorm,modules,extensions,function()return notified end
 end
 
--- Core + UI without Characters owns no chat service or chat option group.
+-- Core + UI without Chat owns no chat service or chat option group.
 do
  local HolyStorm,modules=createEnvironment();assert(loadfile(optionsPath))();modules.Options:OnInitialize()
  assert(HolyStorm.Chat==nil,"Core + UI test must not provide a Chat service")
  assert(modules.Options.optionsTable.args.chat==nil,"generic UI must not embed Characters chat options")
 end
 
--- UI first: Characters registers its options immediately through the extension.
+-- UI first: Chat registers its options immediately through the extension.
 do
  local HolyStorm,modules,_,notifications=createEnvironment();assert(loadfile(optionsPath))();modules.Options:OnInitialize();HolyStorm.uiReady=true
  HolyStorm.Chat={GetDiagnostics=function()return{enabled=true,indexSize=1,linkTypes={},tokens={},activeChannels={"GUILD"},stats={processed=2,errors=0}}end,ParseForDiagnostics=function(_,value)return"rendered:"..value end}
  assert(loadfile(chatOptionsPath))();assert(HolyStorm.ChatOptions:RegisterExtension())
- local chat=modules.Options.optionsTable.args.chat;assert(chat and chat.args.diagnostics,"Characters loaded after UI must register chat options")
+ local chat=modules.Options.optionsTable.args.chat;assert(chat and chat.args.diagnostics,"Chat loaded after UI must register chat options")
  assert(chat.args.diagnostics.args.status.name():find("GUILD",1,true),"chat diagnostics remain functional")
  assert(notifications()==1,"live option registration must notify AceConfig once")
 end
 
--- Characters first: registration survives until the Options module initializes.
+-- Chat first: registration survives until the Options module initializes.
 do
  local HolyStorm,modules=createEnvironment();HolyStorm.Chat={GetDiagnostics=function()return{enabled=true,indexSize=0,linkTypes={},tokens={},activeChannels={},stats={processed=0,errors=0}}end,ParseForDiagnostics=function(_,value)return value end}
  assert(loadfile(chatOptionsPath))();assert(HolyStorm.ChatOptions:RegisterExtension());assert(loadfile(optionsPath))()
  HolyStorm.uiReady=true;HolyStorm:FlushExtensions()
  assert(modules.Options.optionsTable==nil and modules.Options.pendingTabs.chat,"pre-UI chat registration must remain pending")
- modules.Options:OnInitialize();assert(modules.Options.optionsTable.args.chat,"Options initialization must consume pending Characters options")
+ modules.Options:OnInitialize();assert(modules.Options.optionsTable.args.chat,"Options initialization must consume pending Chat options")
 end
 
 print("Options chat modularity and both addon load orders passed")

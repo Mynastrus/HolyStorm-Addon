@@ -2,7 +2,7 @@
 local script=arg[0]:gsub("\\","/")
 local workspace=script:match("^(.*)/tools/[^/]+$")or"."
 local live=workspace.."/LIVE"
-local folders={"Achievements","Calendar","Characters","Delves","Equipment","Guild","GuildLog","MythicPlus","News","POI","Positions","Professions","Raids"}
+local folders={"Achievements","Calendar","Characters","Chat","Delves","Equipment","Guild","GuildLog","MythicPlus","News","POI","Positions","Professions","Raids"}
 local function read(path)local file=assert(io.open(path,"rb"),path);local value=file:read("*a");file:close();return value end
 local function keys(source)local out={};for key in source:gmatch('L%["([^"\r\n]+)"%]')do out[key]=true end;return out end
 local function files(root)
