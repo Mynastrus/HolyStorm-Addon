@@ -115,7 +115,8 @@ function Engine:CanManageGroup(actorAccount,actorCharacter,groupId,state)
 end
 function Engine:Invalidate(reason)
     self.generation=self.generation+1; self.permissionCache={}; self.membershipCache={}; HolyStorm.Events:Emit("HS_POLICY_UPDATED",reason,self.generation); HolyStorm.Events:Emit("HS_EFFECTIVE_PERMISSIONS_CHANGED",reason)
-    if HolyStorm.Tasks and HolyStorm.Tasks.GetTaskType and HolyStorm.Tasks:GetTaskType("Policy.RecalculateEffectiveMemberships") then HolyStorm.Tasks:Queue("Policy.RecalculateEffectiveMemberships",{triggerSource=reason or "POLICY_INVALIDATE",debounce=.2,startupPhase=3,dependencies={"guild.roster"}}) end
+    local rosterReady=HolyStorm.State and HolyStorm.State.Is and HolyStorm.State:Is("guildRosterReady")
+    if rosterReady and HolyStorm.Tasks and HolyStorm.Tasks.GetTaskType and HolyStorm.Tasks:GetTaskType("Policy.RecalculateEffectiveMemberships") then HolyStorm.Tasks:Queue("Policy.RecalculateEffectiveMemberships",{triggerSource=reason or "POLICY_INVALIDATE",debounce=.2,startupPhase=3}) end
 end
 function Engine:GetEffectiveMembers(groupId)
     local group=self:GetGroup(groupId); local out={}; if not group then return out end

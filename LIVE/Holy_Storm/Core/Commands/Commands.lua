@@ -27,9 +27,10 @@ end
 function Commands:UnregisterSubcommand(id)if not self.handlers[id]then return false end;self.handlers[id]=nil;return true end
 function Commands:Execute(input)
     local value=HolyStorm.Utils.Trim(input or "")
-    if value=="?" then printMessage(L["COMMAND_HELP_TITLE"]);printMessage(L["COMMAND_HELP_OPEN"]);printMessage(L["COMMAND_HELP_OPTIONS"]);local ids={};for id in pairs(self.handlers)do ids[#ids+1]=id end;table.sort(ids);for _,id in ipairs(ids)do local help=self.handlers[id].help;if type(help)=="function"then help=help()end;if help then printMessage(help)end end;printMessage(L["COMMAND_HELP_HELP"])
+    if value=="?" then printMessage(L["COMMAND_HELP_TITLE"]);printMessage(L["COMMAND_HELP_OPEN"]);printMessage(L["COMMAND_HELP_OPTIONS"]);printMessage(L["COMMAND_HELP_ADDONS"]);local ids={};for id in pairs(self.handlers)do ids[#ids+1]=id end;table.sort(ids);for _,id in ipairs(ids)do local help=self.handlers[id].help;if type(help)=="function"then help=help()end;if help then printMessage(help)end end;printMessage(L["COMMAND_HELP_HELP"])
     elseif value=="" then if HolyStorm.UI then HolyStorm.UI:Open()else printMessage(L["COMMAND_UI_UNAVAILABLE"]or"UI addon is not loaded.")end
     elseif value=="options" or value=="o" then local module=HolyStorm:GetModule("Options",true);if module then module:Open()end
+    elseif value=="addons" then local addons=HolyStorm:GetLoadedAddonNames();printMessage(string.format(L["COMMAND_LOADED_ADDONS"],#addons,table.concat(addons,", ")))
     else local id,args=value:match("^([^%s]+)%s*(.*)$");local handler=id and self.handlers[id];if handler then local ok,err=HolyStorm.Utils.SafeCall("command:"..id,handler.execute,args);if not ok and HolyStorm.Logger then HolyStorm.Logger:ERROR("Commands","Subcommand %s failed: %s",id,tostring(err))end else printMessage(string.format(L["CORE_STATUS"],L[HolyStorm.Database:Get("enabled","profile")and"STATUS_ENABLED"or"STATUS_DISABLED"]))end end
 end
 function Commands:AnnounceLoaded()printMessage(string.format(L["CORE_LOADED"],HolyStorm.metadata.displayName,HolyStorm.version));printMessage(string.format(L["CORE_LOADED_HELP"],commandLink("/hs","open"),commandLink("/hs ?","help")))end

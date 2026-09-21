@@ -56,6 +56,17 @@ function Loader:IsLoaded(addonName)
     return C_AddOns and C_AddOns.IsAddOnLoaded and C_AddOns.IsAddOnLoaded(addonName) == true
 end
 
+function Loader:GetLoadedAddonNames()
+    local result = {}
+    if not C_AddOns or not C_AddOns.GetNumAddOns then return result end
+    for index = 1, C_AddOns.GetNumAddOns() do
+        local addonName = addonNameAt(index)
+        if addonName and (addonName == "Holy_Storm" or addonName:match("^Holy_Storm_")) and self:IsLoaded(addonName) then result[#result + 1] = addonName end
+    end
+    table.sort(result)
+    return result
+end
+
 function Loader:Load(definition, context)
     local addonName = definition and definition.addonName
     if not addonName or self.attempted[addonName] or self:IsLoaded(addonName) then return false end
@@ -96,3 +107,4 @@ end
 HolyStorm.AddonLoader = Loader
 
 function HolyStorm:GetAddonLoadContext(id) return Loader:GetLoadContext(id) end
+function HolyStorm:GetLoadedAddonNames() return Loader:GetLoadedAddonNames() end

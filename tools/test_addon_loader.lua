@@ -1,5 +1,7 @@
 local root=(arg[0]:gsub("tools[/\\]test_addon_loader.lua$","")).."LIVE/Holy_Storm/"
 local definitions={
+ {name="Holy_Storm",metadata={}},
+ {name="Holy_Storm_UI",metadata={["X-HolyStorm-ID"]="ui",["X-HolyStorm-Requires"]="core"}},
  {name="Unrelated_Addon",metadata={}},
  {name="Vendor_Module_One",metadata={["X-HolyStorm-ID"]="alpha",["X-HolyStorm-Requires"]="core, synchronization",["X-HolyStorm-LoadOnEvent"]="EVENT_ALPHA, EVENT_BETA"}},
  {name="Vendor_Module_Two",metadata={["X-HolyStorm-ID"]="beta"}},
@@ -36,6 +38,8 @@ listeners.EVENT_ALPHA.callback("EVENT_ALPHA")
 listeners.EVENT_BETA.callback("EVENT_BETA")
 assert(attempts.Vendor_Module_One==1,"repeated events must not cause repeated load attempts")
 assert(not attempts.Vendor_Module_Two,"addon without LoadOnEvent remains normally managed")
+loaded.Holy_Storm,loaded.Holy_Storm_UI=true,true
+local loadedAddons=HolyStorm:GetLoadedAddonNames();assert(#loadedAddons==2 and loadedAddons[1]=="Holy_Storm"and loadedAddons[2]=="Holy_Storm_UI","loaded addon diagnostics must report only the active Holy Storm family")
 Loader:Shutdown();assert(not listeners.EVENT_ALPHA and not listeners.EVENT_BETA,"loader shutdown unregisters events")
 local source=assert(io.open(root.."Core/Registry/AddonLoader.lua","rb"));local text=source:read("*a");source:close()
 for _,name in ipairs({"Holy_Storm_Equipment","Holy_Storm_Raids","Holy_Storm_MythicPlus","Holy_Storm_Professions"})do assert(not text:find(name,1,true),"loader hardcodes "..name)end

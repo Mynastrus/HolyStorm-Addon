@@ -26,6 +26,20 @@ local function tocEntries(root,toc)
  return entries
 end
 
+local function tocMetadata(toc)
+ local metadata={}
+ for line in toc:gmatch("[^\r\n]+")do
+  local key,value=line:match("^##%s*([^:]+):%s*(.-)%s*$")
+  if key then metadata[key]=value end
+ end
+ return metadata
+end
+local function splitDependencies(value)
+ local dependencies={}
+ for dependency in tostring(value or""):gmatch("[^,%s]+")do dependencies[#dependencies+1]=dependency end
+ return dependencies
+end
+
 local coreRoot=live.."Holy_Storm";local coreToc=read(coreRoot.."/Holy_Storm.toc")
 assert(coreToc:find("## Title: Holy Storm",1,true),"core title contract")
 assert(coreToc:find("## Category: Holy Storm",1,true),"core category contract")
@@ -65,4 +79,28 @@ local achievementSource=read(live.."Holy_Storm_Achievements/Achievements.lua");a
 local characterLocale=read(live.."Holy_Storm_Characters/UI/Locales/enUS.lua");for _,key in ipairs({"TAB_EQUIPMENT","TAB_MYTHICPLUS","TAB_RAID","TAB_DELVES"})do assert(not characterLocale:find(key,1,true),"Characters still owns feature locale "..key)end
 local packageMeta=read(coreRoot.."/.pkgmeta");for _,feature in ipairs(features)do assert(packageMeta:find("Holy_Storm/LIVE/"..feature.folder..": "..feature.folder,1,true),"release package omits "..feature.folder)end
 assert(packageMeta:find("Holy_Storm/LIVE/Holy_Storm_UI: Holy_Storm_UI",1,true),"release package omits UI addon")
+
+-- Validate the complete addon graph, not only the known feature list above.
+local addonNames={"Holy_Storm","Holy_Storm_UI"}
+for _,feature in ipairs(features)do addonNames[#addonNames+1]=feature.folder end
+local manifests={}
+for _,addonName in ipairs(addonNames)do
+ local toc=read(live..addonName.."/"..addonName..".toc")
+ local metadata=tocMetadata(toc)
+ manifests[addonName]={required=splitDependencies(metadata.RequiredDeps),optional=splitDependencies(metadata.OptionalDeps),loadOnDemand=metadata.LoadOnDemand,defaultState=metadata.DefaultState}
+end
+for _,addonName in ipairs({"Holy_Storm","Holy_Storm_UI"})do
+ for _,dependency in ipairs(manifests[addonName].required)do assert(not manifests[dependency]or dependency=="Holy_Storm",addonName.." must not require feature addon "..dependency)end
+ for _,dependency in ipairs(manifests[addonName].optional)do assert(not manifests[dependency]or dependency=="Holy_Storm",addonName.." must not optionally depend on feature addon "..dependency)end
+end
+local visiting,visited={},{}
+local function visit(addonName)
+ if visiting[addonName]then error("circular addon dependency at "..addonName)end
+ if visited[addonName]then return end
+ visiting[addonName]=true
+ for _,dependency in ipairs(manifests[addonName].required)do if manifests[dependency]then visit(dependency)end end
+ for _,dependency in ipairs(manifests[addonName].optional)do if manifests[dependency]then visit(dependency)end end
+ visiting[addonName],visited[addonName]=nil,true
+end
+for _,addonName in ipairs(addonNames)do visit(addonName)end
 print("Standalone addon split, TOC, ownership and dynamic-extension contracts passed")
