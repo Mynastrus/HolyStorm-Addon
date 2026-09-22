@@ -6,9 +6,10 @@ HolyStorm.UIComponents=Components
 Components.tokens=Components.tokens or{
     spacing={xs=4,small=8,medium=12,large=18},
     sizes={row=24,header=26,button=24},
-    colors={panel={.025,.035,.05,.94},border={.25,.19,.07,.9},hover={1,.82,0,.10},disabled={.45,.45,.45,1}},
+    colors={panel={.025,.035,.05,.94},border={.25,.19,.07,.9},hover={1,.82,0,.10},disabled={.45,.45,.45,1},unknown="|cff888888",positive="|cff20ff20",negative="|cffff4040"},
     textures={white="Interface\\Buttons\\WHITE8x8",fallbackIcon="Interface\\Icons\\INV_Misc_QuestionMark"},
 }
+Components.State=Components.State or{UNKNOWN="UNKNOWN",EMPTY="EMPTY",VALUE="VALUE"}
 
 function Components:GetToken(group,key,fallback)
     local values=self.tokens[group]
@@ -22,6 +23,40 @@ function Components:ApplyTheme(overrides)
         if type(values)=="table"then self.tokens[group]=self.tokens[group]or{};for key,value in pairs(values)do self.tokens[group][key]=value end end
     end
     if HolyStorm.Events then HolyStorm.Events:Emit("HS_UI_THEME_CHANGED",self.tokens)end
+end
+
+function Components:FormatState(value,state,options)
+    options=options or{}
+    if type(value)=="table"and value.status=="unknown"then state=self.State.UNKNOWN end
+    if state==self.State.UNKNOWN or value==nil then return(self:GetToken("colors","unknown","|cff888888")..(options.unknownText or"–").."|r")end
+    if state==self.State.EMPTY then return options.emptyText or""end
+    if options.format then return options.format(value)end
+    return tostring(value)
+end
+
+function Components:FormatDelta(value)
+    value=tonumber(value);if value==nil then return self:FormatState(nil,self.State.UNKNOWN)end
+    if value>0 then return self:GetToken("colors","positive","|cff20ff20").."+"..tostring(value).."|r"end
+    if value<0 then return self:GetToken("colors","negative","|cffff4040")..tostring(value).."|r"end
+    return"0"
+end
+
+function Components:ReplaceHyperlinkLabel(link,label)
+    if type(link)~="string"then return tostring(label or"")end
+    local prefix,payload,oldLabel,suffix=link:match("^(.-)|H([^|]+)|h(.-)|h(.*)$")
+    if not payload then return tostring(label or link)end
+    local value=tostring(label or oldLabel or"");if oldLabel and oldLabel:match("^%[.*%]$")and not value:match("^%[.*%]$")then value="["..value.."]"end
+    return prefix.."|H"..payload.."|h"..value.."|h"..suffix
+end
+
+function Components:CreateSection(parent,options)
+    options=options or{};local frame=CreateFrame("Frame",nil,parent);local title=frame:CreateFontString(nil,"OVERLAY",options.titleFont or"GameFontNormal")
+    title:SetPoint("TOPLEFT",0,0);title:SetPoint("TOPRIGHT",0,0);title:SetHeight(options.titleHeight or 22);title:SetJustifyH(options.titleAlign or"LEFT");title:SetText(options.title or"")
+    local content=CreateFrame("Frame",nil,frame);content:SetPoint("TOPLEFT",title,"BOTTOMLEFT",0,-(options.titleGap or 4));content:SetPoint("BOTTOMRIGHT")
+    local layout=HolyStorm.UILayout:CreateContainer(content,{frame=content,axis=options.axis or"column",gap=options.gap or 0,padding=options.padding})
+    local section={frame=frame,title=title,content=content,layout=layout}
+    function section:SetTitle(value)title:SetText(value or"")end;function section:Add(child,track)return layout:Add(child,track)end;function section:Remove(child)return layout:Remove(child)end;function section:Clear()return layout:Clear()end;function section:Relayout()return layout:Relayout()end
+    return section
 end
 
 function Components:CreateContainer(parent,options)
@@ -85,6 +120,7 @@ function Components:Build(parent,description,context)
     elseif kind=="row"then component=self:CreateRow(parent,description)
     elseif kind=="column"or kind=="container"or kind=="group"then component=self:CreateColumn(parent,description)
     elseif kind=="scroll"then component=self:CreateScrollContainer(parent,description)
+    elseif kind=="section"then component=self:CreateSection(parent,description)
     elseif kind=="table"then component=self:CreateTable(parent,description)
     elseif kind=="tabGroup"then component=self:CreateTabGroup(parent,description)
     elseif kind=="treeGroup"then component=self:CreateTreeGroup(parent,description)

@@ -1,8 +1,8 @@
-local addonVersion="1.0.0"
+local addonVersion="2.0.0"
 local HolyStorm=LibStub("AceAddon-3.0"):GetAddon("Holy_Storm")
 local localeLibrary=LibStub("AceLocale-3.0",true)
 local L=localeLibrary and localeLibrary.GetLocale and localeLibrary:GetLocale("Holy_Storm_CharacterUI")or setmetatable({},{__index=function(_,key)return key end})
-local CharacterUI={version=addonVersion,tabs={},tabOrder={},summarySections={},summaryOrder={},linkHandlers={},context=nil,contextToken=0,history={},maxHistory=20,pendingRefreshBlocks={}}
+local CharacterUI={version=addonVersion,tabs={},tabOrder={},summarySections={},summaryOrder={},context=nil,contextToken=0,history={},maxHistory=20,pendingRefreshBlocks={}}
 
 CharacterUI.raidDifficulties={
  LFR={id="LFR",order=1,color={r=1,g=.82,b=0},difficultyIds={[7]=true,[17]=true}},
@@ -42,8 +42,22 @@ function CharacterUI:RegisterSummarySection(definition)
  table.sort(self.summaryOrder,function(a,b)local x,y=self.summarySections[a],self.summarySections[b];if(x.order or 100)==(y.order or 100)then return a<b end;return(x.order or 100)<(y.order or 100)end);if HolyStorm.Events then HolyStorm.Events:Emit("HS_CHARACTER_SUMMARY_SECTION_REGISTERED",definition.id)end;return true
 end
 function CharacterUI:GetSummarySections()local out={};for _,id in ipairs(self.summaryOrder)do out[#out+1]=self.summarySections[id]end;return out end
-function CharacterUI:RegisterLinkHandler(kind,definition)if not validId(kind)or type(definition)~="table"then return false end;self.linkHandlers[kind]=definition;return true end
-function CharacterUI:GetLinkHandler(kind)return self.linkHandlers[kind]end
+function CharacterUI:FormatState(value,state,options)
+ local components=HolyStorm.UI and HolyStorm.UI.Components or HolyStorm.UIComponents
+ return components and components:FormatState(value,state,options)or(value==nil and"|cff888888–|r"or tostring(value))
+end
+function CharacterUI:CreateTableView(parent,options)
+ options=options or{};local components=assert(HolyStorm.UI and HolyStorm.UI.Components,"Holy Storm UI components unavailable")
+ local layout=components:CreateColumn(parent,{gap=6,padding=options.padding or{left=8,right=8,top=8,bottom=8}})
+ local summary=components:CreateText(layout.frame,{font=options.summaryFont or"GameFontNormalLarge",text="",align="LEFT",wrap=false})
+ local dataTable=components:CreateTable(layout.frame,options)
+ layout:Add(summary,{height=options.summaryHeight or 24});layout:Add(dataTable,{weight=1,minHeight=80})
+ return{kind="declarative",frame=layout.frame,layout=layout,summary=summary,table=dataTable}
+end
+function CharacterUI:SetTableView(view,rows,options)
+ options=options or{};if not(view and view.table)then return false end
+ view.summary:SetText(options.summary or"");view.table:SetEmptyText(options.emptyText or self:FormatState(nil));view.table:SetData(type(rows)=="table"and rows or{});return true
+end
 function CharacterUI:ApplyClassIconTexture(texture,classFile)
  if not texture or not texture.SetTexture then return false end
  local coords=CLASS_ICON_TCOORDS and classFile and CLASS_ICON_TCOORDS[classFile]
@@ -133,5 +147,4 @@ function CharacterUI:ConsumeRefresh(characterUUID)
 end
 
 HolyStorm.CharacterUI=CharacterUI
-for kind,definition in pairs(HolyStorm.pendingCharacterLinkHandlers or{})do CharacterUI:RegisterLinkHandler(kind,definition)end
 if HolyStorm.FlushCharacterExtensions then HolyStorm:FlushCharacterExtensions()end

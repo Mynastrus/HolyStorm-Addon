@@ -3,7 +3,8 @@ local L = LibStub("AceLocale-3.0"):NewLocale("Holy_Storm_Dungeons", "enUS", true
 
 L["DISPLAY_NAME"] = "Mythic+"
 L["UNKNOWN"]="Unknown";L["NO_MYTHICPLUS"]="No Mythic+ data for the current season.";L["PERMISSION_DENIED"]="You do not have permission to view this content.";L["MODULE_DISABLED"]="This module is disabled."
-L["COLUMN_DUNGEON"]="Dungeon";L["DUNGEON_SCORE"]="Dungeon score";L["BEST_RUN"]="Best run";L["MYTHIC_IN_TIME"]="In time";L["MYTHIC_OVERTIME"]="Over time";L["DUNGEONS_TOTAL"]="Dungeons completed";L["BEST_RATING"]="Best dungeon score";L["BEST_KEY"]="Best key";L["OVERALL_RATING"]="Overall rating";L["SEASON"]="Season %s";L["TELEPORT_UNAVAILABLE"]="No reliably mapped dungeon teleport is available.";L["OPEN_JOURNAL"]="Click to open in the Adventure Guide."
+L["COLUMN_DUNGEON"]="Dungeon";L["DUNGEON_SCORE"]="Dungeon score";L["BEST_RUN"]="Best run";L["MYTHIC_IN_TIME"]="In time";L["MYTHIC_OVERTIME"]="Over time";L["DUNGEONS_TOTAL"]="Dungeons completed";L["BEST_RATING"]="Best dungeon score";L["BEST_KEY"]="Best key";L["OVERALL_RATING"]="Overall rating";L["SEASON"]="Season %s";L["TELEPORT_UNAVAILABLE"]="Dungeon teleport not yet available.";L["OPEN_JOURNAL"]="Click to open in the Adventure Guide."
+L["TYRANNICAL"]="Tyrannical";L["FORTIFIED"]="Fortified";L["SEASON_SUMMARY"]="Season %s  •  Overall rating: %s";L["TELEPORT_READY"]="Click to teleport to the dungeon.";L["TELEPORT_COOLDOWN"]="Next teleport available in: %s"
 L["DESCRIPTION"] = "Tracks keystones, affixes, and weekly Mythic+ runs from Blizzard data."
 L["CURRENT_KEY"] = "Current keystone"
 L["WEEKLY_RUNS"] = "Weekly runs"

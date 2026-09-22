@@ -41,6 +41,8 @@ assert(loadfile(root.."UI/Framework/Layout.lua"))()
 assert(loadfile(root.."UI/Framework/Components.lua"))()
 assert(loadfile(root.."UI/Framework/Table.lua"))()
 
+local section=HolyStorm.UIComponents:Build(region("section-parent"),{type="section",title="Details",children={{type="text",text="Content",track={height=20}}}});assert(section.title.textValue=="Details"and#section.layout.children==1,"declarative sections compose central layout children")
+
 local Layout=HolyStorm.UILayout
 local widths=Layout:ResolveTracks({{width=80},{weight=1,minWidth=50},{weight=2}},500,10)
 assert(widths[1]==80,"fixed track")
@@ -64,6 +66,8 @@ local reused=dataTable.rowFrames[1]
 dataTable:SetData({{name="Beta",status="Ready"}});assert(dataTable.rowFrames[1]==reused,"rows are reused")
 dataTable:SetData({{name="Zulu"},{name="alpha"}});assert(dataTable:SetSort("name","asc")and dataTable.rows[1].name=="alpha","optional sorting")
 local oldFlexible=dataTable.columnWidths[2];dataTable.frame.width=800;dataTable.scroll.width=800;dataTable:Relayout();assert(dataTable.columnWidths[2]>oldFlexible,"table relayout on resize")
+dataTable.frame.width=150;dataTable.scroll.width=150;dataTable:Relayout();local compactTotal=2;for _,width in ipairs(dataTable.columnWidths)do compactTotal=compactTotal+width end;assert(compactTotal<=126.01,"over-constrained tables compact centrally without overlapping the viewport")
+local truncationTable=HolyStorm.UIComponents:CreateTable(parent,{columns={{id="name",weight=1,truncate=true}},cellPadding=2});truncationTable.frame.width=90;truncationTable.frame.height=100;truncationTable.scroll.width=90;truncationTable:SetData({{name="Übermäßig langer Name"}});truncationTable:Relayout();assert(truncationTable.rowFrames[1].cells[1].text.textValue:find("...",1,true),"UTF-8 labels truncate through the central table")
 
 assert(loadfile(root.."UI/Framework/UIManager.lua"))()
 local UI=HolyStorm.UI

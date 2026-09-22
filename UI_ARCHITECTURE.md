@@ -59,7 +59,7 @@ auf `OnSizeChanged`; es gibt keine Layout-Polling-Schleife.
 
 - `CreateText`, `CreateIcon`, `CreateButton`
 - `CreateContainer`, `CreateRow`, `CreateColumn`
-- `CreateScrollContainer`
+- `CreateScrollContainer`, `CreateSection`
 - `CreateTabGroup`, `CreateTreeGroup`
 - `CreateTable`
 - `Build(parent, description, context)` für rekursive Beschreibungen
@@ -103,6 +103,30 @@ Rows und Cells werden gepoolt und bei einem Refresh wiederverwendet. Resize
 berechnet nur Anker und Breiten neu. `SetData({})` zeigt den lokalisierten Empty
 State. `nil`-Werte werden über `unknownText` dargestellt. Sortierung und Custom
 Renderer sind opt-in; die Tabelle kennt keine fachlichen Datentypen.
+
+Für schmale Fenster kann eine Spalte `truncate = true` setzen. Der Table-
+Controller kürzt dann nur den sichtbaren Text mit `...` und berechnet ihn bei
+jedem Resize neu. `cell:SetDisplay(display, plainLabel, formatter)` trennt den
+zu messenden Anzeigenamen vom endgültigen Rich Text. So kann etwa ein Item-Link
+gekürzt werden, ohne sein Hyperlink-Payload anzutasten. Ein Tooltip-Callback
+erhält `(row, column, table, GameTooltip, owner)` und kann entweder Text
+zurückgeben oder den Tooltip selbst befüllen und `true` zurückgeben. Fachliche
+Tooltip-Inhalte gehören immer in den Adapter, nicht in `Table.lua`.
+
+## Einheitliche UI-Zustände
+
+`UIComponents.State` und `UIComponents:FormatState` unterscheiden drei
+Darstellungszustände:
+
+- `VALUE`: ein bekannter Wert; `0` bleibt ausdrücklich `0`.
+- `EMPTY`: ein bestätigter Leerzustand; der Adapter liefert dafür den passenden
+  Text oder eine leere Zelle.
+- `UNKNOWN`: fehlend oder unzuverlässig; Darstellung als graues `–`.
+
+Tabellenadapter dürfen `nil` deshalb nicht in `0` oder einen fachlichen
+Leerzustand umdeuten. `FormatDelta` ergänzt positive Werte grün, negative rot
+und Null neutral. Diese Helfer enthalten ausschließlich UI-Semantik und keine
+Snapshot- oder Domainlogik.
 
 ## Deklarative Views
 
@@ -188,15 +212,49 @@ Texturen. `ApplyTheme(overrides)` ersetzt gezielt Tokens und emittiert
 Theme-System. Ein späteres ElvUI-Theme bleibt ein optionales separates Addon;
 die Basis-UI besitzt keine ElvUI-Abhängigkeit.
 
-## Aktueller Migrationsstand und Regeln
+## Character Overview
 
-Character Overview registriert seine Seite über `RegisterView`, verwendet die
-zentrale TabGroup und rendert den Stats-Tab über die zentrale Table. Der
-gemischte Rich-Text-/Tabellenrenderer bleibt vorerst als Compatibility-Pfad für
-Equipment, Mythic+, Raid und Delves bestehen. Diese Feature-Tabs werden in
-späteren, fachlich getrennten Schritten auf reine Table-/Section-Beschreibungen
-migriert. Die Character-Grundstruktur und Permission-Semantik wurden nicht
-verändert.
+Character Overview ist genau eine deklarative View (`character`). Ihre Shell
+besteht aus dem zentralen `HeaderBar`, einem `Column`-Layout, der zentralen
+`TabGroup` und deren gemeinsamem Content-Host. Jeder Tab registriert über
+`RegisterCharacterTab` einen kleinen Vertrag aus `build` und `refresh`:
+
+```text
+Character-/Feature-Snapshot
+    -> tab-eigener ViewModel-Adapter
+    -> CreateTableView / zentrale Table
+    -> gepoolte WoW-Frames
+```
+
+`build` beschreibt Spalten, Constraints, Tooltips und Aktionen. `refresh`
+liest nur bestehende Stores über `CharacterUI:GetSnapshot`, formt Rows und ruft
+`SetTableView` auf. Es scannt nicht, persistiert nicht und startet keine
+Polling-Schleife. Die vorhandene Refresh-/Task-Pipeline bleibt der einzige Weg
+zur Datenbeschaffung.
+
+Summary bleibt eine kompakte Tabelle aus Identity, Level, Klasse,
+Spezialisierung, Fraktion und registrierten High-Level-Abschnitten. Equipment,
+Stats, Mythic+, Raid, Delves, Twinks und Gildenerfolge verwenden dieselbe
+zentrale Table. Feature-Adapter dürfen Cell-Renderer für fachliche Darstellung
+besitzen, aber keine eigenen Row-, Grid-, Scroll-, Tab- oder Width-Engines.
+
+Equipment bewahrt immer den vollständigen gespeicherten Item-Link. Für
+Truncation wird ausschließlich das Label mit `ReplaceHyperlinkLabel` ersetzt;
+native Tooltips erhalten weiterhin `GameTooltip:SetHyperlink(originalLink)`.
+Bestätigt leere Slots nutzen Slotgrafik und Leertext, unbekannte Slots das
+graue `–`. Mythic+-Teleports werden nur aus einer gespeicherten Spell-ID
+angeboten und fragen beim Hover/Klick den nativen Known-/Cooldown-Zustand ab.
+Raid-Tooltips werden aus den Snapshot-Rows erzeugt und halten keinen globalen
+Renderer-Zustand.
+
+Tab-Views und ihre Table-Rows werden wiederverwendet. Layout und flexible
+Spalten reagieren auf `OnSizeChanged`; feste Status-/Progress-Spalten bleiben
+stabil, während Namen den verfügbaren Rest erhalten und gegebenenfalls
+gekürzt werden. Ein fehlerhafter Feature-Adapter wird tabweise isoliert und
+durch einen lokalisierten Empty/Error-State ersetzt.
+
+Character Overview besitzt weiterhin keine eigene Zugriffs-Permission. Nur
+einzelne Daten-Tabs prüfen ihre bereits vorhandenen fachlichen Permissions.
 
 Der Administration-Host registriert sich als zentrale View und erzeugt seine
 Navigation über `CreateTreeGroup`. Die komplexen vorhandenen Editoren wurden
@@ -214,3 +272,7 @@ Für neue Module gelten folgende Regeln:
    jedem Refresh neu erzeugen.
 7. Alle sichtbaren Texte mindestens in `enUS` und `deDE` lokalisieren.
 8. Feature-Availability deklarieren und fehlende optionale Addons tolerieren.
+9. Character-Tabs mit `labelKey`, `build` und `refresh` registrieren; für
+   tabellarische Daten `CharacterUI:CreateTableView` verwenden.
+10. Unknown, Empty und Zero bereits im ViewModel eindeutig festlegen und
+    Tooltips datengetrieben über Column-/Row-Hooks bereitstellen.

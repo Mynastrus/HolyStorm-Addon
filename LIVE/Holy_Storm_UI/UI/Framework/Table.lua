@@ -15,6 +15,20 @@ local function rowValue(row,column,index)
     if row[column.id]~=nil then return row[column.id]end
     return row[column.index or index]
 end
+local function textCharacters(value)
+    local out={};for character in tostring(value or""):gmatch("[%z\1-\127\194-\244][\128-\191]*")do out[#out+1]=character end;return out
+end
+local function compactWidths(widths,columns,available,gap)
+    local target=math.max(0,available-math.max(0,#widths-1)*gap);local total=0;for _,width in ipairs(widths)do total=total+width end
+    local excess=math.max(0,total-target);if excess<=.001 then return widths end
+    local active={};for index,width in ipairs(widths)do local floor=math.max(1,tonumber(columns[index].compactWidth)or 36);if width>floor then active[index]=floor end end
+    while excess>.001 and next(active)do
+        local capacity=0;for index,floor in pairs(active)do capacity=capacity+math.max(0,widths[index]-floor)end;if capacity<=.001 then break end
+        local removed=0;for index,floor in pairs(active)do local room=math.max(0,widths[index]-floor);local amount=math.min(room,excess*room/capacity);widths[index]=widths[index]-amount;removed=removed+amount;if widths[index]<=floor+.001 then active[index]=nil end end
+        if removed<=.001 then break end;excess=math.max(0,excess-removed)
+    end
+    return widths
+end
 
 local TableMethods={}
 function TableMethods:SetColumns(columns)
@@ -86,14 +100,28 @@ function TableMethods:AcquireCell(row,index)
     local frame=CreateFrame("Button",nil,row.frame);frame:RegisterForClicks("LeftButtonUp","RightButtonUp")
     local text=frame:CreateFontString(nil,"OVERLAY","GameFontHighlight");text:SetPoint("LEFT",self.options.cellPadding or 6,0);text:SetPoint("RIGHT",-(self.options.cellPadding or 6),0);text:SetJustifyV("MIDDLE");text:SetWordWrap(false)
     cell={frame=frame,text=text}
+    function cell:SetDisplay(value,truncateSource,formatter)self.rawText=tostring(truncateSource or value or"");self.formatter=formatter;self.text:SetText(formatter and formatter(self.rawText)or tostring(value or""))end
     frame:SetScript("OnClick",function(_,button)local column=self.columns[index];if column and column.onClick then column.onClick(row.frame.rowData,button,column,self)elseif self.options.onRowClick then self.options.onRowClick(row.frame.rowData,button,self)end end)
     frame:SetScript("OnEnter",function(owner)self:ShowTooltip(owner,row.frame.rowData,self.columns[index])end);frame:SetScript("OnLeave",function()if GameTooltip then GameTooltip:Hide()end end)
     row.cells[index]=cell;return cell
 end
 function TableMethods:ShowTooltip(owner,row,column)
     if not GameTooltip then return end
-    local source=column and column.tooltip or self.options.rowTooltip;local text=call(source,row,column,self)
-    if not text or text==""then return end;GameTooltip:SetOwner(owner,"ANCHOR_RIGHT");GameTooltip:SetText(text);GameTooltip:Show()
+    local source=column and column.tooltip or self.options.rowTooltip;if not source then return end
+    GameTooltip:SetOwner(owner,"ANCHOR_RIGHT");local text=call(source,row,column,self,GameTooltip,owner)
+    if text==true then GameTooltip:Show();return end
+    if not text or text==""then return end;GameTooltip:SetText(tostring(text));GameTooltip:Show()
+end
+function TableMethods:FitCell(cell,column)
+    if not column.truncate or not cell.rawText then return end
+    local available=math.max(1,(cell.frame.GetWidth and cell.frame:GetWidth()or 1)-2*(self.options.cellPadding or 6));local source=cell.rawText
+    local function measure(value)
+        cell.text:SetText(value);if cell.text.GetUnboundedStringWidth then return cell.text:GetUnboundedStringWidth()end;if cell.text.GetStringWidth then return cell.text:GetStringWidth()end;return#value*7
+    end
+    local result=source;if measure(source)>available then
+        local characters=textCharacters(source);local low,high,best=0,#characters,"...";while low<=high do local middle=math.floor((low+high)/2);local candidate=table.concat(characters,"",1,middle).."...";if measure(candidate)<=available then best=candidate;low=middle+1 else high=middle-1 end end;result=best
+    end
+    cell.text:SetText(cell.formatter and cell.formatter(result)or result)
 end
 function TableMethods:RenderRow(row,data,rowIndex)
     row.frame.rowData=data;row.background:SetAlpha(rowIndex%2==0 and .8 or .35)
@@ -101,11 +129,12 @@ function TableMethods:RenderRow(row,data,rowIndex)
     row.frame:SetEnabled(not disabled);row.frame:SetAlpha(disabled and .55 or 1)
     for index,column in ipairs(self.columns)do
         local cell=self:AcquireCell(row,index);local value=rowValue(data,column,index)
-        cell.text:SetJustifyH(column.align or"LEFT");cell.text:SetText("");cell.frame:Show()
+        cell.text:SetJustifyH(column.align or"LEFT");cell.text:SetText("");cell.rawText,cell.formatter=nil,nil;cell.frame:Show()
         if column.renderCell then
-            local result=call(column.renderCell,cell,value,data,column,rowIndex,self);if result~=nil then cell.text:SetText(tostring(result))end
-        else cell.text:SetText(value==nil and(column.unknownText or self.options.unknownText or L["TABLE_UNKNOWN"])or tostring(value))end
-        cell.frame:SetEnabled(not disabled and(column.onClick~=nil or self.options.onRowClick~=nil))
+            local result=call(column.renderCell,cell,value,data,column,rowIndex,self);if result~=nil then cell:SetDisplay(tostring(result))end
+        else cell:SetDisplay(value==nil and(column.unknownText or self.options.unknownText or L["TABLE_UNKNOWN"])or tostring(value))end
+        self:FitCell(cell,column)
+        cell.frame:SetEnabled(not disabled and(column.onClick~=nil or column.tooltip~=nil or self.options.onRowClick~=nil or self.options.rowTooltip~=nil))
     end
     for index=#self.columns+1,#row.cells do row.cells[index].frame:Hide()end
     row.frame:Show()
@@ -123,10 +152,10 @@ function TableMethods:Relayout()
     self.header:SetHeight(headerHeight);self.scroll:SetPoint("TOPLEFT",self.frame,"TOPLEFT",0,-headerHeight);self.scroll:SetPoint("BOTTOMRIGHT",self.frame,"BOTTOMRIGHT",0,0)
     local bodyWidth=math.max(1,(self.scroll.GetWidth and self.scroll:GetWidth()or width)-(self.options.scrollbarWidth or 24));self.content:SetWidth(bodyWidth)
     local tracks={};for index,column in ipairs(self.columns)do tracks[index]={width=column.width,percent=column.percent,weight=column.weight or column.flex,min=column.minWidth,max=column.maxWidth}end
-    self.columnWidths=Layout:ResolveTracks(tracks,bodyWidth,gap);local x=0
+    self.columnWidths=compactWidths(Layout:ResolveTracks(tracks,bodyWidth,gap),self.columns,bodyWidth,gap);local x=0
     for index,columnWidth in ipairs(self.columnWidths)do
         local header=self.headers[index];if header then header:ClearAllPoints();header:SetPoint("TOPLEFT",self.header,"TOPLEFT",x,0);header:SetSize(math.max(1,columnWidth),headerHeight)end
-        for rowIndex,row in ipairs(self.rowFrames)do if rowIndex<=#self.rows then local cell=row.cells[index];if cell then cell.frame:ClearAllPoints();cell.frame:SetPoint("TOPLEFT",row.frame,"TOPLEFT",x,0);cell.frame:SetSize(math.max(1,columnWidth),rowHeight)end end end
+        for rowIndex,row in ipairs(self.rowFrames)do if rowIndex<=#self.rows then local cell=row.cells[index];if cell then cell.frame:ClearAllPoints();cell.frame:SetPoint("TOPLEFT",row.frame,"TOPLEFT",x,0);cell.frame:SetSize(math.max(1,columnWidth),rowHeight);self:FitCell(cell,self.columns[index])end end end
         x=x+columnWidth+(index<#self.columnWidths and gap or 0)
     end
     for index,row in ipairs(self.rowFrames)do if index<=#self.rows then row.frame:ClearAllPoints();row.frame:SetPoint("TOPLEFT",self.content,"TOPLEFT",0,-((index-1)*rowHeight));row.frame:SetSize(bodyWidth,rowHeight)end end
