@@ -15,4 +15,3 @@
 Locales\enUS.lua
 Locales\deDE.lua
 Equipment.lua
-UI\CharacterTab.lua

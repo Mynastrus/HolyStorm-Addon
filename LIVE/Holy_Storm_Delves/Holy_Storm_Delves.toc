@@ -12,4 +12,3 @@
 Locales\enUS.lua
 Locales\deDE.lua
 Delves.lua
-UI\CharacterTab.lua

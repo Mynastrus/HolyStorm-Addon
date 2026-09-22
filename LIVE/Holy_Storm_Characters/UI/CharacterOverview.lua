@@ -10,11 +10,6 @@ local function display(value,options)return C:FormatState(value,nil,options)end
 local function dateValue(timestamp)return timestamp and date("%d.%m.%Y %H:%M",timestamp)or nil end
 local function classColor(classFile)return RAID_CLASS_COLORS and RAID_CLASS_COLORS[classFile]or NORMAL_FONT_COLOR or{r=1,g=1,b=1}end
 
-local function canRender(view,definition)
- local ok,reason=C:CanUseTab(definition);if ok then return true end
- C:SetTableView(view,{}, {emptyText=reason=="PERMISSION"and L["PERMISSION_DENIED"]or L["MODULE_DISABLED"]});return false
-end
-
 local function summaryRows(context)
  local record=context.record or{};local faction=record.faction
  local rows={
@@ -60,7 +55,6 @@ local function buildStats(parent)
  },rowHeight=26,headerHeight=26,columnGap=1,emptyText=L["NO_STATS"]})
 end
 local function refreshStats(view,context,definition)
- if not canRender(view,definition)then return end
  local snapshot=C:GetSnapshot(context.characterUUID,"stats");if not snapshot then C:SetTableView(view,{}, {emptyText=L["NO_STATS"]});return end
  local rows={};local function primary(label,value)
   local baseValue=type(value)=="table"and tonumber(value.base)or nil;local totalValue=type(value)=="table"and tonumber(value.effective)or nil;local additional=baseValue~=nil and totalValue~=nil and totalValue-baseValue or nil
@@ -82,7 +76,6 @@ local function buildTwinks(parent)
  },rowHeight=26,headerHeight=26,columnGap=1,emptyText=L["NO_TWINKS"],onRowClick=function(row)C:OpenCharacter(row.characterUUID,"summary")end})
 end
 local function refreshTwinks(view,context,definition)
- if not canRender(view,definition)then return end
  local core,accountUUID=HolyStorm.TwinkCore,context.accountUUID;if not accountUUID then C:SetTableView(view,{}, {emptyText=L["NO_TWINKS"]});return end
  local guild=context.guild;local accountMain=core:GetAccountMain(accountUUID,guild);local guildMain,isShadow=core:GetGuildMain(accountUUID,guild);local characters=core:GetVisibleCharactersForViewer(accountUUID,guild);local rows={}
  for _,character in ipairs(characters)do
@@ -95,11 +88,11 @@ end
 
 local standardTabs={
  {id="summary",order=1,labelKey="TAB_SUMMARY",icon=tabVisuals.summary.icon,blocks={"identity"},events={"HS_CHARACTER_UPDATED","HS_ROSTER_UPDATED"},build=buildSummary,refresh=refreshSummary},
- {id="stats",order=60,labelKey="TAB_STATS",icon=tabVisuals.stats.icon,permission="player-read",moduleId="characterStats",blocks={"stats"},events={"HS_STATS_UPDATED"},build=buildStats,refresh=refreshStats},
- {id="twinks",order=70,labelKey="TAB_TWINKS",icon=tabVisuals.twinks.icon,permission="player-read",blocks={"identity"},events={"HS_TWINKS_UPDATED","HS_ACCOUNT_MAIN_CHANGED","HS_GUILD_MAIN_CHANGED","HS_TWINK_VISIBILITY_CHANGED"},characterScopedEvents=false,build=buildTwinks,refresh=refreshTwinks},
+ {id="stats",order=60,labelKey="TAB_STATS",icon=tabVisuals.stats.icon,blocks={"stats"},events={"HS_STATS_UPDATED"},build=buildStats,refresh=refreshStats},
+ {id="twinks",order=70,labelKey="TAB_TWINKS",icon=tabVisuals.twinks.icon,blocks={"identity"},events={"HS_TWINKS_UPDATED","HS_ACCOUNT_MAIN_CHANGED","HS_GUILD_MAIN_CHANGED","HS_TWINK_VISIBILITY_CHANGED"},characterScopedEvents=false,build=buildTwinks,refresh=refreshTwinks},
 }
 for _,definition in ipairs(standardTabs)do assert(C:RegisterTab(definition))end
-C:RegisterSummarySection({id="twinks",order=90,render=function(context)local allowed,reason=C:CanUseTab(C:GetTab("twinks"));if not allowed then return{label=L["SUMMARY_TWINKS"],tabId="twinks",value=reason=="PERMISSION"and L["PERMISSION_DENIED"]or L["MODULE_DISABLED"]}end;local account=context.accountUUID and HolyStorm.TwinkCore:GetAccount(context.accountUUID);local count=account and HolyStorm.Utils.TableCount(account.characters)or 0;return{label=L["SUMMARY_TWINKS"],tabId="twinks",value=count>0 and string.format(L["CHARACTER_COUNT"],count)or""}end})
+C:RegisterSummarySection({id="twinks",order=90,render=function(context)local account=context.accountUUID and HolyStorm.TwinkCore:GetAccount(context.accountUUID);local count=account and HolyStorm.Utils.TableCount(account.characters)or 0;return{label=L["SUMMARY_TWINKS"],tabId="twinks",value=count>0 and string.format(L["CHARACTER_COUNT"],count)or""}end})
 HolyStorm:RegisterCapability("CharacterOverview","character.open",function(_,characterUUID,tabId)return C:OpenCharacter(characterUUID,tabId or"summary")end)
 
 function Page:UpdateTabVisuals()if self.tabGroup and self.tabGroup.SelectTab and C.activeTab then self.tabGroup:SelectTab(C.activeTab,true)end end

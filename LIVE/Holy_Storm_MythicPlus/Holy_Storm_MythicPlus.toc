@@ -14,4 +14,3 @@
 Locales\enUS.lua
 Locales\deDE.lua
 MythicPlus.lua
-UI\CharacterTab.lua

@@ -16,6 +16,7 @@ UI\Locales\deDE.lua
 TwinkCore.lua
 CharacterDirectory.lua
 UI\CharacterUI.lua
+UI\StoredFeatureTabs.lua
 CharacterActions.lua
 Characters.lua
 UI\CharacterOverview.lua

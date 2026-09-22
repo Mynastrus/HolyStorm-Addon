@@ -15,4 +15,3 @@
 Locales\enUS.lua
 Locales\deDE.lua
 Raids.lua
-UI\CharacterTab.lua

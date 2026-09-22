@@ -232,6 +232,16 @@ liest nur bestehende Stores über `CharacterUI:GetSnapshot`, formt Rows und ruft
 Polling-Schleife. Die vorhandene Refresh-/Task-Pipeline bleibt der einzige Weg
 zur Datenbeschaffung.
 
+Die sieben regulären Tabs Summary, Equipment, Mythic+, Raid, Delves, Stats und
+Twinks gehören deshalb fest zum Characters-Addon und bleiben in dieser
+Reihenfolge registriert. Optionale Feature-Addons sind ausschließlich Producer:
+Sie erfassen und validieren Snapshots und übergeben sie an Core/Character
+Storage. Die Overview ist der Consumer und rendert vorhandene historische oder
+synchronisierte Blöcke auch dann, wenn der jeweilige Producer nicht installiert,
+geladen oder aktiviert ist. Empfangs- und Sync-Regeln bestimmen bereits, welche
+Daten lokal vorliegen dürfen; diese sieben Read-Tabs führen keine zweite
+Display-Permission- oder Modulverfügbarkeitsprüfung aus.
+
 Summary bleibt eine kompakte Tabelle aus Identity, Level, Klasse,
 Spezialisierung, Fraktion und registrierten High-Level-Abschnitten. Equipment,
 Stats, Mythic+, Raid, Delves, Twinks und Gildenerfolge verwenden dieselbe

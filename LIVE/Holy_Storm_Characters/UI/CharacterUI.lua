@@ -93,9 +93,12 @@ function CharacterUI:ShowTooltip(owner,characterUUID)
  GameTooltip:Show();return true
 end
 
+local storedSnapshotFields={equipment="equipment",mythicPlus="mythicPlus",raid="raidLockouts",delves="delves",stats="stats"}
 function CharacterUI:GetSnapshot(characterUUID,blockId)
- local data,meta=HolyStorm.Data.CharacterStore:GetBlock(characterUUID,blockId);if data==nil then return nil,meta end
- if blockId=="equipment"and type(data)=="table"then return data.equipment,meta end
+ local store=HolyStorm.Data.CharacterStore;local data,meta=store:GetBlock(characterUUID,blockId)
+ if data==nil then local field=storedSnapshotFields[blockId];local record=field and store:Get(characterUUID);data=record and record[field];meta=store.GetBlockMetadata and store:GetBlockMetadata(characterUUID,blockId)or meta end
+ if data==nil then return nil,meta end
+ if blockId=="equipment"and type(data)=="table"and data.equipment~=nil then return data.equipment,meta end
  return data,meta
 end
 function CharacterUI:GetDataStatus(characterUUID,blockId)
