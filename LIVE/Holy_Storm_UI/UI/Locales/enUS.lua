@@ -1,4 +1,4 @@
-local addonVersion = "1.10.0"
+local addonVersion = "1.11.0"
 local L = LibStub("AceLocale-3.0"):NewLocale("Holy_Storm_UI", "enUS", true)
 
 L["DISPLAY_NAME"] = "User Interface"
@@ -36,3 +36,5 @@ L["NEWS_PROFILES_DETAIL"] = "Use the options page to manage profiles and decide 
 L["NEWS_READ_MORE_TOOLTIP"] = "Open this news article."
 L["NEWS_OPEN_LABEL"] = "Open >"
 L["NEWS_BACK_TOOLTIP"] = "Return to the news overview."
+L["TABLE_EMPTY"] = "No entries are available."
+L["TABLE_UNKNOWN"] = "Unknown"

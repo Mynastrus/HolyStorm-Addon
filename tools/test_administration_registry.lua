@@ -33,7 +33,7 @@ function LibStub(name,silent)if name=="AceAddon-3.0"then return HolyStorm end;if
 
 assert(loadfile(root.."UI/Administration/AdministrationRegistry.lua"))()
 local Admin=HolyStorm.Administration
-assert(Admin and Admin.version=="2.0.0")
+assert(Admin and Admin.version=="2.1.0")
 assert(not Admin:RegisterSection({id="invalid"}))
 
 local lifecycle={build=0,show=0,hide=0,refresh=0,destroy=0}

@@ -1,4 +1,4 @@
-local addonVersion = "1.10.0"
+local addonVersion = "1.11.0"
 local L = LibStub("AceLocale-3.0"):NewLocale("Holy_Storm_UI", "deDE")
 
 if not L then
@@ -40,3 +40,5 @@ L["NEWS_PROFILES_DETAIL"] = "Über die Optionen kannst du Profile verwalten und 
 L["NEWS_READ_MORE_TOOLTIP"] = "Öffnet diesen Beitrag."
 L["NEWS_OPEN_LABEL"] = "Öffnen >"
 L["NEWS_BACK_TOOLTIP"] = "Zurück zur Neuigkeitenübersicht."
+L["TABLE_EMPTY"] = "Keine Einträge verfügbar."
+L["TABLE_UNKNOWN"] = "Unbekannt"

@@ -1,4 +1,4 @@
-local addonVersion="1.4.2"
+local addonVersion="1.5.0"
 local HolyStorm=LibStub("AceAddon-3.0"):GetAddon("Holy_Storm")
 local L=LibStub("AceLocale-3.0"):GetLocale("Holy_Storm_CharacterUI")
 local Page=HolyStorm:RegisterRequiredModule("CharacterOverview")
@@ -24,9 +24,13 @@ function C:CreateTextView(parent)
  local status=frame:CreateFontString(nil,"OVERLAY","GameFontHighlightSmall");status:SetPoint("TOPRIGHT",-12,-8);status:SetJustifyH("RIGHT");status:SetTextColor(.65,.65,.65);status:Hide()
  local scroll=CreateFrame("ScrollFrame",nil,frame,"UIPanelScrollFrameTemplate");scroll:SetPoint("TOPLEFT",8,-8);scroll:SetPoint("BOTTOMRIGHT",-30,8)
  local content=CreateFrame("Frame",nil,scroll);content:SetSize(1,1);scroll:SetScrollChild(content)
- local view={frame=frame,heading=heading,status=status,scroll=scroll,content=content,rows={}}
+ local view={kind="text",frame=frame,heading=heading,status=status,scroll=scroll,content=content,rows={}}
  scroll:SetScript("OnSizeChanged",function()C:LayoutTextView(view)end)
  return view
+end
+function C:CreateTableView(parent,options)
+ local component=assert(HolyStorm.UI and HolyStorm.UI.Components and HolyStorm.UI.Components:CreateTable(parent,options or{}),"Holy Storm UI table component unavailable")
+ component.frame:SetAllPoints();return{kind="table",frame=component.frame,table=component}
 end
 function C:LayoutTextView(view)
  if not view or not view.scroll then return end
@@ -37,7 +41,8 @@ function C:LayoutTextView(view)
    row:SetWidth(width);local textHeight=16
    if row.cellsData then
     local tableWidth=math.min(width,row.maxWidth or width);local x=0
-    for index,column in ipairs(row.columns)do local cell=row.cells[index];local cellWidth=index==#row.columns and(tableWidth-x)or math.floor(tableWidth*column.width);cell:ClearAllPoints();cell:SetPoint("TOPLEFT",row,"TOPLEFT",x+8,-4);cell:SetWidth(math.max(1,cellWidth-16));cell:SetJustifyH(column.align or"LEFT");cell:SetJustifyV(row.verticalCenter and"MIDDLE"or"TOP");textHeight=math.max(textHeight,math.ceil(cell:GetStringHeight()or 16));x=x+cellWidth end
+     local tracks={};for index,column in ipairs(row.columns)do tracks[index]=column.width and column.width<=1 and{percent=column.width}or{width=column.width,weight=column.weight}end;local widths=HolyStorm.UILayout and HolyStorm.UILayout:ResolveTracks(tracks,tableWidth,0)or nil
+     for index,column in ipairs(row.columns)do local cell=row.cells[index];local cellWidth=widths and widths[index]or(index==#row.columns and(tableWidth-x)or math.floor(tableWidth*column.width));cell:ClearAllPoints();cell:SetPoint("TOPLEFT",row,"TOPLEFT",x+8,-4);cell:SetWidth(math.max(1,cellWidth-16));cell:SetJustifyH(column.align or"LEFT");cell:SetJustifyV(row.verticalCenter and"MIDDLE"or"TOP");textHeight=math.max(textHeight,math.ceil(cell:GetStringHeight()or 16));x=x+cellWidth end
    else row.text:SetWidth(math.max(1,width-16));textHeight=math.max(16,math.ceil(row.text:GetStringHeight()or 16))end
    local height=row.blank and 10 or math.max(row.minHeight or 0,textHeight+8)
    row:SetHeight(height);row:ClearAllPoints();row:SetPoint("TOPLEFT",view.content,"TOPLEFT",0,-y);y=y+height
@@ -102,9 +107,19 @@ local function summary(view,context,definition)
  C:SetView(view,L[definition.labelKey],lines,nil,nil,styles)
 end
 local function stats(view,context,definition)
- if blocked(view,definition)then return end;local snapshot,meta=C:GetSnapshot(context.characterUUID,"stats");local status=statusFor(context.characterUUID,"stats");if not snapshot then C:SetView(view,L[definition.labelKey],{L["NO_STATS"]},status);return end
- local lines={tableRow({L["COLUMN_STAT"],L["COLUMN_BASE"],L["COLUMN_EFFECTIVE"]},statsColumns,"header",760)};for _,key in ipairs({"strength","agility","stamina","intellect"})do local x=snapshot.primary and snapshot.primary[key];lines[#lines+1]=tableRow({L["STAT_"..key:upper()],value(x and x.base),value(x and x.effective)},statsColumns,nil,760)end
- if snapshot.armor then lines[#lines+1]=tableRow({L["STAT_ARMOR"],value(snapshot.armor.base),value(snapshot.armor.effective)},statsColumns,nil,760)end;for _,key in ipairs({"criticalStrike","haste","mastery","versatility"})do local x=snapshot.secondary and snapshot.secondary[key];local percent=x and tonumber(x.percent);lines[#lines+1]=tableRow({L["STAT_"..key:upper()],value(x and x.rating),percent and string.format("%.1f%%",percent)or L["UNKNOWN"]},statsColumns,nil,760)end;lines[#lines+1]="";lines[#lines+1]=L["COLUMN_LIVE_BUFFS"]..": "..L["LIVE_BUFFS_UNAVAILABLE"];C:SetView(view,L[definition.labelKey],lines,status,meta,{[#lines]="muted"})
+ if not view.table then
+  if blocked(view,definition)then return end;local snapshot,meta=C:GetSnapshot(context.characterUUID,"stats");local status=statusFor(context.characterUUID,"stats");if not snapshot then C:SetView(view,L[definition.labelKey],{L["NO_STATS"]},status);return end
+  local lines={tableRow({L["COLUMN_STAT"],L["COLUMN_BASE"],L["COLUMN_EFFECTIVE"]},statsColumns,"header",760)};for _,key in ipairs({"strength","agility","stamina","intellect"})do local x=snapshot.primary and snapshot.primary[key];lines[#lines+1]=tableRow({L["STAT_"..key:upper()],value(x and x.base),value(x and x.effective)},statsColumns,nil,760)end
+  if snapshot.armor then lines[#lines+1]=tableRow({L["STAT_ARMOR"],value(snapshot.armor.base),value(snapshot.armor.effective)},statsColumns,nil,760)end;for _,key in ipairs({"criticalStrike","haste","mastery","versatility"})do local x=snapshot.secondary and snapshot.secondary[key];local percent=x and tonumber(x.percent);lines[#lines+1]=tableRow({L["STAT_"..key:upper()],value(x and x.rating),percent and string.format("%.1f%%",percent)or L["UNKNOWN"]},statsColumns,nil,760)end;lines[#lines+1]="";lines[#lines+1]=L["COLUMN_LIVE_BUFFS"]..": "..L["LIVE_BUFFS_UNAVAILABLE"];C:SetView(view,L[definition.labelKey],lines,status,meta,{[#lines]="muted"});return
+ end
+ local ok,reason=C:CanUseTab(definition);if not ok then view.table:SetEmptyText(reason=="PERMISSION"and L["PERMISSION_DENIED"]or L["MODULE_DISABLED"]);view.table:SetData({});return end
+ local snapshot=C:GetSnapshot(context.characterUUID,"stats");if not snapshot then view.table:SetEmptyText(L["NO_STATS"]);view.table:SetData({});return end
+ local rows={};local function add(label,base,effective)rows[#rows+1]={stat=label,base=value(base),effective=value(effective)}end
+ for _,key in ipairs({"strength","agility","stamina","intellect"})do local x=snapshot.primary and snapshot.primary[key];add(L["STAT_"..key:upper()],x and x.base,x and x.effective)end
+ if snapshot.armor then add(L["STAT_ARMOR"],snapshot.armor.base,snapshot.armor.effective)end
+ for _,key in ipairs({"criticalStrike","haste","mastery","versatility"})do local x=snapshot.secondary and snapshot.secondary[key];local percent=x and tonumber(x.percent);add(L["STAT_"..key:upper()],x and x.rating,percent and string.format("%.1f%%",percent)or nil)end
+ rows[#rows+1]={stat=L["COLUMN_LIVE_BUFFS"],base=L["LIVE_BUFFS_UNAVAILABLE"],effective=""}
+ view.table:SetEmptyText(L["NO_STATS"]);view.table:SetData(rows)
 end
 local function twinks(view,context,definition)
  local core,accountUUID=HolyStorm.TwinkCore,context.accountUUID;if not accountUUID then C:SetView(view,L[definition.labelKey],{L["NO_TWINKS"]});return end;local guild=context.guild;local accountMain=core:GetAccountMain(accountUUID,guild);local guildMain,isShadow=core:GetGuildMain(accountUUID,guild);local characters=core:GetVisibleCharactersForViewer(accountUUID,guild);local lines={string.format(L["CHARACTER_COUNT"],#characters),L["ACCOUNT_MAIN"]..": "..value(accountMain),L[isShadow and"SHADOW_MAIN"or"GUILD_MAIN"]..": "..value(guildMain),"",tableRow({L["COLUMN_CHARACTER"],L["COLUMN_CLASS"],L["COLUMN_LEVEL"],L["COLUMN_GUILD"],L["COLUMN_RELATIONSHIP"]},twinkColumns,"header",1450)}
@@ -116,7 +131,11 @@ local standardTabs={
  {id="stats",order=60,labelKey="TAB_STATS",icon=tabVisuals.stats.icon,permission="player-read",moduleId="characterStats",blocks={"stats"},events={"HS_STATS_UPDATED"},refresh=stats},
  {id="twinks",order=70,labelKey="TAB_TWINKS",icon=tabVisuals.twinks.icon,permission="player-read",blocks={"identity"},events={"HS_TWINKS_UPDATED","HS_ACCOUNT_MAIN_CHANGED","HS_GUILD_MAIN_CHANGED","HS_TWINK_VISIBILITY_CHANGED"},characterScopedEvents=false,refresh=twinks},
 }
-for _,definition in ipairs(standardTabs)do definition.build=function(parent)return C:CreateTextView(parent)end;assert(C:RegisterTab(definition))end
+for _,definition in ipairs(standardTabs)do
+ if definition.id=="stats"then definition.build=function(parent)return C:CreateTableView(parent,{columns={{id="stat",title=L["COLUMN_STAT"],weight=1,minWidth=180},{id="base",title=L["COLUMN_BASE"],width=150,align="RIGHT"},{id="effective",title=L["COLUMN_EFFECTIVE"],width=180,align="RIGHT"}},emptyText=L["NO_STATS"],rowHeight=26,headerHeight=26,columnGap=1})end
+ else definition.build=function(parent)return C:CreateTextView(parent)end end
+ assert(C:RegisterTab(definition))
+end
 C:RegisterSummarySection({id="twinks",order=90,render=function(context)local account=context.accountUUID and HolyStorm.TwinkCore:GetAccount(context.accountUUID);local count=account and HolyStorm.Utils.TableCount(account.characters)or 0;return{label=L["SUMMARY_TWINKS"],tabId="twinks",text="  "..(count>0 and string.format(L["CHARACTER_COUNT"],count)or L["NO_TWINKS"])}end})
 HolyStorm:RegisterCapability("CharacterOverview","character.open",function(_,characterUUID,tabId)return C:OpenCharacter(characterUUID,tabId or"summary")end)
 
@@ -134,7 +153,7 @@ function Page:IsCharacterPageVisible()
 end
 function C:LayoutTabView(view)
  if not view or not view.frame or not Page.tabHost then return end
- if view.frame.SetParent then view.frame:SetParent(Page.tabHost)end;view.frame:ClearAllPoints();view.frame:SetPoint("TOPLEFT",Page.tabHost,"TOPLEFT",0,0);view.frame:SetPoint("BOTTOMRIGHT",Page.tabHost,"BOTTOMRIGHT",0,0);if view.frame.SetSize and Page.tabHost.GetWidth and Page.tabHost.GetHeight then view.frame:SetSize(math.max(1,Page.tabHost:GetWidth()or 1),math.max(1,Page.tabHost:GetHeight()or 1))end;if view.scroll then self:LayoutTextView(view)end
+ if view.frame.SetParent then view.frame:SetParent(Page.tabHost)end;view.frame:ClearAllPoints();view.frame:SetPoint("TOPLEFT",Page.tabHost,"TOPLEFT",0,0);view.frame:SetPoint("BOTTOMRIGHT",Page.tabHost,"BOTTOMRIGHT",0,0);if view.frame.SetSize and Page.tabHost.GetWidth and Page.tabHost.GetHeight then view.frame:SetSize(math.max(1,Page.tabHost:GetWidth()or 1),math.max(1,Page.tabHost:GetHeight()or 1))end;if view.kind=="text"then self:LayoutTextView(view)elseif view.table and view.table.Relayout then view.table:Relayout()end
 end
 function C:RefreshHeader()
  local context=self.context;if not context or not Page.headerName then return end;context=self:ResolveContext(context.characterUUID);context.token=self.contextToken;self.context=context;local color=classColor(context.classFile);Page.headerName:SetText(context.name or context.characterUUID);Page.headerName:SetTextColor(color.r,color.g,color.b);local rank=context.member and context.member.rank or context.record and context.record.guildRank;local parts={context.realm,context.className,context.spec and context.spec.name,context.level and(L["LEVEL"].." "..context.level),rank};local clean={};for _,part in ipairs(parts)do if part and part~=""then clean[#clean+1]=part end end;Page.headerInfo:SetText(table.concat(clean,"  •  "))
@@ -156,7 +175,7 @@ function C:SelectTab(id)
  if not Page.views[id]then self:RefreshTab(id)end;self:LayoutTabView(Page.views[id]);Page.views[id].frame:Show();if Page.dirty[id]then self:RefreshTab(id)end;self:RefreshHeader();return true
 end
 function C:OpenCharacter(characterUUID,optionalTab,addHistory)
- local context=self:SetContext(characterUUID,addHistory);if not context then return false end;for _,definition in ipairs(self:GetTabs())do Page.dirty[definition.id]=true end;HolyStorm.UI:ShowPage("character");self:RefreshHeader();self:SelectTab(optionalTab or self.activeTab or"summary");self:RequestRefresh(characterUUID,(self:GetTab(optionalTab or self.activeTab or"summary")or{}).blocks,"CHARACTER_OPEN");return true
+ local context=self:SetContext(characterUUID,addHistory);if not context then return false end;for _,definition in ipairs(self:GetTabs())do Page.dirty[definition.id]=true end;if HolyStorm.UI.ShowView then HolyStorm.UI:ShowView("character")else HolyStorm.UI:ShowPage("character")end;self:RefreshHeader();self:SelectTab(optionalTab or self.activeTab or"summary");self:RequestRefresh(characterUUID,(self:GetTab(optionalTab or self.activeTab or"summary")or{}).blocks,"CHARACTER_OPEN");return true
 end
 function Page:ScheduleRefresh(tabId,guid)
  if guid and C.context and guid~=C.context.characterUUID then return end;self.dirty[tabId]=true;self.dirty.summary=true;if self.refreshScheduled then return end;local token=C.contextToken;self.refreshScheduled=true;C_Timer.After(.05,function()Page.refreshScheduled=nil;if token~=C.contextToken then return end;C:RefreshHeader();if C.activeTab and Page.dirty[C.activeTab]then C:RefreshTab(C.activeTab)end end)
@@ -169,7 +188,7 @@ function Page:InitializeUI()
  local UI=HolyStorm:GetModule("UI",true);local page=CreateFrame("Frame",nil,UI.content);self.page=page;self.views,self.tabButtons,self.dirty={},{},{}
  local headerBar=HolyStorm.UIComponents:CreateHeaderBar(UI.frame or page,UI.content or page);self.headerBar=headerBar;self.header=headerBar.frame;self.classIcon=headerBar.primaryIcon;self.portrait=headerBar.primaryIcon;self.specIcon=headerBar.secondaryIcon;self.headerName=headerBar.title;self.headerInfo=headerBar.subtitle;self.factionMark=headerBar.watermark;self.headerStatus=headerBar.status;self.headerUpdated=headerBar.updated;self.developer=headerBar.developer;self.refreshButton=headerBar.refreshButton
  self.refreshButton:SetScript("OnEnter",function(b)GameTooltip:SetOwner(b,"ANCHOR_LEFT");GameTooltip:SetText(L["REFRESH"]);GameTooltip:Show()end);self.refreshButton:SetScript("OnLeave",function()GameTooltip:Hide()end);self.refreshButton:SetScript("OnClick",function()if C.context then C:RequestRefresh(C.context.characterUUID,(C:GetTab(C.activeTab)or{}).blocks,"MANUAL")end end)
- local aceGUI=LibStub("AceGUI-3.0");local tabGroup=aceGUI:Create("HolyStormTabGroup");tabGroup.frame:SetParent(page);tabGroup.frame:SetPoint("TOPLEFT",12,-8);tabGroup.frame:SetPoint("BOTTOMRIGHT",-12,10);tabGroup.frame:Show();tabGroup:SetCallback("OnGroupSelected",function(_,_,tabId)if C.context then C:SelectTab(tabId);C:RequestRefresh(C.context.characterUUID,(C:GetTab(tabId)or{}).blocks,"TAB_SELECTED")end end);self.tabGroup=tabGroup;self.tabHost=tabGroup:GetContentFrame();self.tabHost:Show();self:BuildTabs();page:HookScript("OnSizeChanged",function()Page:LayoutTabs()end);page:HookScript("OnShow",function()Page:SetHeaderVisible(true)end);page:HookScript("OnHide",function()Page:SetHeaderVisible(false)end);HolyStorm.UI:RegisterPage("character",page,L["WINDOW_TITLE"],function()Page:SetHeaderVisible(true);if C.context then C:RefreshHeader();C:SelectTab(C.activeTab or"summary")end end)
+ local tabGroup=HolyStorm.UI.Components and HolyStorm.UI.Components:CreateTabGroup(page)or LibStub("AceGUI-3.0"):Create("HolyStormTabGroup");tabGroup.frame:SetParent(page);tabGroup.frame:SetPoint("TOPLEFT",12,-8);tabGroup.frame:SetPoint("BOTTOMRIGHT",-12,10);tabGroup.frame:Show();tabGroup:SetCallback("OnGroupSelected",function(_,_,tabId)if C.context then C:SelectTab(tabId);C:RequestRefresh(C.context.characterUUID,(C:GetTab(tabId)or{}).blocks,"TAB_SELECTED")end end);self.tabGroup=tabGroup;self.tabHost=tabGroup:GetContentFrame();self.tabHost:Show();self:BuildTabs();page:HookScript("OnSizeChanged",function()Page:LayoutTabs()end);page:HookScript("OnShow",function()Page:SetHeaderVisible(true)end);page:HookScript("OnHide",function()Page:SetHeaderVisible(false)end);local refresh=function()Page:SetHeaderVisible(true);if C.context then C:RefreshHeader();C:SelectTab(C.activeTab or"summary")end end;if HolyStorm.UI.RegisterView then assert(HolyStorm.UI:RegisterView({id="character",owner="characters",title=L["WINDOW_TITLE"],page=page,refresh=refresh}))else HolyStorm.UI:RegisterPage("character",page,L["WINDOW_TITLE"],refresh)end
  local function registerTabEvents(definition)
   for _,event in ipairs(definition.events or{})do local owner="character-overview:"..definition.id..":"..event;HolyStorm.Events:Register(event,owner,function(_,guid)Page:ScheduleRefresh(definition.id,definition.characterScopedEvents==false and nil or guid)end)end
  end

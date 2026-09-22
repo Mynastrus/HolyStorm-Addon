@@ -40,6 +40,9 @@ Libs\AceConfig-3.0\AceConfigDialog-3.0\AceConfigDialog-3.0.lua
 
 UI\Locales\enUS.lua
 UI\Locales\deDE.lua
+UI\Framework\Layout.lua
+UI\Framework\Components.lua
+UI\Framework\Table.lua
 UI\Framework\UIManager.lua
 UI\Framework\Notifications.lua
 UI\Framework\RichContentRenderer.lua

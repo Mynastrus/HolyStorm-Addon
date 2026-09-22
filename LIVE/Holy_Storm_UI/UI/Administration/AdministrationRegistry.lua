@@ -1,4 +1,4 @@
-local addonVersion = "2.0.0"
+local addonVersion = "2.1.0"
 local HolyStorm = LibStub("AceAddon-3.0"):GetAddon("Holy_Storm")
 local localeLibrary = LibStub("AceLocale-3.0", true)
 local L = localeLibrary and localeLibrary.GetLocale and localeLibrary:GetLocale("Holy_Storm_Policy") or setmetatable({}, { __index=function(_, key) return key end })
@@ -265,9 +265,8 @@ function Administration:EnsureHost()
     local driver=HolyStorm.UI and HolyStorm.UI.driver
     if not driver or not driver.content or not CreateFrame then return false end
     local host=CreateFrame("Frame",nil,driver.content); host:Hide()
-    local aceGUI=LibStub("AceGUI-3.0",true)
-    if not aceGUI then return false end
-    local tree=aceGUI:Create("TreeGroup")
+    local tree=HolyStorm.UI.Components and HolyStorm.UI.Components:CreateTreeGroup(host)or nil
+    if not tree then local aceGUI=LibStub("AceGUI-3.0",true);if not aceGUI then return false end;tree=aceGUI:Create("TreeGroup")end
     tree:SetLayout("Fill"); tree:SetTreeWidth(210); tree.frame:SetParent(host); tree.frame:SetAllPoints(host)
     tree:EnableButtonTooltips(false)
     tree:SetCallback("OnGroupSelected",function(_,_,value)Administration:OnTreeSelected(value)end)
@@ -279,7 +278,10 @@ function Administration:EnsureHost()
     host:HookScript("OnShow",function()Administration:OnHostShown()end)
     host:HookScript("OnHide",function()Administration:HideSection(Administration.activeId)end)
     self.host,self.tree=host,tree
-    HolyStorm.UI:RegisterPage("administration",host,L["ADMINISTRATION_TITLE"],function()Administration:OnHostShown()end)
+    if HolyStorm.UI.RegisterView then
+        local ok=HolyStorm.UI:RegisterView({id="administration",owner="ui.administration",title=L["ADMINISTRATION_TITLE"],page=host,refresh=function()Administration:OnHostShown()end})
+        if not ok then return false end
+    else HolyStorm.UI:RegisterPage("administration",host,L["ADMINISTRATION_TITLE"],function()Administration:OnHostShown()end)end
     self.hostRegistered=true
     return true
 end

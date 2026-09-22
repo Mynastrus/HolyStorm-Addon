@@ -11,6 +11,13 @@ oder anderen Dateien außerhalb von `LIVE` gehören nicht in dieses Changelog.
 
 ## Noch nicht veröffentlicht
 
+### 22. September 2026
+
+- `Holy_Storm_UI` besitzt jetzt eine zentrale deklarative View-, Layout- und Komponentenarchitektur mit festen, prozentualen und gewichteten Tracks, verschachtelten Row-/Column-Containern, Padding, Gaps, Auto-Messung und ereignisgetriebenem Resize.
+- Die generische Table-Komponente unterstützt lokalisierte Header, feste/flexible Spalten, Min-/Max-Breiten, Row-/Header-Höhen, Scrollen, Hover/Disabled, Tooltips, Clicks, opt-in Sortierung, Custom Renderer, Empty/Unknown States sowie Frame-/Cell-Reuse.
+- Character Overview und der Administration-Host registrieren sich über den neuen View-Lifecycle. Der Character-Stats-Tab verwendet die zentrale Table; bestehende gemischte Feature-Tabs behalten vorerst ihren Compatibility-Renderer, dessen Spaltenberechnung bereits auf `UILayout` delegiert.
+- Neue Offline-Tests decken View-Registrierung und Duplikate, optionale Module, Localization-Fallback, Layout-/Spaltenberechnung, Auto-Messung, Resize, Sorting, Empty/Unknown States und Frame-Reuse ab.
+
 ### 18. September 2026
 
 - Die zentrale Rule-/Filter-Administration wurde vervollständigt: derselbe verschachtelte AND-/OR-/NOT-Editor verwaltet typisierte Conditions, strukturierte Enum-/Boolean-/Character-/Account-Werte, Mehrfachwerte sowie Hoch/Runter und Ein-/Ausrücken. Listen, Metadaten, Empty States, Field-Provider-Diagnose und alle sichtbaren Texte liegen in deDE/enUS vor.
