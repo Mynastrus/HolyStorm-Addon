@@ -4,6 +4,14 @@ local Store = { version=addonVersion, currentId = nil, normalized = setmetatable
 local function validateGuildData(data)
     return type(data) == "table" and type(data.roster) == "table" and type(data.ranks) == "table"
 end
+local function flatEqual(left,right)
+    if type(left)~="table"or type(right)~="table"then return false end
+    for key,value in pairs(left)do if right[key]~=value then return false end end;for key in pairs(right)do if left[key]==nil then return false end end;return true
+end
+local function rosterEqual(record,name,realm,playerRank,playerRankIndex,roster,ranks)
+    if type(record)~="table"or record.name~=name or record.realm~=realm or record.playerRank~=playerRank or record.playerRankIndex~=playerRankIndex or not flatEqual(record.ranks,ranks)then return false end
+    if type(record.roster)~="table"then return false end;for guid,member in pairs(record.roster)do if not flatEqual(member,roster[guid])then return false end end;for guid in pairs(roster)do if record.roster[guid]==nil then return false end end;return true
+end
 
 HolyStorm.DataManager:RegisterSchema({
     id="guild-roster", owner="GuildStore", version=1, versionField=false, validate=validateGuildData,
@@ -54,10 +62,14 @@ function Store:RefreshFromBlizzard()
         local name, rank, memberRankIndex, level, class, zone, note, officerNote, online, status, classFile, achievementPoints, achievementRank, mobile, canSoR, reputation, guid = GetGuildRosterInfo(index)
         if guid then
             roster[guid] = { guid=guid, index=index, name=name, rank=rank, rankIndex=memberRankIndex, level=level, class=class, classFile=classFile, zone=zone, note=note, officerNote=officerNote, online=online, status=status, isMobile=mobile, reputation=reputation }
-            HolyStorm.Data.CharacterStore:Upsert(guid, { name=name, realm=name and name:match("%-([^%-]+)$") or realm, class=class, classFile=classFile, level=level, guild=guildName, guildRank=rank, guildRankIndex=memberRankIndex, lastSeen=online and HolyStorm.Utils.Now() or nil }, "blizzard")
+            -- Online presence belongs to the live roster. Reconciliation must not
+            -- refresh the authoritative identity timestamp when nothing changed.
+            HolyStorm.Data.CharacterStore:Upsert(guid, { name=name, realm=name and name:match("%-([^%-]+)$") or realm, class=class, classFile=classFile, level=level, guild=guildName, guildRank=rank, guildRankIndex=memberRankIndex }, "blizzard")
         end
     end
-    local record = self:_GetLive(id) or { id=id, version=0, createdAt=HolyStorm.Utils.Now() }
+    local record = self:_GetLive(id)
+    if rosterEqual(record,guildName,realm,rankName,rankIndex,roster,ranks)then self.currentId=id;HolyStorm.State:Set("guildRosterReady",true);return false,"UNCHANGED"end
+    record = record or { id=id, version=0, createdAt=HolyStorm.Utils.Now() }
     record.name, record.realm, record.playerRank, record.playerRankIndex = guildName, realm, rankName, rankIndex
     record.roster, record.ranks, record.updatedAt, record.updatedBy, record.version = roster, ranks, HolyStorm.Utils.Now(), UnitGUID("player"), (record.version or 0) + 1
     self:_GetAllLive()[id], self.currentId = record, id

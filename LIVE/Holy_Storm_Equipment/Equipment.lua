@@ -28,10 +28,10 @@ local function captureGem(itemLink,index,socketName)
  return{itemId=gemId,name=gemName or cachedName,link=gemLink or cachedLink,icon=icon,socketName=socketName}
 end
 local function isTierItem(itemId,setID)
- local getBonuses=C_Item and C_Item.GetSetBonusesForSpecializationByItemID;if not getBonuses then return setID~=nil end
+ local getBonuses=C_Item and C_Item.GetSetBonusesForSpecializationByItemID;if type(getBonuses)~="function"then return nil end
  local index=C_SpecializationInfo and C_SpecializationInfo.GetSpecialization and C_SpecializationInfo.GetSpecialization()or(GetSpecialization and GetSpecialization())
  local specID;if index then if C_SpecializationInfo and C_SpecializationInfo.GetSpecializationInfo then specID=C_SpecializationInfo.GetSpecializationInfo(index)elseif GetSpecializationInfo then specID=GetSpecializationInfo(index)end end
- if not specID then return setID~=nil end;local bonuses=getBonuses(specID,itemId);return type(bonuses)=="table"and next(bonuses)~=nil
+ if not specID then return nil end;local ok,bonuses=pcall(getBonuses,specID,itemId);if not ok then return nil end;if bonuses==nil then return false end;if type(bonuses)~="table"then return nil end;return next(bonuses)~=nil
 end
 local function captureItem(slot)
  local itemId=GetInventoryItemID("player",slot);local link=GetInventoryItemLink("player",slot);if not itemId then return false end;if not link then return nil,"ITEM_LINK_PENDING"end
@@ -39,8 +39,8 @@ local function captureItem(slot)
  if not level then if C_Item and C_Item.RequestLoadItemDataByID then C_Item.RequestLoadItemDataByID(itemId)end;return nil,"ITEM_DATA_PENDING"end
  local enchantName,socketNames=tooltipDetails(slot);local socketCount=C_Item and C_Item.GetItemNumSockets and C_Item.GetItemNumSockets(link)or#socketNames;socketCount=tonumber(socketCount)or#socketNames;local gems={}
  if C_Item then for index=1,socketCount do gems[index]=captureGem(link,index,socketNames[index])end end
- local quality=select(3,GetItemInfo(link));local setID=select(16,GetItemInfo(link))
- return{slot=slot,itemId=itemId,link=link,itemLevel=level,enchantId=tonumber(fields[3])or 0,enchantName=enchantName,gems=gems,sockets=socketCount,quality=quality,icon=GetInventoryItemTexture("player",slot),setID=setID,isTier=isTierItem(itemId,setID)}
+ local quality=select(3,GetItemInfo(link));local setID=select(16,GetItemInfo(link));local enchantId;if fields[3]==""then enchantId=0 elseif fields[3]~=nil then enchantId=tonumber(fields[3])end
+ return{slot=slot,itemId=itemId,link=link,itemLevel=level,enchantId=enchantId,enchantName=enchantName,gems=gems,sockets=socketCount,quality=quality,icon=GetInventoryItemTexture("player",slot),setID=setID,isTier=isTierItem(itemId,setID)}
 end
 
 HolyStorm:RegisterModule(metadata,function(Module)

@@ -7,32 +7,38 @@ HolyStorm:RegisterModule(metadata,function(Module)
  HolyStorm:ApplyModuleMetadata(Module,metadata)
  local difficultyKeys={[7]="LFR",[17]="LFR",[14]="NORMAL",[15]="HEROIC",[16]="MYTHIC",[33]="TIMEWALKING"};local difficultyOrder={LFR=1,NORMAL=2,HEROIC=3,MYTHIC=4,TIMEWALKING=5}
  local function raidKey(name)return type(name)=="string"and name:lower():gsub("[%s%p%c]+","")or nil end
+ local requiredJournalAPIs={{"EJ_GetNumTiers","tier enumeration"},{"EJ_SelectTier","tier selection"},{"EJ_GetInstanceByIndex","instance enumeration"},{"EJ_SelectInstance","instance selection"},{"EJ_GetEncounterInfoByIndex","encounter enumeration"},{"EJ_GetInstanceInfo","instance metadata"}}
+ local function readJournalAPIs()
+  local api={};for _,definition in ipairs(requiredJournalAPIs)do local name,label=definition[1],definition[2];local fn=_G[name];if type(fn)~="function"then return nil,"Raid catalog unavailable: missing EJ "..label.." API",name end;api[name]=fn end
+  api.EJ_GetCurrentTier=type(EJ_GetCurrentTier)=="function"and EJ_GetCurrentTier or nil;return api
+ end
  local function ensureEncounterJournal()
-  if EJ_GetNumTiers and EJ_SelectTier and EJ_GetInstanceByIndex then return true end
-  local loader=C_AddOns and C_AddOns.LoadAddOn or LoadAddOn;if loader then pcall(loader,"Blizzard_EncounterJournal")end
-  return EJ_GetNumTiers and EJ_SelectTier and EJ_GetInstanceByIndex and true or false
+  local api,reason,missing=readJournalAPIs();if api then return api end
+  local loader=C_AddOns and C_AddOns.LoadAddOn or LoadAddOn;if type(loader)=="function"then pcall(loader,"Blizzard_EncounterJournal")end
+  api,reason,missing=readJournalAPIs();if api then return api end
+  HolyStorm.Logger:Write("WARN","Raids","catalog",reason,{reason="MISSING_ENCOUNTER_JOURNAL_API",api=missing,addon="Blizzard_EncounterJournal"});return nil,reason
  end
  function Module:GetCharacterSnapshot(guid)return HolyStorm.Data.CharacterStore:GetRaidLockouts(guid),HolyStorm.Data.CharacterStore:GetBlockMetadata(guid,"raid")end
  function Module:GetLatestRaid()
-  local raids,tier=self:GetCurrentRaidCatalog();local raid=raids[1];return raid and{id=raid.id,name=raid.name,tier=tier}or nil
+  local raids,tier=self:GetCurrentRaidCatalog();local raid=raids and raids[1];return raid and{id=raid.id,name=raid.name,tier=tier}or nil
  end
- local function readRaidTier(tier)
-  EJ_SelectTier(tier);local raids={};local index=1
-  while true do local id,name,_,_,buttonImage=EJ_GetInstanceByIndex(index,true);if not id then break end;local raid={id=id,name=name,icon=buttonImage,tier=tier,order=index,bosses={}};local shouldDisplayDifficulty;if EJ_SelectInstance then EJ_SelectInstance(id);shouldDisplayDifficulty=EJ_GetInstanceInfo and select(9,EJ_GetInstanceInfo())end;raid.shouldDisplayDifficulty=shouldDisplayDifficulty;if shouldDisplayDifficulty~=false then if EJ_GetEncounterInfoByIndex then local encounterIndex=1;while true do local bossName,_,bossId=EJ_GetEncounterInfoByIndex(encounterIndex,id);if not bossName then break end;raid.bosses[#raid.bosses+1]={id=bossId or encounterIndex,name=bossName,order=encounterIndex};encounterIndex=encounterIndex+1 end end;raids[#raids+1]=raid end;index=index+1 end
+ local function readRaidTier(api,tier)
+  api.EJ_SelectTier(tier);local raids={};local index=1
+  while true do local id,name,_,_,buttonImage=api.EJ_GetInstanceByIndex(index,true);if not id then break end;local raid={id=id,name=name,icon=buttonImage,tier=tier,order=index,bosses={}};api.EJ_SelectInstance(id);local shouldDisplayDifficulty=select(9,api.EJ_GetInstanceInfo());raid.shouldDisplayDifficulty=shouldDisplayDifficulty;if shouldDisplayDifficulty~=false then local encounterIndex=1;while true do local bossName,_,bossId=api.EJ_GetEncounterInfoByIndex(encounterIndex,id);if not bossName then break end;raid.bosses[#raid.bosses+1]={id=bossId or encounterIndex,name=bossName,order=encounterIndex};encounterIndex=encounterIndex+1 end;raids[#raids+1]=raid end;index=index+1 end
   return raids
  end
  function Module:GetCurrentRaidCatalog()
-  if not ensureEncounterJournal()then return{},nil,false end;local tier=EJ_GetNumTiers();if not tier or tier<1 then return{},nil,false end
-  local previousTier=EJ_GetCurrentTier and EJ_GetCurrentTier();local raids=readRaidTier(tier)
-  if previousTier and previousTier~=tier then EJ_SelectTier(previousTier)end;return raids,tier,#raids>0
+  local api,reason=ensureEncounterJournal();if not api then return nil,nil,false,reason end;local ok,raids,tier=pcall(function()local current=api.EJ_GetNumTiers();if not current or current<1 then return{},current end;local previousTier=api.EJ_GetCurrentTier and api.EJ_GetCurrentTier();local currentRaids=readRaidTier(api,current);if previousTier and previousTier~=current then api.EJ_SelectTier(previousTier)end;return currentRaids,current end)
+  if not ok then reason="Raid catalog unavailable: Encounter Journal scan failed";HolyStorm.Logger:Write("WARN","Raids","catalog",reason,{reason="ENCOUNTER_JOURNAL_SCAN_FAILED",error=tostring(raids)});return nil,nil,false,reason end
+  if not tier or tier<1 or#raids==0 then reason="Raid catalog unavailable: Encounter Journal data pending";HolyStorm.Logger:Write("DEBUG","Raids","catalog",reason,{reason="ENCOUNTER_JOURNAL_PENDING",tier=tier,raidCount=#raids});return nil,tier,false,reason end
+  return raids,tier,true
  end
  function Module:GetRaidJournalIndex()
-  if not ensureEncounterJournal()then return{}end;local previousTier=EJ_GetCurrentTier and EJ_GetCurrentTier();local byName={}
-  for tier=1,(EJ_GetNumTiers()or 0)do for _,raid in ipairs(readRaidTier(tier))do local key=raidKey(raid.name);if key then byName[key]=raid end end end
-  if previousTier then EJ_SelectTier(previousTier)end;return byName
+  local api,reason=ensureEncounterJournal();if not api then return nil,reason end;local ok,result=pcall(function()local previousTier=api.EJ_GetCurrentTier and api.EJ_GetCurrentTier();local byName={};for tier=1,(api.EJ_GetNumTiers()or 0)do for _,raid in ipairs(readRaidTier(api,tier))do local key=raidKey(raid.name);if key then byName[key]=raid end end end;if previousTier then api.EJ_SelectTier(previousTier)end;return byName end)
+  if not ok then reason="Raid catalog unavailable: Encounter Journal index scan failed";HolyStorm.Logger:Write("WARN","Raids","catalog",reason,{reason="ENCOUNTER_JOURNAL_INDEX_FAILED",error=tostring(result)});return nil,reason end;return result
  end
  function Module:Collect()
-  local raids,tier,catalogReady=self:GetCurrentRaidCatalog();local latest=raids[1]and{id=raids[1].id,name=raids[1].name,tier=tier}or nil;local journalByName=self:GetRaidJournalIndex()
+  local raids,tier,catalogReady,reason=self:GetCurrentRaidCatalog();if not catalogReady then return{pending=true,pendingReason=reason or"raid catalog pending"}end;local journalByName,indexReason=self:GetRaidJournalIndex();if not journalByName then return{pending=true,pendingReason=indexReason or"raid catalog pending"}end;local latest=raids[1]and{id=raids[1].id,name=raids[1].name,tier=tier}or nil
   local old=self:GetCharacterSnapshot(UnitGUID("player"));local lifetime=HolyStorm.Utils.DeepCopy(type(old)=="table"and old.lifetime or{bosses={},seen={}});lifetime.bosses=type(lifetime.bosses)=="table"and lifetime.bosses or{};lifetime.seen=type(lifetime.seen)=="table"and lifetime.seen or{};lifetime.source=lifetime.source or"legacy-local-observation";lifetime.reliable=false
   local s={currentRaid=latest,currentTier=tier,catalogReady=catalogReady,raids=raids,lockouts={},lifetime=lifetime,updatedAt=HolyStorm.Utils.Now(),snapshotVersion=3,bestProgress={killed=0,total=0,difficultyId=0}}
   for i=1,(GetNumSavedInstances and GetNumSavedInstances()or 0)do
@@ -49,7 +55,7 @@ HolyStorm:RegisterModule(metadata,function(Module)
   end
   return s
  end
- function Module:Validate(s)if type(s)~="table"or type(s.lockouts)~="table"or type(s.raids)~="table"or type(s.lifetime)~="table"or type(s.lifetime.bosses)~="table"then return false,"instance data unavailable"end;for _,r in ipairs(s.lockouts)do if not r.name or not r.difficultyId or type(r.bosses)~="table"then return false,"lockout incomplete"end end;if not s.catalogReady and#s.lockouts==0 then return false,"raid catalog pending"end;return true end
+ function Module:Validate(s)if type(s)=="table"and s.pending then return false,s.pendingReason or"raid catalog pending"end;if type(s)~="table"or type(s.lockouts)~="table"or type(s.raids)~="table"or type(s.lifetime)~="table"or type(s.lifetime.bosses)~="table"then return false,"instance data unavailable"end;for _,r in ipairs(s.lockouts)do if not r.name or not r.difficultyId or type(r.bosses)~="table"then return false,"lockout incomplete"end end;if not s.catalogReady then return false,"raid catalog pending"end;return true end
  function Module:Commit(s)local guid=UnitGUID("player");return HolyStorm.PlayerData:WriteOwnedBlock(guid,"raid",s,"blizzard")end
  function Module:Queue(sync,delay,requestRaidInfo)
   -- UPDATE_INSTANCE_INFO is the response to RequestRaidInfo(). Requesting the

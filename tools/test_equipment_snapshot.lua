@@ -23,4 +23,14 @@ local snapshot=HolyStorm.Equipment:Collect();local item=snapshot.slots[INVSLOT_H
 assert(snapshot.snapshotVersion==4 and item.isTier==true and item.setID==77,"item-set metadata is captured")
 assert(item.enchantId==42 and item.enchantName=="Sophic Devotion","enchantment ID and tooltip name are captured")
 assert(item.sockets==1 and item.gems[1].name=="Quick Ruby"and item.gems[1].link:find("item:1001",1,true)and item.gems[1].icon==901,"gem name, link and icon are captured")
+C_Item.GetSetBonusesForSpecializationByItemID=function()return{}end
+snapshot=HolyStorm.Equipment:Collect();assert(snapshot.slots[INVSLOT_HEAD].setID==77 and snapshot.slots[INVSLOT_HEAD].isTier==false,"an ordinary item set is not promoted to a tier set")
+C_Item.GetSetBonusesForSpecializationByItemID=function()return nil end
+snapshot=HolyStorm.Equipment:Collect();assert(snapshot.slots[INVSLOT_HEAD].setID==77 and snapshot.slots[INVSLOT_HEAD].isTier==false,"a loaded ordinary item set with no specialization set bonus is not a tier item")
+C_Item.GetSetBonusesForSpecializationByItemID=function()error("temporarily unavailable")end
+snapshot=HolyStorm.Equipment:Collect();assert(snapshot.slots[INVSLOT_HEAD].isTier==nil,"a failed tier API query remains unknown")
+C_Item.GetSetBonusesForSpecializationByItemID=nil
+snapshot=HolyStorm.Equipment:Collect();assert(snapshot.slots[INVSLOT_HEAD].isTier==nil,"a missing tier API remains unknown even when setID exists")
+itemLink="|cffa335ee|Hitem:111::::::::80:70:::::::|h[Plain Helm]|h|r";snapshot=HolyStorm.Equipment:Collect();assert(snapshot.slots[INVSLOT_HEAD].enchantId==0,"an explicit empty enchant field is known unenchanted")
+itemLink="|cffa335ee|Hitem:111:unknown:::::::80:70:::::::|h[Pending Helm]|h|r";snapshot=HolyStorm.Equipment:Collect();assert(snapshot.slots[INVSLOT_HEAD].enchantId==nil,"an unparseable enchant field remains unknown")
 print("Equipment rich snapshot tests passed")

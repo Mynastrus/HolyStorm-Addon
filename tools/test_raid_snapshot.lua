@@ -1,7 +1,9 @@
 local root=(arg[0]:gsub("tools[/\\]test_raid_snapshot.lua$","")).."LIVE/Holy_Storm/"
 local featureRoot=(arg[0]:gsub("tools[/\\]test_raid_snapshot.lua$","")).."LIVE/Holy_Storm_Raids/"
 local oldSnapshot
-local HolyStorm={Utils={}}
+local logs={}
+local HolyStorm={Utils={},Logger={}}
+function HolyStorm.Logger:Write(level,source,category,message,context)logs[#logs+1]={level=level,source=source,category=category,message=message,context=context}end
 function HolyStorm.Utils.DeepCopy(value,seen)if type(value)~="table"then return value end;seen=seen or{};if seen[value]then return seen[value]end;local out={};seen[value]=out;for key,child in pairs(value)do out[HolyStorm.Utils.DeepCopy(key,seen)]=HolyStorm.Utils.DeepCopy(child,seen)end;return out end
 function HolyStorm.Utils.Now()return 123456 end
 function HolyStorm:RegisterModule(_,factory)local module={};factory(module);self.raidModule=module end
@@ -65,11 +67,22 @@ assert(#timewalking.raids==2 and timewalking.lockouts[1].journalInstanceId==300,
 assert(timewalking.lockouts[1].difficultyId==33 and not timewalking.lockouts[1].isCurrent,"Timewalking remains a distinct non-current difficulty")
 
 local savedEJ={EJ_GetNumTiers,EJ_SelectTier,EJ_GetInstanceByIndex,EJ_GetCurrentTier,EJ_SelectInstance,EJ_GetInstanceInfo,EJ_GetEncounterInfoByIndex}
-EJ_GetNumTiers=nil;EJ_SelectTier=nil;EJ_GetInstanceByIndex=nil;EJ_GetCurrentTier=nil;EJ_SelectInstance=nil;EJ_GetInstanceInfo=nil;EJ_GetEncounterInfoByIndex=nil
-oldSnapshot=nil;instances={{difficultyId=14,difficultyName="Normal",kills={true,true,false,false}}}
-local lockoutOnly=module:Collect()
-assert(#lockoutOnly.raids==0 and#lockoutOnly.lockouts==1,"active lockout survives unavailable journal catalog")
-assert(lockoutOnly.lockouts[1].killed==2 and module:Validate(lockoutOnly),"active raid ID must be cacheable without journal data")
-instances={};local emptyPending=module:Collect();local valid,reason=module:Validate(emptyPending);assert(not valid and reason=="raid catalog pending","empty scans retry while the catalog is loading")
-EJ_GetNumTiers,EJ_SelectTier,EJ_GetInstanceByIndex,EJ_GetCurrentTier,EJ_SelectInstance,EJ_GetInstanceInfo,EJ_GetEncounterInfoByIndex=table.unpack(savedEJ)
-print("Raid catalog, lockout fallback, difficulty ordering and lifetime deduplication tests passed")
+local function clearJournal()EJ_GetNumTiers=nil;EJ_SelectTier=nil;EJ_GetInstanceByIndex=nil;EJ_GetCurrentTier=nil;EJ_SelectInstance=nil;EJ_GetInstanceInfo=nil;EJ_GetEncounterInfoByIndex=nil end
+local function restoreJournal()EJ_GetNumTiers,EJ_SelectTier,EJ_GetInstanceByIndex,EJ_GetCurrentTier,EJ_SelectInstance,EJ_GetInstanceInfo,EJ_GetEncounterInfoByIndex=table.unpack(savedEJ)end
+
+clearJournal();local loadCalls=0;C_AddOns={LoadAddOn=function(name)assert(name=="Blizzard_EncounterJournal");loadCalls=loadCalls+1;restoreJournal();return true end}
+local loaded=module:Collect();assert(loadCalls==1 and module:Validate(loaded),"an unloaded Encounter Journal is loaded through C_AddOns and then rescanned")
+
+clearJournal();C_AddOns.LoadAddOn=function()return false,"temporarily unavailable"end;oldSnapshot=loaded;instances={{difficultyId=14,difficultyName="Normal",kills={true,true,false,false}}}
+local ok,pending=pcall(function()return module:Collect()end);assert(ok and pending.pending,"missing Encounter Journal APIs never raise a Lua error")
+local valid,reason=module:Validate(pending);assert(not valid and reason:find("tier enumeration",1,true),"an unavailable Encounter Journal enters retry/pending")
+assert(oldSnapshot==loaded,"the last valid raid snapshot remains intact while the catalog is pending")
+local commits=0;HolyStorm.PlayerData={WriteOwnedBlock=function()commits=commits+1 end};if valid then module:Commit(pending)end;assert(commits==0,"a pending catalog never commits an empty replacement snapshot")
+
+restoreJournal();EJ_GetInstanceByIndex=nil;C_AddOns.LoadAddOn=function()return true end;pending=module:Collect();valid,reason=module:Validate(pending);assert(not valid and reason=="Raid catalog unavailable: missing EJ instance enumeration API","a successful pcall does not hide a missing instance enumeration API")
+assert(logs[#logs].context.api=="EJ_GetInstanceByIndex","structured raid logging names the missing instance API")
+
+restoreJournal();EJ_GetEncounterInfoByIndex=nil;pending=module:Collect();valid,reason=module:Validate(pending);assert(not valid and reason=="Raid catalog unavailable: missing EJ encounter enumeration API","a missing encounter enumeration API causes retry instead of a scan")
+assert(logs[#logs].context.api=="EJ_GetEncounterInfoByIndex","structured raid logging names the missing encounter API")
+restoreJournal();C_AddOns=nil
+print("Raid catalog availability, retry preservation, difficulty ordering and lifetime deduplication tests passed")
