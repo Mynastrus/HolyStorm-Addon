@@ -45,6 +45,13 @@ local raid={raids={{name="Raid One",bosses={{},{}}}},lifetime={bosses={
 }}}
 local rows=C:BuildRaidBestRows(raid);assert(#rows==2);assert(rows[1].bossName=="Boss A"and rows[1].difficulty=="MYTHIC"and rows[1].kills==1);assert(rows[2].difficulty=="NORMAL"and rows[2].kills==2)
 local best=C:GetBestProgress(raid,"Raid One");assert(best.difficulty=="MYTHIC"and best.killed==1 and best.total==2)
+local identityRaid={raids={{id=100,name="Raid One",bosses={{},{}}},{id=200,name="Raid Two",bosses={{},{},{}}}},bestProgress={difficultyId=14,killed=3,total=3,raidInstanceId=200,raidName="Raid Two"},lifetime={bosses={
+ one={id=1,name="Boss One",raidInstanceId=100,raidName="Raid One",difficulties={HEROIC={kills=4,source="blizzard-statistic",statisticId=10}}},
+ two={id=2,name="Boss Two",raidInstanceId=200,raidName="Raid One",difficulties={MYTHIC={kills=7,source="blizzard-statistic",statisticId=11}}},
+}}}
+local raidOneBest=C:GetBestProgress(identityRaid,{instanceId=100,name="Raid One"});assert(raidOneBest.difficulty=="HEROIC"and raidOneBest.killed==1 and raidOneBest.total==2,"stable raid IDs take precedence over a stale matching name")
+local raidTwoBest=C:GetBestProgress(identityRaid,{instanceId=200,name="Raid Two"});assert(raidTwoBest.difficulty=="MYTHIC"and raidTwoBest.killed==1 and raidTwoBest.total==3,"matching stable raid IDs remain authoritative even when a stored name is stale")
+assert(C:GetBestProgress(identityRaid,{instanceId=300,name="Raid Three"})==nil,"a scoped raid never inherits global bestProgress")
 assert(C:GetDifficultyById(7).id=="LFR"and C:GetDifficultyById(14).id=="NORMAL"and C:GetDifficultyById(15).id=="HEROIC"and C:GetDifficultyById(16).id=="MYTHIC"and C:GetDifficultyById(33).id=="TIMEWALKING")
 assert(C:GetDifficultyColor("LFR").r==1 and C:GetDifficultyColor("NORMAL").g==1 and C:GetDifficultyColor("HEROIC").b==1 and C:GetDifficultyColor("MYTHIC").r==.70)
 

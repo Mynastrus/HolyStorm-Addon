@@ -117,15 +117,24 @@ function CharacterUI:BuildRaidBestRows(snapshot)
  for bossKey,boss in pairs(type(lifetime)=="table"and type(lifetime.bosses)=="table"and lifetime.bosses or{})do
   local best
   for key,entry in pairs(type(boss.difficulties)=="table"and boss.difficulties or{})do local definition=self.raidDifficulties[key];local trusted=type(entry)=="table"and entry.source=="blizzard-statistic"and tonumber(entry.statisticId);local kills=trusted and tonumber(entry.kills)or nil;if definition and kills and kills>0 and(not best or definition.order>best.order)then best={difficulty=key,order=definition.order,kills=kills}end end
-  if best then result[#result+1]={bossId=boss.id or bossKey,bossName=boss.name or tostring(bossKey),raidName=boss.raidName,difficulty=best.difficulty,kills=best.kills,order=best.order}end
+  if best then result[#result+1]={bossId=boss.id or bossKey,bossIdStable=boss.id~=nil,bossName=boss.name or tostring(bossKey),raidInstanceId=boss.raidInstanceId or boss.journalInstanceId,raidName=boss.raidName,difficulty=best.difficulty,kills=best.kills,order=best.order}end
  end
  table.sort(result,function(a,b)return tostring(a.bossName)<tostring(b.bossName)end);return result
 end
-function CharacterUI:GetBestProgress(snapshot,raidName)
- local totals={};for _,row in ipairs(self:BuildRaidBestRows(snapshot))do if not raidName or not row.raidName or row.raidName==raidName then totals[row.difficulty]=(totals[row.difficulty]or 0)+1 end end
+function CharacterUI:RaidIdentityMatches(value,identity)
+ if identity==nil then return true end
+ local wantedId=type(identity)=="table"and tonumber(identity.instanceId or identity.id or identity.journalInstanceId)or nil;local valueId=type(value)=="table"and tonumber(value.raidInstanceId or value.instanceId or value.id or value.journalInstanceId)or nil
+ if wantedId and valueId then return wantedId==valueId end
+ local wantedName=type(identity)=="table"and(identity.name or identity.raidName)or identity;local valueName=type(value)=="table"and(value.raidName or value.name)or value
+ return type(wantedName)=="string"and type(valueName)=="string"and wantedName==valueName
+end
+function CharacterUI:GetBestProgress(snapshot,raidIdentity)
+ local totals={};for _,row in ipairs(self:BuildRaidBestRows(snapshot))do if self:RaidIdentityMatches(row,raidIdentity)then totals[row.difficulty]=(totals[row.difficulty]or 0)+1 end end
  local best;for _,key in ipairs({"LFR","NORMAL","HEROIC","MYTHIC","TIMEWALKING"})do if totals[key]and totals[key]>0 then best={difficulty=key,killed=totals[key],total=totals[key]}end end
- local total=0;for _,raid in ipairs(type(snapshot)=="table"and snapshot.raids or{})do if not raidName or raid.name==raidName then total=math.max(total,#(raid.bosses or{}))end end;if best then best.total=total>0 and total or best.killed end
- if not best and snapshot and snapshot.bestProgress and(not raidName or not snapshot.currentRaid or snapshot.currentRaid.name==raidName)then local d=self:GetDifficultyById(snapshot.bestProgress.difficultyId);best={difficulty=d and d.id or"UNKNOWN",killed=snapshot.bestProgress.killed or 0,total=snapshot.bestProgress.total or 0}end;return best
+ local total=0;for _,raid in ipairs(type(snapshot)=="table"and snapshot.raids or{})do if self:RaidIdentityMatches(raid,raidIdentity)then total=math.max(total,#(raid.bosses or{}))end end;if best then best.total=total>0 and total or best.killed end
+ -- bestProgress in older snapshots is global. It is safe for the summary, but
+ -- must never be attached to a specific raid row without a raid identity.
+ if not best and raidIdentity==nil and snapshot and snapshot.bestProgress then local d=self:GetDifficultyById(snapshot.bestProgress.difficultyId);best={difficulty=d and d.id or"UNKNOWN",killed=snapshot.bestProgress.killed or 0,total=snapshot.bestProgress.total or 0}end;return best
 end
 function CharacterUI:CanUseTab(definition)
  if definition.permission and HolyStorm.Policy and not HolyStorm.Policy:Can(definition.permission)then return false,"PERMISSION"end

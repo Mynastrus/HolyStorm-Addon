@@ -18,7 +18,7 @@ HolyStorm:RegisterModule(metadata,function(Module)
  end
  local function readRaidTier(tier)
   EJ_SelectTier(tier);local raids={};local index=1
-  while true do local id,name,_,_,buttonImage=EJ_GetInstanceByIndex(index,true);if not id then break end;local raid={id=id,name=name,icon=buttonImage,tier=tier,order=index,bosses={}};if EJ_SelectInstance and EJ_GetEncounterInfoByIndex then EJ_SelectInstance(id);local encounterIndex=1;while true do local bossName,_,bossId=EJ_GetEncounterInfoByIndex(encounterIndex,id);if not bossName then break end;raid.bosses[#raid.bosses+1]={id=bossId or encounterIndex,name=bossName,order=encounterIndex};encounterIndex=encounterIndex+1 end end;raids[#raids+1]=raid;index=index+1 end
+  while true do local id,name,_,_,buttonImage=EJ_GetInstanceByIndex(index,true);if not id then break end;local raid={id=id,name=name,icon=buttonImage,tier=tier,order=index,bosses={}};local shouldDisplayDifficulty;if EJ_SelectInstance then EJ_SelectInstance(id);shouldDisplayDifficulty=EJ_GetInstanceInfo and select(9,EJ_GetInstanceInfo())end;raid.shouldDisplayDifficulty=shouldDisplayDifficulty;if shouldDisplayDifficulty~=false then if EJ_GetEncounterInfoByIndex then local encounterIndex=1;while true do local bossName,_,bossId=EJ_GetEncounterInfoByIndex(encounterIndex,id);if not bossName then break end;raid.bosses[#raid.bosses+1]={id=bossId or encounterIndex,name=bossName,order=encounterIndex};encounterIndex=encounterIndex+1 end end;raids[#raids+1]=raid end;index=index+1 end
   return raids
  end
  function Module:GetCurrentRaidCatalog()
@@ -44,7 +44,7 @@ HolyStorm:RegisterModule(metadata,function(Module)
      if done then killed=killed+1 end
     end
     killed=math.max(killed,tonumber(encounterProgress)or 0);local catalog=journalByName[raidKey(name)];local isCurrent=catalog and tonumber(catalog.tier)==tonumber(tier);local item={name=name,lockoutId=id,journalInstanceId=catalog and catalog.id,reset=reset,difficultyId=diff,difficultyName=diffName,extended=extended,maxPlayers=maxPlayers,bosses=bosses,killed=killed,total=encounters or 0,isCurrent=isCurrent==true};s.lockouts[#s.lockouts+1]=item
-    local currentKey=difficultyKeys[tonumber(diff)];local bestKey=difficultyKeys[tonumber(s.bestProgress.difficultyId)];local currentOrder,bestOrder=difficultyOrder[currentKey]or 0,difficultyOrder[bestKey]or 0;if item.isCurrent and killed>0 and(currentOrder>bestOrder or(currentOrder==bestOrder and killed>s.bestProgress.killed))then s.bestProgress={killed=killed,total=encounters or 0,difficultyId=diff,difficultyName=diffName}end
+    local currentKey=difficultyKeys[tonumber(diff)];local bestKey=difficultyKeys[tonumber(s.bestProgress.difficultyId)];local currentOrder,bestOrder=difficultyOrder[currentKey]or 0,difficultyOrder[bestKey]or 0;if item.isCurrent and killed>0 and(currentOrder>bestOrder or(currentOrder==bestOrder and killed>s.bestProgress.killed))then s.bestProgress={killed=killed,total=encounters or 0,difficultyId=diff,difficultyName=diffName,raidInstanceId=item.journalInstanceId,raidName=item.name}end
    end
   end
   return s

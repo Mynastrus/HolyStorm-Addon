@@ -5,7 +5,7 @@ if not L then
     return
 end
 L["PERMISSION_DENIED"]="Du besitzt keine Berechtigung für diese Inhalte.";L["MODULE_DISABLED"]="Dieses Modul ist deaktiviert.";L["NO_RAID"]="Keine Raid-Daten verfügbar.";L["NO_DATA"]="Keine Daten"
-L["COLUMN_RAID"]="Raid";L["DIFFICULTY_LFR"]="LFR";L["DIFFICULTY_NORMAL"]="Normal";L["DIFFICULTY_HEROIC"]="Heroisch";L["DIFFICULTY_MYTHIC"]="Mythisch";L["COLUMN_BEST"]="Bestwert";L["WEEKLY_TOOLTIP"]="Wöchentlich %s";L["BOSS_KILLED"]="✓ %s";L["BOSS_OPEN"]="○ %s";L["BEST_TOOLTIP"]="Bester Lebenszeitfortschritt";L["BEST_ROW"]="%s | %s | %d Siege";L["OPEN_JOURNAL"]="Klicken, um den Eintrag im Abenteuerführer zu öffnen."
+L["COLUMN_RAID"]="Raid";L["DIFFICULTY_LFR"]="LFR";L["DIFFICULTY_NORMAL"]="Normal";L["DIFFICULTY_HEROIC"]="Heroisch";L["DIFFICULTY_MYTHIC"]="Mythisch";L["COLUMN_BEST"]="Bestwert";L["WEEKLY_TOOLTIP"]="Wöchentlich %s";L["BOSS_KILLED"]="%s";L["BOSS_OPEN"]="%s";L["BEST_TOOLTIP"]="Bester Lebenszeitfortschritt";L["BEST_ROW"]="%s | %s | %d Siege";L["OPEN_JOURNAL"]="Klicken, um den Eintrag im Abenteuerführer zu öffnen."
 
 L["RULE_FIELD_PROGRESS"] = "Raidfortschritt"
 L["RULE_FIELD_PROGRESS_DESC"] = "Die Anzahl besiegter Bosse aus dem besten gespeicherten Raidfortschritt."
