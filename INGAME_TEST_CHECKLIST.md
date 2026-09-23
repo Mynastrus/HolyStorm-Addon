@@ -77,7 +77,11 @@ Mit aktivierten Lua-Fehlern testen. Nach Reload/Login prüfen, dass gespeicherte
 
 ## Sync und Identität
 
+- Mit vorhandenem Cache neu einloggen: nur fehlende Character-Blöcke werden gescannt; Equipment, Mythic+, Raid, Delves und Stats laufen nie parallel. Ein Zonenwechsel startet keinen Vollscan.
+- Während eines laufenden Feature-Scans dasselbe fachliche Event mehrfach auslösen: genau ein dirty-Folgescan bleibt erhalten, andere wartende Features kommen zuerst zum Zug.
 - Character-Blöcke zwischen zwei Clients entdecken, gezielt anfordern, validieren und in CharacterOverview aktualisieren.
+- Zwei Clients mit verschiedenen Semantic Versions einloggen: Presence/Antwort nur einmal je Sitzung, neuere Version in der Gildenliste und genau ein lokalisierter Update-Hinweis beim älteren Client.
+- Einen fragmentierten Character-Payload verfolgen: Diagnosefelder korrelieren alle Pakete; der Remote-Import erzeugt keine erneute Owned-Publikation.
 - Direkten Owner-Payload und Relay-Payload prüfen: Owner bleibt stabil, `receivedFrom` und `direct` sind korrekt.
 - Stale Version, Owner-Mismatch, ungültige Payload und nicht autorisierte Änderung ablehnen.
 - Twink- und TwinkAdmin-Sync mit Account-Main und Zuordnungen prüfen.

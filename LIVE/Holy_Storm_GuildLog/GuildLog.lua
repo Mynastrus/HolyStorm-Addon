@@ -60,7 +60,7 @@ HolyStorm:RegisterModule(metadata, function(GuildLog)
         HolyStorm:RegisterUIExtension("guildLog",{id="guild.log",order=5,initialize=function()GuildLog:InitializeUI()end})
     end
     function GuildLog:OnEnable()
-        HolyStorm.Commands:RegisterSubcommand("log",{help=L["COMMAND_HELP"],execute=function()if not HolyStorm.UI or not HolyStorm.UI:ShowPage("guildLog")then print(L["COMMAND_UNAVAILABLE"])end end})
+        HolyStorm.Commands:RegisterSubcommand("log",{help=L["COMMAND_HELP"],execute=function()if not HolyStorm.UI or not HolyStorm.UI:ShowPage("guildLog")then HolyStorm.Commands:PrintUserMessage(L["COMMAND_UNAVAILABLE"])end end})
         HolyStorm.Events:Register("GUILD_ROSTER_UPDATE","guild-log",function() GuildLog:QueueScan() end); HolyStorm.Events:Register("PLAYER_ENTERING_WORLD","guild-log",function() GuildLog:QueueScan() end); HolyStorm.Events:Register("PLAYER_GUILD_UPDATE","guild-log",function() GuildLog:QueueScan() end)
     end
     function GuildLog:OnDisable() HolyStorm.Events:UnregisterOwner("guild-log"); HolyStorm.Tasks:Cancel("guildlog.scan"); HolyStorm.Commands:UnregisterSubcommand("log") end

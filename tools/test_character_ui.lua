@@ -40,12 +40,12 @@ assert(b.name=="Beta"and b.realm=="OtherRealm"and b.fullName=="Beta-OtherRealm",
 assert(C:ShowTooltip({},"B")and GameTooltip.title=="Beta"and GameTooltip.titleColor.g==.8,"tooltip title omits the realm and uses the character class color");assert(GameTooltip.lines[1]:find("OtherRealm | Mage | Level 75",1,true)and GameTooltip.lines[1]:find("PlusManz%-Horde")and GameTooltip.wraps[1]==false,"tooltip identity line contains a faction indicator and disables wrapping: "..tostring(GameTooltip.lines[1]).." / "..tostring(GameTooltip.wraps[1]));local coloredMain=false;for _,line in ipairs(GameTooltip.lines)do if line:find("ACCOUNT_MAIN: |cffff80ccAlpha|r",1,true)then coloredMain=true end end;assert(coloredMain,"tooltip colors the main character with the main character's own class")
 
 local raid={raids={{name="Raid One",bosses={{},{}}}},lifetime={bosses={
- bossA={name="Boss A",raidName="Raid One",difficulties={LFR={kills=5},NORMAL={kills=2},HEROIC={kills=7},MYTHIC={kills=1}}},
- bossB={name="Boss B",raidName="Raid One",difficulties={LFR={kills=5},NORMAL={kills=2}}},
+ bossA={name="Boss A",raidName="Raid One",difficulties={LFR={kills=5,source="blizzard-statistic",statisticId=1},NORMAL={kills=2,source="blizzard-statistic",statisticId=2},HEROIC={kills=7,source="blizzard-statistic",statisticId=3},MYTHIC={kills=1,source="blizzard-statistic",statisticId=4}}},
+ bossB={name="Boss B",raidName="Raid One",difficulties={LFR={kills=5,source="blizzard-statistic",statisticId=5},NORMAL={kills=2,source="blizzard-statistic",statisticId=6}}},
 }}}
 local rows=C:BuildRaidBestRows(raid);assert(#rows==2);assert(rows[1].bossName=="Boss A"and rows[1].difficulty=="MYTHIC"and rows[1].kills==1);assert(rows[2].difficulty=="NORMAL"and rows[2].kills==2)
 local best=C:GetBestProgress(raid,"Raid One");assert(best.difficulty=="MYTHIC"and best.killed==1 and best.total==2)
-assert(C:GetDifficultyById(7).id=="LFR"and C:GetDifficultyById(14).id=="NORMAL"and C:GetDifficultyById(15).id=="HEROIC"and C:GetDifficultyById(16).id=="MYTHIC")
+assert(C:GetDifficultyById(7).id=="LFR"and C:GetDifficultyById(14).id=="NORMAL"and C:GetDifficultyById(15).id=="HEROIC"and C:GetDifficultyById(16).id=="MYTHIC"and C:GetDifficultyById(33).id=="TIMEWALKING")
 assert(C:GetDifficultyColor("LFR").r==1 and C:GetDifficultyColor("NORMAL").g==1 and C:GetDifficultyColor("HEROIC").b==1 and C:GetDifficultyColor("MYTHIC").r==.70)
 
 HolyStorm.Tasks.registry["Character.Refresh"]={};assert(C:RequestRefresh("A",{"equipment"},"TEST"));assert(C:RequestRefresh("A",{"raid"},"TEST_MERGE"));local queued=HolyStorm.Tasks.queued[1];assert(queued.options.mergeKey=="A"and queued.options.metadata.characterUUID=="A");assert(C:ConsumeRefresh("A"));assert(refreshes[#refreshes].guid=="A"and refreshes[#refreshes].blocks[1]=="equipment"and refreshes[#refreshes].blocks[2]=="raid","refresh block coalescing")

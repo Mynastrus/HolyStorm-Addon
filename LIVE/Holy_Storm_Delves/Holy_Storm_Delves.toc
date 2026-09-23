@@ -8,6 +8,9 @@
 ## Version: @project-version@
 ## RequiredDeps: Holy_Storm
 ## X-HolyStorm-ID: delves
+## X-HolyStorm-CharacterBlock: delves
+## X-HolyStorm-CharacterCapability: character.scan.delves
+## X-HolyStorm-CharacterOrder: 40
 
 Locales\enUS.lua
 Locales\deDE.lua

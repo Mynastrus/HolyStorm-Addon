@@ -10,6 +10,9 @@
 ## LoadOnDemand: 1
 ## X-HolyStorm-ID: mythicPlus
 ## X-HolyStorm-LoadOnEvent: CHALLENGE_MODE_COMPLETED
+## X-HolyStorm-CharacterBlock: mythicPlus
+## X-HolyStorm-CharacterCapability: character.scan.mythicplus
+## X-HolyStorm-CharacterOrder: 20
 
 Locales\enUS.lua
 Locales\deDE.lua

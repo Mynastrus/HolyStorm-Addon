@@ -11,6 +11,9 @@
 ## X-HolyStorm-ID: equipment
 ## X-HolyStorm-Requires: synchronization
 ## X-HolyStorm-LoadOnEvent: PLAYER_EQUIPMENT_CHANGED
+## X-HolyStorm-CharacterBlock: equipment
+## X-HolyStorm-CharacterCapability: character.scan.equipment
+## X-HolyStorm-CharacterOrder: 10
 
 Locales\enUS.lua
 Locales\deDE.lua

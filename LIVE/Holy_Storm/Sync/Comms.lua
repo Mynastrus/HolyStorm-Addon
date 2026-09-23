@@ -12,7 +12,7 @@ local function normalizedName(value)
 end
 local function audience(channel,target)if target and target~=""then return target end;local labels={GUILD="Guild",RAID="Raid",PARTY="Party",INSTANCE_CHAT="Instance"};return labels[channel]or"Broadcast"end
 local function receiver(channel)return channel=="WHISPER"and playerName()or audience(channel)end
-local function compact(source)local out={};for _,field in ipairs({"domain","objectId","messageKind","version","reason","requestId","correlationId"})do local value=type(source)=="table"and source[field];if type(value)=="string"or type(value)=="number"or type(value)=="boolean"then out[field]=value end end;return out end
+local function compact(source)local out={};for _,field in ipairs({"domain","objectId","logicalObject","blockType","characterUUID","messageKind","messageClass","version","reason","requestId","correlationId","sender","receiver","target","originalOwner","relay","retry","retryCount","serializedBytes"})do local value=type(source)=="table"and source[field];if type(value)=="string"or type(value)=="number"or type(value)=="boolean"then out[field]=value end end;return out end
 function Comms:Initialize()
  if not C_ChatInfo or not C_ChatInfo.RegisterAddonMessagePrefix or not C_ChatInfo.SendAddonMessage then HolyStorm.Logger:WARN("Comms","Addon communication API unavailable");return false end
  if C_ChatInfo.RegisterAddonMessagePrefix(self.prefix)==false then HolyStorm.Logger:WARN("Comms","Addon prefix registration failed");return false end

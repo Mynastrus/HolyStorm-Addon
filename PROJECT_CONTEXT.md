@@ -37,7 +37,7 @@ Die geschützten Systemgruppen heißen `guild-leadership`, `officers` und `guild
 
 ## Module und UI
 
-Module registrieren Metadaten über `RegisterModule`, `RegisterRequiredModule` oder die Compatibility-API `RegisterOptionalModule`. Capabilities entkoppeln insbesondere Character-Scans vom Bootstrap. Das UI-Framework verwaltet Seiten und Navigation. Die Administration-Registry ergänzt Permission- und Modul-Gating sowie optionales verzögertes Bauen einer Seite.
+Module registrieren Metadaten über `RegisterModule`, `RegisterRequiredModule` oder die Compatibility-API `RegisterOptionalModule`. Character-Datenprovider deklarieren Block, Capability und Reihenfolge im TOC und registrieren sich beim feature-blinden `CharacterScanManager`; dieser erfasst beim Login nur fehlende Blöcke und serialisiert alle Scan-Workflows. Das UI-Framework verwaltet Seiten und Navigation. Die Administration-Registry ergänzt Permission- und Modul-Gating sowie optionales verzögertes Bauen einer Seite.
 
 ## Entwicklung und Prüfung
 

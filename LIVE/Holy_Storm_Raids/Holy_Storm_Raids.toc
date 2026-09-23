@@ -11,6 +11,9 @@
 ## X-HolyStorm-ID: raids
 ## X-HolyStorm-Requires: synchronization
 ## X-HolyStorm-LoadOnEvent: ENCOUNTER_END
+## X-HolyStorm-CharacterBlock: raid
+## X-HolyStorm-CharacterCapability: character.scan.raids
+## X-HolyStorm-CharacterOrder: 30
 
 Locales\enUS.lua
 Locales\deDE.lua

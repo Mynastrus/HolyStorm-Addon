@@ -3,6 +3,7 @@ local HolyStorm=LibStub("AceAddon-3.0"):GetAddon("Holy_Storm")
 local L=LibStub("AceLocale-3.0"):GetLocale("Holy_Storm")
 local Commands={version=addonVersion,handlers={}}
 local function printMessage(message) print(L["ADDON_PREFIX"]..message) end
+function Commands:PrintUserMessage(message)if type(message)~="string"or message==""then return false end;printMessage(message);return true end
 local function commandLink(command,action)return HolyStorm.RichLinks:GetType("command")and HolyStorm.RichLinks:MakeHyperlink("command",action,command)or string.format("|cffffff00|Hholystorm:%s|h%s|h|r",action,command)end
 local function tooltipFor(link)
     if link=="holystorm:status" or link=="holystorm:open" then return L["COMMAND_TOOLTIP_OPEN_TITLE"],L["COMMAND_TOOLTIP_OPEN_DESCRIPTION"] end

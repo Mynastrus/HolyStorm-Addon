@@ -15,11 +15,13 @@ function HolyStorm.Data.CharacterStore:GetRaidLockouts()return oldSnapshot end
 function HolyStorm.Data.CharacterStore:GetBlockMetadata()return{version=3}end
 
 function UnitGUID()return"Player-GUID"end
-function EJ_GetNumTiers()return 1 end
-function EJ_SelectTier()end
-function EJ_GetCurrentTier()return 1 end
+local tierCount,currentTier,selectedTier=1,1,1
+function EJ_GetNumTiers()return tierCount end
+function EJ_SelectTier(tier)selectedTier=tier end
+function EJ_GetCurrentTier()return currentTier end
 local raidCatalog={{id=100,name="Raid One",icon=12345}}
-function EJ_GetInstanceByIndex(index,isRaid)local raid=isRaid and raidCatalog[index];if raid then return raid.id,raid.name,nil,nil,raid.icon end end
+local raidCatalogByTier={}
+function EJ_GetInstanceByIndex(index,isRaid)local catalog=raidCatalogByTier[selectedTier]or raidCatalog;local raid=isRaid and catalog[index];if raid then return raid.id,raid.name,nil,nil,raid.icon end end
 function EJ_SelectInstance()end
 function EJ_GetEncounterInfoByIndex(index)if index==1 then return"Boss A",nil,501 elseif index==2 then return"Boss B",nil,502 end end
 
@@ -40,24 +42,26 @@ local module=assert(HolyStorm.raidModule)
 local first=module:Collect()
 assert(first.snapshotVersion==3 and#first.raids==1 and#first.raids[1].bosses==2,"current raid catalog")
 assert(#first.lockouts==4 and first.bestProgress.difficultyId==16,"logical difficulty ordering")
-assert(first.lifetime.bosses[501].difficulties.LFR.kills==1)
-assert(first.lifetime.bosses[501].difficulties.NORMAL.kills==1)
-assert(first.lifetime.bosses[501].difficulties.HEROIC.kills==1)
-assert(first.lifetime.bosses[501].difficulties.MYTHIC.kills==1)
+assert(first.lifetime.reliable==false and next(first.lifetime.bosses)==nil,"lockout scans never fabricate Blizzard lifetime kills")
 
 oldSnapshot=first
 local repeated=module:Collect()
-assert(repeated.lifetime.bosses[501].difficulties.MYTHIC.kills==1,"same lockout must not double count")
+assert(next(repeated.lifetime.bosses)==nil,"repeated scans do not create a lifetime count")
 
 oldSnapshot=repeated;lockoutId=10001
 local nextLockout=module:Collect()
-assert(nextLockout.lifetime.bosses[501].difficulties.MYTHIC.kills==2,"new lockout increments lifetime count")
+assert(next(nextLockout.lifetime.bosses)==nil,"a new lockout still does not increment a local lifetime count")
 assert(module:Validate(nextLockout))
 
 raidCatalog={{id=100,name="Raid One",icon=12345},{id=200,name="Raid Two",icon=23456}};lockoutName="Raid Two";instances={{difficultyId=14,difficultyName="Normal",kills={true,false}}};oldSnapshot=nil
 local secondCurrent=module:Collect()
 assert(#secondCurrent.raids==2 and secondCurrent.lockouts[1].isCurrent,"every raid in the latest expansion tier is current")
 assert(secondCurrent.lockouts[1].journalInstanceId==200,"lockout is linked to its encounter-journal raid")
+
+tierCount=2;currentTier=2;selectedTier=2;raidCatalogByTier={[1]={{id=300,name="Firelands",icon=34567}},[2]=raidCatalog};lockoutName="Firelands";instances={{difficultyId=33,difficultyName="Timewalking",kills={true,false}}};oldSnapshot=nil
+local timewalking=module:Collect()
+assert(#timewalking.raids==2 and timewalking.lockouts[1].journalInstanceId==300,"an older-tier lockout is resolved across all encounter-journal tiers")
+assert(timewalking.lockouts[1].difficultyId==33 and not timewalking.lockouts[1].isCurrent,"Timewalking remains a distinct non-current difficulty")
 
 local savedEJ={EJ_GetNumTiers,EJ_SelectTier,EJ_GetInstanceByIndex,EJ_GetCurrentTier,EJ_SelectInstance,EJ_GetEncounterInfoByIndex}
 EJ_GetNumTiers=nil;EJ_SelectTier=nil;EJ_GetInstanceByIndex=nil;EJ_GetCurrentTier=nil;EJ_SelectInstance=nil;EJ_GetEncounterInfoByIndex=nil

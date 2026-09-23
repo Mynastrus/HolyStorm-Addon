@@ -8,6 +8,9 @@
 ## Version: @project-version@
 ## RequiredDeps: Holy_Storm
 ## X-HolyStorm-ID: characters
+## X-HolyStorm-CharacterBlock: stats
+## X-HolyStorm-CharacterCapability: character.scan.stats
+## X-HolyStorm-CharacterOrder: 50
 
 Locales\enUS.lua
 Locales\deDE.lua

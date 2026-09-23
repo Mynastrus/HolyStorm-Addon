@@ -15,7 +15,10 @@ HolyStorm:RegisterModule(metadata,function(Module)
  function Module:Validate(s)return type(s)=="table"and type(s.primary)=="table"and s.primary.stamina and s.primary.stamina.base~=nil,"stats unavailable"end
  function Module:Commit(s)local guid=UnitGUID("player");return HolyStorm.PlayerData:WriteOwnedBlock(guid,"stats",s,"blizzard")end
  function Module:Queue(sync)return HolyStorm.Snapshots:Queue("stats",function()return Module:Collect()end,function(s)return Module:Validate(s)end,function(s,f)return Module:Commit(s,f,sync)end,{source="CharacterStats",delay=1,retryDelay=2.5,priority=5})end
- function Module:OnInitialize()HolyStorm:RegisterCapability("CharacterStats","character.scan.stats",function(_,sync)return Module:Queue(sync)end);HolyStorm:RegisterCapability("CharacterStats","character.scan.additional",function(_,sync)return Module:Queue(sync)end)end
- function Module:OnEnable()for _,ev in ipairs({"PLAYER_EQUIPMENT_CHANGED","PLAYER_SPECIALIZATION_CHANGED","TRAIT_CONFIG_UPDATED","PLAYER_TALENT_UPDATE"})do local event=ev;HolyStorm.Events:Register(event,"character-stats",function(_,firstArgument)if event~="PLAYER_SPECIALIZATION_CHANGED"or not firstArgument or firstArgument=="player"then Module:Queue(true)end end)end end
+ function Module:OnInitialize()
+  HolyStorm.CharacterScans:RegisterProvider("CharacterStats",{block="stats",capability="character.scan.stats",addonId="characters",order=50,request=function(sync)local _,workflowId=Module:Queue(sync);return workflowId end})
+  HolyStorm:RegisterCapability("CharacterStats","character.scan.stats",function(_,sync,reason)return HolyStorm.CharacterScans:Request("stats",reason or"CAPABILITY",sync,{order=50})end);HolyStorm:RegisterCapability("CharacterStats","character.scan.additional",function(_,sync,reason)return HolyStorm.CharacterScans:Request("stats",reason or"CAPABILITY",sync,{order=50})end)
+ end
+ function Module:OnEnable()for _,ev in ipairs({"PLAYER_EQUIPMENT_CHANGED","PLAYER_SPECIALIZATION_CHANGED","TRAIT_CONFIG_UPDATED","PLAYER_TALENT_UPDATE"})do local event=ev;HolyStorm.Events:Register(event,"character-stats",function(_,firstArgument)if event~="PLAYER_SPECIALIZATION_CHANGED"or not firstArgument or firstArgument=="player"then HolyStorm.CharacterScans:Request("stats",event,true,{order=50})end end)end end
  function Module:OnDisable()HolyStorm.Events:UnregisterOwner("character-stats");HolyStorm.Snapshots:Cancel("stats")end
 end)

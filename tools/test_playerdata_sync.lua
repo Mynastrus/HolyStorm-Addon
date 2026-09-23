@@ -69,6 +69,7 @@ function HolyStorm.Tasks:Queue(id,o)self.queued[#self.queued+1]={id=id,options=o
 function HolyStorm.Tasks:Cancel()return true end
 function HolyStorm.Tasks:ScheduleRecurring()error("Sync must not register an idle recurring cleanup")end
 assert(loadfile(root.."Sync/SyncManager.lua"))();HolyStorm.Sync:Initialize();assert(#timers==0,"Sync initialization must not schedule cleanup without expirable state")
+local queuedBeforeRemote=#HolyStorm.Tasks.queued;assert(HolyStorm.PlayerData:AcceptRemoteBlock("Player-NoPingPong","stats",{primary={v=1}},{owner="Player-NoPingPong",version=1,updatedAt=clock},"Player-NoPingPong","NoPingPong-Realm"));assert(#HolyStorm.Tasks.queued==queuedBeforeRemote,"an incoming character payload does not emit the owned-update event or queue an outgoing sync")
 local selfEnvelope=assert(HolyStorm.Serializer:Serialize({protocol=3,kind="PRESENCE",sender="Player-Local",data={version=1},sentAt=clock}));local selfLogCount=#HolyStorm.Logger.history;assert(not HolyStorm.Sync:Receive(selfEnvelope,"Local-Realm","GUILD")and#HolyStorm.Logger.history==selfLogCount,"Sync receive must retain the UnitGUID sender defense")
 assert(HolyStorm.Sync:Publish("character",foreign.."\031equipment","TEST"))
 local publish=HolyStorm.Tasks.queued[#HolyStorm.Tasks.queued];assert(publish.id=="Sync.Publish");HolyStorm.Sync:RunPublish({metadata=publish.options.metadata,priority=65})

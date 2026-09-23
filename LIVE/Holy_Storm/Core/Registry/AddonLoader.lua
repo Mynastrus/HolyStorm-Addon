@@ -20,6 +20,11 @@ local function split(value)
     return result
 end
 
+local function metadataNumber(value)
+    local parsed = tonumber(trim(value))
+    return parsed
+end
+
 local function addonNameAt(index)
     if not C_AddOns or not C_AddOns.GetAddOnInfo then return nil end
     local first = C_AddOns.GetAddOnInfo(index)
@@ -40,6 +45,9 @@ function Loader:Discover()
                 addonName = addonName,
                 requires = split(C_AddOns.GetAddOnMetadata(addonName, "X-HolyStorm-Requires")),
                 events = split(C_AddOns.GetAddOnMetadata(addonName, "X-HolyStorm-LoadOnEvent")),
+                characterBlock = trim(C_AddOns.GetAddOnMetadata(addonName, "X-HolyStorm-CharacterBlock")),
+                characterCapability = trim(C_AddOns.GetAddOnMetadata(addonName, "X-HolyStorm-CharacterCapability")),
+                characterOrder = metadataNumber(C_AddOns.GetAddOnMetadata(addonName, "X-HolyStorm-CharacterOrder")),
             }
             self.addonsById[id] = definition
             count = count + 1
@@ -50,6 +58,29 @@ function Loader:Discover()
         end
     end
     return count
+end
+
+
+function Loader:LoadById(id, context)
+    local definition = self.addonsById[id]
+    if not definition then return false, "UNKNOWN_ADDON" end
+    if self:IsLoaded(definition.addonName) then return true, "ALREADY_LOADED" end
+    return self:Load(definition, context)
+end
+
+function Loader:GetCharacterDataDefinitions()
+    local result = {}
+    for _, definition in pairs(self.addonsById) do
+        if definition.characterBlock and definition.characterCapability then
+            result[#result + 1] = { block=definition.characterBlock, capability=definition.characterCapability, addonId=definition.id, order=definition.characterOrder or 100 }
+        end
+    end
+    table.sort(result, function(left, right) if left.order == right.order then return left.block < right.block end; return left.order < right.order end)
+    return result
+end
+
+function Loader:GetCharacterDataDefinition(block)
+    for _, definition in ipairs(self:GetCharacterDataDefinitions()) do if definition.block == block then return definition end end
 end
 
 function Loader:IsLoaded(addonName)

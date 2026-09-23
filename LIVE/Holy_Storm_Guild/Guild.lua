@@ -74,9 +74,9 @@ function GuildRoster:CreateRow(parent)
     row.twinkArrow:SetTexture("Interface\\Buttons\\Arrow-Up-Up")
     row.twinkArrow:SetRotation(-math.pi / 2)
     row.twinkArrow:Hide()
-    row.name = self:CreateColumn(row, 46, -500); row.rank = self:CreateColumn(row, -490, -385)
-    row.level = self:CreateColumn(row, -375, -330); row.realm = self:CreateColumn(row, -320, -220); row.realm:SetWordWrap(false)
-    row.zone = self:CreateColumn(row, -210, -110); row.status = self:CreateColumn(row, -100, -10)
+    row.name = self:CreateColumn(row, 46, -560); row.rank = self:CreateColumn(row, -550, -445)
+    row.level = self:CreateColumn(row, -435, -390); row.realm = self:CreateColumn(row, -380, -280); row.realm:SetWordWrap(false)
+    row.zone = self:CreateColumn(row, -270, -170); row.status = self:CreateColumn(row, -160, -90); row.version = self:CreateColumn(row, -80, -10)
     return row
 end
 
@@ -197,10 +197,10 @@ end
 function GuildRoster:CreateHeader(parent)
     local header = CreateFrame("Frame", nil, parent)
     header:SetHeight(24); header:SetPoint("TOPLEFT", parent, "TOPLEFT", 0, -70); header:SetPoint("TOPRIGHT", parent, "TOPRIGHT", 0, -70)
-    header.indicator = self:CreateColumn(header, 10, -500); header.name = self:CreateColumn(header, 46, -500); header.rank = self:CreateColumn(header, -490, -385)
-    header.level = self:CreateColumn(header, -375, -330); header.realm = self:CreateColumn(header, -320, -220); header.realm:SetWordWrap(false)
-    header.zone = self:CreateColumn(header, -210, -110); header.status = self:CreateColumn(header, -100, -10)
-    for _, column in ipairs({ "name", "rank", "level", "realm", "zone", "status" }) do
+    header.indicator = self:CreateColumn(header, 10, -560); header.name = self:CreateColumn(header, 46, -560); header.rank = self:CreateColumn(header, -550, -445)
+    header.level = self:CreateColumn(header, -435, -390); header.realm = self:CreateColumn(header, -380, -280); header.realm:SetWordWrap(false)
+    header.zone = self:CreateColumn(header, -270, -170); header.status = self:CreateColumn(header, -160, -90); header.version = self:CreateColumn(header, -80, -10)
+    for _, column in ipairs({ "name", "rank", "level", "realm", "zone", "status", "version" }) do
         header[column]:SetFontObject(GameFontNormalSmall); header[column]:SetText(L["COLUMN_" .. string.upper(column)]); header[column]:SetTextColor(1, 0.82, 0)
     end
 end
@@ -232,7 +232,7 @@ function GuildRoster:InitializeUI()
     scroll:SetScript("OnSizeChanged", function(self) content:SetWidth(self:GetWidth()) end)
     content:SetWidth(scroll:GetWidth())
     self.page, self.ui, self.refreshButton, self.scrollContent, self.rows = page, UI, refresh, content, {}
-    HolyStorm.UI:RegisterPage("guildRoster", page, L["WINDOW_TITLE"], function() GuildRoster:Refresh() end, { "HS_ROSTER_UPDATED" })
+    HolyStorm.UI:RegisterPage("guildRoster", page, L["WINDOW_TITLE"], function() GuildRoster:Refresh() end, { "HS_ROSTER_UPDATED", "HS_SYNC_VERSION_UPDATED" })
     HolyStorm.UI:AddNavigation("guildRoster", 3, "Interface\\Icons\\INV_Misc_GroupLooking", L["NAVIGATION_TITLE"], L["NAVIGATION_DESCRIPTION"], function() GuildRoster:RequestAndRefresh(); HolyStorm.UI:ShowPage("guildRoster") end)
 end
 
@@ -286,7 +286,7 @@ function GuildRoster:Refresh()
     local members, memberCount = {}, 0
     for _, stored in pairs(guild and guild.roster or {}) do
         memberCount = memberCount + 1
-        if settings.showOffline or stored.online then local c=HolyStorm.Data.CharacterStore:Get(stored.guid);table.insert(members, { index=stored.index,guid=stored.guid,name=stored.name,rank=stored.rank,rankIndex=stored.rankIndex or math.huge,level=stored.level,className=stored.class,zone=stored.zone,note=stored.note,officerNote=stored.officerNote,online=stored.online,status=stored.status,isMobile=stored.isMobile,classFileName=stored.classFile,itemLevel=c and c.itemLevel,mythicScore=c and c.mythicPlus and c.mythicPlus.overallScore,addonVersion=c and c.addon and c.addon.version }) end
+        if settings.showOffline or stored.online then local c=HolyStorm.Data.CharacterStore:Get(stored.guid);local discoveredVersion=HolyStorm.Sync and HolyStorm.Sync:GetKnownVersion(stored.guid);table.insert(members, { index=stored.index,guid=stored.guid,name=stored.name,rank=stored.rank,rankIndex=stored.rankIndex or math.huge,level=stored.level,className=stored.class,zone=stored.zone,note=stored.note,officerNote=stored.officerNote,online=stored.online,status=stored.status,isMobile=stored.isMobile,classFileName=stored.classFile,itemLevel=c and c.itemLevel,mythicScore=c and c.mythicPlus and c.mythicPlus.overallScore,addonVersion=discoveredVersion or(c and c.addon and c.addon.version) }) end
     end
     if self.filterBar then members=self.filterBar:Apply(members)end
     table.sort(members, function(left, right)
@@ -341,11 +341,12 @@ function GuildRoster:RenderRows(members)
         row.twinkArrow:SetShown(member.isTwink)
         row.name:ClearAllPoints()
         row.name:SetPoint("LEFT", row, "LEFT", member.isTwink and 64 or 46, 0)
-        row.name:SetPoint("RIGHT", row, "RIGHT", -500, 0)
+        row.name:SetPoint("RIGHT", row, "RIGHT", -560, 0)
         setColumnText(row.name, characterName, { classColor.r, classColor.g, classColor.b })
         setColumnText(row.rank, member.rank, { 1, 1, 1 }); setColumnText(row.level, member.level and tostring(member.level), { 1, 1, 1 })
         setColumnText(row.realm, realm, { 1, 1, 1 }); setColumnText(row.zone, member.zone, { 1, 1, 1 })
         setColumnText(row.status, member.online and L[string.upper(state)] or self:FormatOfflineDuration(member.status), stateColor)
+        setColumnText(row.version, member.addonVersion or "|cff888888–|r", member.addonVersion and { 1, 1, 1 } or { .55, .55, .55 })
         row:SetScript("OnMouseUp", function(_, button)
             if button == "RightButton" then GuildRoster:ShowGuildMemberMenu(row, member) elseif button == "LeftButton" then GuildRoster:ShowCharacter(member) end
         end)

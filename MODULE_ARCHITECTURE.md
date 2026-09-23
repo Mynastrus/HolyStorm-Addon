@@ -27,7 +27,9 @@ vom Core-Bootstrap.
 
 Jedes Addon deklariert `X-HolyStorm-ID`. Optional sind
 `X-HolyStorm-Requires` und eine kommaseparierte Liste in
-`X-HolyStorm-LoadOnEvent`. Der Core liest diese Werte über
+`X-HolyStorm-LoadOnEvent`. Character-Datenprovider deklarieren zusätzlich
+`X-HolyStorm-CharacterBlock`, `X-HolyStorm-CharacterCapability` und
+`X-HolyStorm-CharacterOrder`. Der Core liest diese Werte über
 `C_AddOns.GetNumAddOns`, `C_AddOns.GetAddOnInfo` und
 `C_AddOns.GetAddOnMetadata`. Er kennt weder Feature-Namen noch die fachliche
 Bedeutung eines Events.
@@ -47,6 +49,21 @@ Aktuell sind folgende Addons Load-on-Demand:
 Die übrigen Features bleiben wegen Login-, Sync- oder dauerhaftem Dienstbedarf
 normal geladen. Insbesondere wird `PLAYER_ENTERING_WORLD` nicht als generischer
 Loader-Trigger verwendet.
+
+## Character-Scan-Vertrag
+
+Der Core kennt keine fachliche Liste von Character-Features. Der
+`CharacterScanManager` verbindet die TOC-Deklarationen mit den zur Laufzeit
+registrierten Providern. Beim echten Login prüft er nach der Identity-Erfassung
+die Blockmetadaten in `PlayerDataStore` und fordert nur fehlende Blöcke an.
+Alle Provider-Workflows teilen sich die logische Ressource `CHARACTER_SCAN` und
+laufen strikt nacheinander. Wiederholte Anforderungen desselben Blocks werden
+zusammengeführt; eine während des aktiven Scans eintreffende Änderung bleibt als
+dirty-Anforderung erhalten, ohne andere wartende Features auszuhungern.
+
+Feature-Module registrieren `{ block, capability, addonId, order, request }`.
+Spezifische Datenänderungsereignisse fordern nur den betroffenen Block an.
+`PLAYER_ENTERING_WORLD` ist weder Initialscan noch universeller Refresh.
 
 ## Feature- und UI-Registrierung
 
@@ -71,9 +88,11 @@ Weitere Erweiterungspunkte sind `RegisterCapability` / `CallCapability`,
 1. Eigenes TOC mit `RequiredDeps: Holy_Storm` und stabiler `X-HolyStorm-ID`.
 2. `LoadOnDemand: 1` nur mit einem sinnvollen, spezifischen
    `X-HolyStorm-LoadOnEvent`; keine eigene Trigger-Sprache.
-3. Nur öffentliche Store-, Event-, Task-, Workflow-, Registry-, Permission-
+3. Character-Datenprovider deklarieren Block, Capability und Reihenfolge im TOC
+   und registrieren ihren Provider beim `CharacterScanManager`.
+4. Nur öffentliche Store-, Event-, Task-, Workflow-, Registry-, Permission-
    und Sync-APIs verwenden.
-4. UI-Integration ausschließlich optional und über `RegisterUIExtension`.
-5. SavedVariables nicht direkt aus UI-Code ändern.
-6. Featuretexte mindestens in `enUS` und `deDE` pflegen.
-7. TOC-, Syntax-, Locale-, Offline- und Ingame-Vertragstests ergänzen.
+5. UI-Integration ausschließlich optional und über `RegisterUIExtension`.
+6. SavedVariables nicht direkt aus UI-Code ändern.
+7. Featuretexte mindestens in `enUS` und `deDE` pflegen.
+8. TOC-, Syntax-, Locale-, Offline- und Ingame-Vertragstests ergänzen.

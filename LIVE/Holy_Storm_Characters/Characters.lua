@@ -63,10 +63,8 @@ function Twinks:OnInitialize()
 end
 function Twinks:QueueCollection(trigger)
  HolyStorm.Tasks:Enqueue("character.identity",function()local character=Twinks:StoreCurrentCharacter();if character then HolyStorm.Data.PlayerStore:LinkLocalCharacter(character.guid)end end,{priority=1,debounce=.2})
- local capabilities={};for capability in pairs(HolyStorm.moduleCapabilities or{})do if capability:match("^character%.scan%.")then capabilities[#capabilities+1]=capability end end;table.sort(capabilities)
- for index,capability in ipairs(capabilities)do local current=capability;HolyStorm.Tasks:Enqueue("capability."..current,function()HolyStorm:CallCapability(current,false)end,{priority=index+1,debounce=.5+(index*.25),dependencies={"character.identity"},triggerSource=trigger})end
 end
-function Twinks:OnEnable()if not HolyStorm.CharacterDirectory.owner then HolyStorm.CharacterDirectory:Initialize("Twinks")end;HolyStorm.Events:Register("PLAYER_LOGIN","characters",function(event)Twinks:QueueCollection(event)end);HolyStorm.Events:Register("PLAYER_ENTERING_WORLD","characters",function(event)Twinks:QueueCollection(event)end);if IsLoggedIn()then self:QueueCollection("CHARACTERS_ENABLE")end end
+function Twinks:OnEnable()if not HolyStorm.CharacterDirectory.owner then HolyStorm.CharacterDirectory:Initialize("Twinks")end;HolyStorm.Events:Register("PLAYER_LOGIN","characters",function(event)Twinks:QueueCollection(event)end);if IsLoggedIn()then self:QueueCollection("CHARACTERS_ENABLE")end end
 function Twinks:OnDisable()HolyStorm.Events:UnregisterOwner("characters");HolyStorm.CharacterDirectory:Shutdown()end
 function Twinks:RequestAndRefresh()self:StoreCurrentCharacter();if _G.GuildRoster then _G.GuildRoster()end;self:Refresh()end
 function Twinks:Refresh()

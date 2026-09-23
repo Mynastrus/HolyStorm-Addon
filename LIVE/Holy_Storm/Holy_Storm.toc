@@ -30,6 +30,7 @@ Core\Events\EventBus.lua
 Core\State\StateManager.lua
 Core\Tasks\TaskManager.lua
 Core\Workflows\WorkflowManager.lua
+Core\Tasks\CharacterScanManager.lua
 Core\Hooks\HookManager.lua
 Core\Actions\ActionManager.lua
 Core\Permissions\RuleEngine.lua

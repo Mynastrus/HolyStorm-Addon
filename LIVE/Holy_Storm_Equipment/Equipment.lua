@@ -83,11 +83,13 @@ HolyStorm:RegisterModule(metadata,function(Module)
   for _,slot in ipairs(SLOTS)do local item=r and r.equipment and r.equipment.slots[slot];lines[#lines+1]=string.format("%d: %s",slot,item and item.link or L["EMPTY_SLOT"])end;self.content:SetText(table.concat(lines,"\n"))
  end
  function Module:OnInitialize()
-  self:RegisterWorkflow();HolyStorm:RegisterCapability("Equipment","character.scan.equipment",function(_,sync)return Module:Request(sync,"INITIAL_COLLECTION",1)end)
+  self:RegisterWorkflow()
+  HolyStorm.CharacterScans:RegisterProvider("Equipment",{block="equipment",capability="character.scan.equipment",addonId="equipment",order=10,request=function(sync,reason)return Module:Request(sync,reason or"CHARACTER_SCAN",1)end})
+  HolyStorm:RegisterCapability("Equipment","character.scan.equipment",function(_,sync,reason)return HolyStorm.CharacterScans:Request("equipment",reason or"CAPABILITY",sync,{order=10})end)
  end
  function Module:OnEnable()
-  for _,event in ipairs({"PLAYER_EQUIPMENT_CHANGED","UNIT_INVENTORY_CHANGED","SOCKET_INFO_UPDATE"})do local eventName=event;HolyStorm.Events:Register(eventName,"equipment",function(_,firstArgument)if eventName~="UNIT_INVENTORY_CHANGED"or firstArgument=="player"then Module:Request(true,eventName,1)end end)end
-  local context=self.loadContext;if context and context.reason=="event"then self:Request(true,context.trigger,0)end
+  for _,event in ipairs({"PLAYER_EQUIPMENT_CHANGED","UNIT_INVENTORY_CHANGED","SOCKET_INFO_UPDATE"})do local eventName=event;HolyStorm.Events:Register(eventName,"equipment",function(_,firstArgument)if eventName~="UNIT_INVENTORY_CHANGED"or firstArgument=="player"then HolyStorm.CharacterScans:Request("equipment",eventName,true,{order=10})end end)end
+  local context=self.loadContext;if context and context.reason=="event"then HolyStorm.CharacterScans:Request("equipment",context.trigger,true,{order=10})end
  end
  function Module:OnDisable()HolyStorm.Events:UnregisterOwner("equipment");local id=HolyStorm.Workflows.activeByType[WORKFLOW];if id then HolyStorm.Workflows:Cancel(id,"MODULE_DISABLED")end end
 end)

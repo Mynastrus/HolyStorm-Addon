@@ -18,7 +18,10 @@ HolyStorm:RegisterModule(metadata,function(Module)
  function Module:Commit(s)local guid=UnitGUID("player");return HolyStorm.PlayerData:WriteOwnedBlock(guid,"delves",s,"blizzard")end
  function Module:Queue(sync)return HolyStorm.Snapshots:Queue("delves",function()return Module:Collect()end,function(s)return Module:Validate(s)end,function(s,f)return Module:Commit(s,f,sync)end,{source="Delves",delay=1,retryDelay=2.5,priority=6})end
  function Module:RefreshPage()if not self.page or not self.page:IsShown()then return end;local r=HolyStorm.Data.CharacterStore:Get(UnitGUID("player"));local d=r and r.delves;local lines={};for _,a in ipairs(d and d.activities or{})do lines[#lines+1]=string.format(L["ACTIVITY_FORMAT"],a.progress or 0,a.threshold or 0,a.level or 0)end;self.text:SetText(#lines>0 and table.concat(lines,"\n")or L["NO_DATA"])end
- function Module:OnInitialize()HolyStorm:RegisterCapability("Delves","character.scan.delves",function(_,sync)return Module:Queue(sync)end);HolyStorm:RegisterCapability("Delves","character.scan.additional",function(_,sync)return Module:Queue(sync)end)end
- function Module:OnEnable()if not C_DelvesUI or not C_WeeklyRewards then self:Disable();return end;for _,ev in ipairs({"WEEKLY_REWARDS_UPDATE","PLAYER_ENTERING_WORLD","DELVES_ACCOUNT_DATA_ELEMENT_CHANGED","ACTIVE_DELVE_DATA_UPDATE"})do local event=ev;HolyStorm.Events:Register(event,"delves",function()Module:Queue(true)end)end end
+ function Module:OnInitialize()
+  HolyStorm.CharacterScans:RegisterProvider("Delves",{block="delves",capability="character.scan.delves",addonId="delves",order=40,request=function(sync)local _,workflowId=Module:Queue(sync);return workflowId end})
+  HolyStorm:RegisterCapability("Delves","character.scan.delves",function(_,sync,reason)return HolyStorm.CharacterScans:Request("delves",reason or"CAPABILITY",sync,{order=40})end);HolyStorm:RegisterCapability("Delves","character.scan.additional",function(_,sync,reason)return HolyStorm.CharacterScans:Request("delves",reason or"CAPABILITY",sync,{order=40})end)
+ end
+ function Module:OnEnable()if not C_DelvesUI or not C_WeeklyRewards then self:Disable();return end;for _,ev in ipairs({"WEEKLY_REWARDS_UPDATE","DELVES_ACCOUNT_DATA_ELEMENT_CHANGED","ACTIVE_DELVE_DATA_UPDATE"})do local event=ev;HolyStorm.Events:Register(event,"delves",function()HolyStorm.CharacterScans:Request("delves",event,true,{order=40})end)end end
  function Module:OnDisable()HolyStorm.Events:UnregisterOwner("delves");HolyStorm.Snapshots:Cancel("delves")end
 end)

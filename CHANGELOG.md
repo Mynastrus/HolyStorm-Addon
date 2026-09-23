@@ -11,6 +11,13 @@ oder anderen Dateien außerhalb von `LIVE` gehören nicht in dieses Changelog.
 
 ## Noch nicht veröffentlicht
 
+### 23. September 2026
+
+- Ein zentraler, feature-blinder `CharacterScanManager` entdeckt Character-Datenblöcke deklarativ aus den Addon-TOCs, erfasst beim Login ausschließlich fehlende Blöcke und serialisiert alle Snapshot-Workflows über die gemeinsame Ressource `CHARACTER_SCAN`. Fachliche Events markieren ihren Block gezielt als dirty; Zonenwechsel startet keinen pauschalen Neuscan.
+- Mythic+-Bestzeiten zeigen nun Key-Stufe, Laufzeit und In-/Overtime-Farbe anhand der gespeicherten Blizzard-Laufdaten. Raid-Lockouts werden über alle Encounter-Journal-Tiers aufgelöst, unterstützen Timewalking als optionale zentrale Tabellenspalte und zeigen nicht verifizierbare Lebenszeit-Kills ausdrücklich als unbekannt, statt lokale Beobachtungen zu addieren.
+- Login-Presence verteilt die Semantic Version einmal pro Sitzung, antwortet leichtgewichtig und weist genau einmal auf eine entdeckte neuere Version hin. Die Gildenliste zeigt bekannte Holy-Storm-Versionen; strukturierte Comms-/Sync-Diagnosen enthalten Richtung, Sender, Ziel, Domain, Objekt, Nachrichtentyp, Version, Grund, Anfrage- und Korrelations-ID sowie Relay-/Retry-Kontext.
+- Technische Logger-Ausgaben schreiben nicht mehr in den Spielerchat. Sichtbare Meldungen laufen über die zentrale Command-Ausgabe und sind in Deutsch und Englisch lokalisiert.
+
 ### 22. September 2026
 
 - `Holy_Storm_UI` besitzt jetzt eine zentrale deklarative View-, Layout- und Komponentenarchitektur mit festen, prozentualen und gewichteten Tracks, verschachtelten Row-/Column-Containern, Padding, Gaps, Auto-Messung und ereignisgetriebenem Resize.

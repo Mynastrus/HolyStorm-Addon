@@ -40,6 +40,29 @@ Für owner-kontrollierte Objekte ist `owner` die stabile fachliche Herkunft. `re
 
 Live-Domains wie `guild-position` nutzen direkte, kurzlebige Publishes und keinen persistenten Catch-up. Andere Domains können Discovery und passive Heilung verwenden.
 
+## Login-Presence, Versionen und Diagnose
+
+Nach einem echten `PLAYER_LOGIN` sendet jeder Client genau eine verzögerte
+Guild-Presence mit Semantic Version und Session-ID. Gegenstellen antworten mit
+einer kleinen Whisper-Presence. Erkannte Versionen bleiben sitzungslokal und
+werden in der Gildenliste angezeigt. Erst nachdem die eigene Presence erfolgreich
+an die gedrosselte Transportqueue übergeben und eine Peer-Version empfangen wurde, vergleicht der Client die
+Versionen nach SemVer; ein Hinweis auf eine neuere Version erscheint höchstens
+einmal pro Login-Sitzung.
+
+Ein fachlicher Sync-Vorgang kann auf dem Transport in mehrere Pakete
+fragmentiert werden. Dadurch entstehen kurze Task-Bursts mit mehreren
+`Sync.Send`-/Comms-Einträgen; zusätzlich können beim Login Presence sowie je
+Domain Discovery/Offer gleichzeitig anfallen. Das ist kein Character-Ping-Pong:
+nur lokale `HS_PLAYERDATA_OWNED_UPDATED`-Ereignisse publizieren erneut, während
+akzeptierte Remote-Blöcke ausschließlich das Remote-Update-Ereignis auslösen.
+Die bestehende Transportdrosselung und Paketierung bleiben unverändert.
+
+Strukturierte Sync-/Comms-Diagnosen beschreiben Richtung, Sender, Empfänger,
+Kanal, Domain, logisches Objekt und Character/Block, Nachrichtenklasse und
+-typ, Version, Grund, Request-/Transmission-/Correlation-ID sowie
+Original-Owner, Relay- und Retry-Kontext. Payload-Inhalte werden nicht geloggt.
+
 ## PermissionSync
 
 Die Permission-Domain wird in `Core/Permissions/PermissionSync.lua` registriert und nutzt `freshness="revision-chain"`. Ihre Payload enthält aktuellen Revisionskopf, History und Snapshot. Der generische SyncManager überspringt für diese Domain die normale „neuere Metadaten gewinnen“-Entscheidung; PermissionSync prüft stattdessen die Kette.
