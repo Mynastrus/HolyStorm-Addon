@@ -13,8 +13,9 @@ function LibStub(name)
  return{GetLocale=function()return setmetatable({},{__index=function(_,key)return key end})end}
 end
 HolyStorm.Data={CharacterStore={}}
-function HolyStorm.Data.CharacterStore:GetRaidLockouts()return oldSnapshot end
-function HolyStorm.Data.CharacterStore:GetBlockMetadata()return{version=3}end
+local blockReads=0
+function HolyStorm.Data.CharacterStore:GetBlock(guid,blockId)assert(guid=="Player-GUID"and blockId=="raid","Raid snapshot must use the generic raid block API");blockReads=blockReads+1;return oldSnapshot,{version=3}end
+function HolyStorm.Data.CharacterStore:GetBlockMetadata(guid,blockId)assert(guid=="Player-GUID"and blockId=="raid","Raid metadata must use the generic block API");return{version=3}end
 
 function UnitGUID()return"Player-GUID"end
 local tierCount,currentTier,selectedTier,selectedInstance=1,1,1,nil
@@ -43,6 +44,7 @@ function GetSavedInstanceEncounterInfo(index,bossIndex)local x=instances[index];
 assert(loadfile(featureRoot.."Raids.lua"))()
 local module=assert(HolyStorm.raidModule)
 local first=module:Collect()
+assert(blockReads==1 and HolyStorm.Data.CharacterStore.GetRaidLockouts==nil,"Raid collect uses only the current CharacterStore API surface")
 assert(first.snapshotVersion==3 and#first.raids==1 and#first.raids[1].bosses==2,"current raid catalog")
 assert(#first.lockouts==4 and first.bestProgress.difficultyId==16,"logical difficulty ordering")
 assert(first.lifetime.reliable==false and next(first.lifetime.bosses)==nil,"lockout scans never fabricate Blizzard lifetime kills")

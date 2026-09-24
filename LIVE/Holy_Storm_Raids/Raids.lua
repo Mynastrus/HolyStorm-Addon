@@ -18,7 +18,7 @@ HolyStorm:RegisterModule(metadata,function(Module)
   api,reason,missing=readJournalAPIs();if api then return api end
   HolyStorm.Logger:Write("WARN","Raids","catalog",reason,{reason="MISSING_ENCOUNTER_JOURNAL_API",api=missing,addon="Blizzard_EncounterJournal"});return nil,reason
  end
- function Module:GetCharacterSnapshot(guid)return HolyStorm.Data.CharacterStore:GetRaidLockouts(guid),HolyStorm.Data.CharacterStore:GetBlockMetadata(guid,"raid")end
+ function Module:GetCharacterSnapshot(guid)return HolyStorm.Data.CharacterStore:GetBlock(guid,"raid"),HolyStorm.Data.CharacterStore:GetBlockMetadata(guid,"raid")end
  function Module:GetLatestRaid()
   local raids,tier=self:GetCurrentRaidCatalog();local raid=raids and raids[1];return raid and{id=raid.id,name=raid.name,tier=tier}or nil
  end
