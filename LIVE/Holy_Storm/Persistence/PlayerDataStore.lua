@@ -169,9 +169,12 @@ function PlayerData:ObserveIdentity(guid,data,source)
     if not validId(guid)or type(data)~="table"or not self:IsLocallyOwned(guid)then return false end
     return self:WriteOwnedBlock(guid,"identity",data,source or"observation")
 end
-function PlayerData:IsStale(guid,blockId)
-    local definition=self.blocks[blockId];local meta=self:GetMetadata(guid,blockId);return not meta or now()-(tonumber(meta.updatedAt)or 0)>(definition and definition.staleAfter or 21600)
+function PlayerData:GetBlockFreshness(guid,blockId)
+    local definition=self.blocks[blockId];local meta=self:GetMetadata(guid,blockId);local staleAfter=definition and definition.staleAfter or 21600
+    local updatedAt=meta and(tonumber(meta.updatedAt)or 0)or nil;local age=updatedAt and now()-updatedAt or nil
+    return{metadata=meta,metadataExists=meta~=nil,stale=not meta or age>staleAfter,updatedAt=updatedAt,staleAfter=staleAfter,age=age}
 end
+function PlayerData:IsStale(guid,blockId)return self:GetBlockFreshness(guid,blockId).stale end
 function PlayerData:RequestRefresh(guid,blocks)
     if not HolyStorm.Sync then return false end
     if not blocks then blocks={};for blockId in pairs(self.blocks)do if blockId~="addon"then blocks[#blocks+1]=blockId end end;table.sort(blocks)end

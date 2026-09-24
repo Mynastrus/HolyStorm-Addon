@@ -36,10 +36,13 @@ function CharacterScans:Request(block,reason,sync,options)
  return true,"QUEUED"
 end
 
-function CharacterScans:QueueMissingBlocks()
+function CharacterScans:QueueBootstrapBlocks()
  local guid=UnitGUID("player");if not guid then return false end
  for _,definition in ipairs(self:GetDeclarations())do
-  if not HolyStorm.PlayerData:GetMetadata(guid,definition.block)then self:Request(definition.block,"INITIAL_MISSING_BLOCK",true,{initial=true,order=definition.order,addonId=definition.addonId,capability=definition.capability})end
+  local freshness=HolyStorm.PlayerData:GetBlockFreshness(guid,definition.block);local reason
+  if not freshness.metadataExists then reason="INITIAL_MISSING_BLOCK"elseif freshness.stale then reason="INITIAL_STALE_BLOCK"end
+  local queued=reason~=nil;if queued then self:Request(definition.block,reason,true,{initial=true,order=definition.order,addonId=definition.addonId,capability=definition.capability})end
+  HolyStorm.Logger:Write("DEBUG","CharacterScan","bootstrap","Character scan bootstrap decision",{block=definition.block,metadataExists=freshness.metadataExists,stale=freshness.stale,queued=queued,reason=reason or"FRESH",updatedAt=freshness.updatedAt or 0,staleAfter=freshness.staleAfter,age=freshness.age or 0})
  end
  return true
 end
@@ -78,12 +81,12 @@ end
 
 function CharacterScans:BeginLogin()
  self.loginSession=self.loginSession+1;self.active=nil;self.pending={};self.queue={}
- return HolyStorm.Tasks:Queue("CharacterScan.InitialMissing",{delay=self.initialDelay,startupPhase=4,priority=30,triggerSource="PLAYER_LOGIN",metadata={session=self.loginSession}})
+ return HolyStorm.Tasks:Queue("CharacterScan.InitialBootstrap",{delay=self.initialDelay,startupPhase=4,priority=30,triggerSource="PLAYER_LOGIN",metadata={session=self.loginSession}})
 end
 
 function CharacterScans:Initialize()
  if self.initialized then return true end;self.initialized=true
- HolyStorm.Tasks:RegisterTaskType("CharacterScan.InitialMissing",{name=L["TASK_CHARACTER_SCAN_DISCOVER"],localizedNameKey="TASK_CHARACTER_SCAN_DISCOVER",module="CharacterScan",priority=30,executionMode="UNIQUE",conditions={"PLAYER_LOGGED_IN","PLAYER_READY","NOT_LOADING","NOT_ZONING",function()local guid=UnitGUID("player");return guid and HolyStorm.PlayerData:GetMetadata(guid,"identity")~=nil end},execute=function()return CharacterScans:QueueMissingBlocks()end})
+ HolyStorm.Tasks:RegisterTaskType("CharacterScan.InitialBootstrap",{name=L["TASK_CHARACTER_SCAN_DISCOVER"],localizedNameKey="TASK_CHARACTER_SCAN_DISCOVER",module="CharacterScan",priority=30,executionMode="UNIQUE",conditions={"PLAYER_LOGGED_IN","PLAYER_READY","NOT_LOADING","NOT_ZONING",function()local guid=UnitGUID("player");return guid and HolyStorm.PlayerData:GetMetadata(guid,"identity")~=nil end},execute=function()return CharacterScans:QueueBootstrapBlocks()end})
  HolyStorm.Tasks:RegisterTaskType("CharacterScan.Advance",{name=L["TASK_CHARACTER_SCAN_ADVANCE"],localizedNameKey="TASK_CHARACTER_SCAN_ADVANCE",module="CharacterScan",priority=30,executionMode="UNIQUE",conditions={"PLAYER_LOGGED_IN","PLAYER_READY","NOT_LOADING","NOT_ZONING"},execute=function()return CharacterScans:Advance()end})
  HolyStorm.Events:Register("PLAYER_LOGIN","character-scan",function()CharacterScans:BeginLogin()end)
  HolyStorm.Events:Register("HS_WORKFLOW_COMPLETED","character-scan",function(_,workflow)CharacterScans:Finish(workflow,"COMPLETED")end)

@@ -85,4 +85,8 @@ assert(logs[#logs].context.api=="EJ_GetInstanceByIndex","structured raid logging
 restoreJournal();EJ_GetEncounterInfoByIndex=nil;pending=module:Collect();valid,reason=module:Validate(pending);assert(not valid and reason=="Raid catalog unavailable: missing EJ encounter enumeration API","a missing encounter enumeration API causes retry instead of a scan")
 assert(logs[#logs].context.api=="EJ_GetEncounterInfoByIndex","structured raid logging names the missing encounter API")
 restoreJournal();C_AddOns=nil
+oldSnapshot={lifetime={bosses={historic={id=501,name="Boss A",raidInstanceId=100,difficulties={MYTHIC={kills=7,source="blizzard-statistic",statisticId=42}}}},seen={historic=true}},lockouts={{name="Raid One",difficultyId=16,killed=2,total=2,bosses={}}}}
+instances={};tierCount=1;currentTier=1;selectedTier=1;raidCatalogByTier={};raidCatalog={{id=100,name="Raid One",icon=12345}}
+local expired=module:Collect();assert(#expired.lockouts==0,"a fresh raid snapshot omits an expired lockout that Blizzard no longer returns")
+assert(expired.lifetime.bosses.historic.difficulties.MYTHIC.kills==7 and expired.lifetime.seen.historic,"historical raid best data survives while weekly lockouts are rebuilt")
 print("Raid catalog availability, retry preservation, difficulty ordering and lifetime deduplication tests passed")
