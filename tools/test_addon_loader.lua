@@ -3,7 +3,7 @@ local definitions={
  {name="Holy_Storm",metadata={}},
  {name="Holy_Storm_UI",metadata={["X-HolyStorm-ID"]="ui",["X-HolyStorm-Requires"]="core"}},
  {name="Unrelated_Addon",metadata={}},
- {name="Vendor_Module_One",metadata={["X-HolyStorm-ID"]="alpha",["X-HolyStorm-Requires"]="core, synchronization",["X-HolyStorm-LoadOnEvent"]="EVENT_ALPHA, EVENT_BETA",["X-HolyStorm-CharacterBlock"]="equipment",["X-HolyStorm-CharacterCapability"]="character.scan.equipment",["X-HolyStorm-CharacterOrder"]="10"}},
+ {name="Vendor_Module_One",metadata={["X-HolyStorm-ID"]="alpha",["X-HolyStorm-Requires"]="core, synchronization",["X-HolyStorm-LoadOnEvent"]="EVENT_ALPHA, EVENT_BETA",["X-HolyStorm-CharacterBlock"]="equipment",["X-HolyStorm-CharacterCapability"]="character.scan.equipment",["X-HolyStorm-CharacterOrder"]="10",["X-HolyStorm-CharacterInspectFresh"]="1"}},
  {name="Vendor_Module_Two",metadata={["X-HolyStorm-ID"]="beta"}},
  {name="Missing_Id",metadata={["X-HolyStorm-LoadOnEvent"]="EVENT_ALPHA"}},
 }
@@ -28,7 +28,7 @@ assert(Loader:Initialize()==nil)
 assert(Loader.addonsById.alpha and Loader.addonsById.beta,"Holy Storm metadata discovery")
 assert(not Loader.addonsById.Unrelated_Addon and not Loader.addonsById.Missing_Id,"addons without an ID are ignored")
 assert(#Loader.addonsById.alpha.requires==2 and Loader.addonsById.alpha.requires[2]=="synchronization","requires metadata parsing")
-local characterDefinitions=Loader:GetCharacterDataDefinitions();assert(#characterDefinitions==1 and characterDefinitions[1].block=="equipment"and characterDefinitions[1].capability=="character.scan.equipment"and characterDefinitions[1].order==10,"character-data TOC declarations are discovered generically")
+local characterDefinitions=Loader:GetCharacterDataDefinitions();assert(#characterDefinitions==1 and characterDefinitions[1].block=="equipment"and characterDefinitions[1].capability=="character.scan.equipment"and characterDefinitions[1].order==10 and characterDefinitions[1].inspectFresh==true,"character-data TOC declarations and fresh-inspection opt-in are discovered generically")
 assert(listeners.EVENT_ALPHA and listeners.EVENT_BETA,"event registry")
 assert(not listeners.PLAYER_ENTERING_WORLD,"normal addons do not gain synthetic login triggers")
 listeners.EVENT_ALPHA.callback("EVENT_ALPHA")

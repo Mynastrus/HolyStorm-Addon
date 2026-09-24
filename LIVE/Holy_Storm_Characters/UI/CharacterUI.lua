@@ -113,10 +113,10 @@ function CharacterUI:GetDifficultyColor(key)local d=self.raidDifficulties[key];r
 function CharacterUI:ColorDifficulty(key,text)local c=self:GetDifficultyColor(key);return c and string.format("|cff%02x%02x%02x%s|r",math.floor(c.r*255+.5),math.floor(c.g*255+.5),math.floor(c.b*255+.5),tostring(text))or tostring(text)end
 
 function CharacterUI:BuildRaidBestRows(snapshot)
- local result,byBoss={},{};local lifetime=type(snapshot)=="table"and snapshot.lifetime
+ local result={};local lifetime=type(snapshot)=="table"and snapshot.lifetime
  for bossKey,boss in pairs(type(lifetime)=="table"and type(lifetime.bosses)=="table"and lifetime.bosses or{})do
   local best
-  for key,entry in pairs(type(boss.difficulties)=="table"and boss.difficulties or{})do local definition=self.raidDifficulties[key];local trusted=type(entry)=="table"and entry.source=="blizzard-statistic"and tonumber(entry.statisticId);local kills=trusted and tonumber(entry.kills)or nil;if definition and kills and kills>0 and(not best or definition.order>best.order)then best={difficulty=key,order=definition.order,kills=kills}end end
+  for _,key in ipairs({"LFR","NORMAL","HEROIC","MYTHIC"})do local entry=type(boss.difficulties)=="table"and boss.difficulties[key];local definition=self.raidDifficulties[key];local trusted=type(entry)=="table"and entry.source=="blizzard-statistic"and tonumber(entry.statisticId);local kills=trusted and tonumber(entry.kills)or nil;if definition and kills and kills>0 then best={difficulty=key,order=definition.order,kills=kills}end end
   if best then result[#result+1]={bossId=boss.id or bossKey,bossIdStable=boss.id~=nil,bossName=boss.name or tostring(bossKey),raidInstanceId=boss.raidInstanceId or boss.journalInstanceId,raidName=boss.raidName,difficulty=best.difficulty,kills=best.kills,order=best.order}end
  end
  table.sort(result,function(a,b)return tostring(a.bossName)<tostring(b.bossName)end);return result
@@ -129,12 +129,11 @@ function CharacterUI:RaidIdentityMatches(value,identity)
  return type(wantedName)=="string"and type(valueName)=="string"and wantedName==valueName
 end
 function CharacterUI:GetBestProgress(snapshot,raidIdentity)
- local totals={};for _,row in ipairs(self:BuildRaidBestRows(snapshot))do if self:RaidIdentityMatches(row,raidIdentity)then totals[row.difficulty]=(totals[row.difficulty]or 0)+1 end end
- local best;for _,key in ipairs({"LFR","NORMAL","HEROIC","MYTHIC","TIMEWALKING"})do if totals[key]and totals[key]>0 then best={difficulty=key,killed=totals[key],total=totals[key]}end end
+ local totals,seen={},{};local lifetime=type(snapshot)=="table"and snapshot.lifetime
+ for bossKey,boss in pairs(type(lifetime)=="table"and type(lifetime.bosses)=="table"and lifetime.bosses or{})do if self:RaidIdentityMatches(boss,raidIdentity)then local identity=tostring(boss.raidInstanceId or boss.journalInstanceId or boss.raidName or"").."\031"..tostring(boss.id or boss.name or bossKey);for _,key in ipairs({"LFR","NORMAL","HEROIC","MYTHIC"})do local entry=type(boss.difficulties)=="table"and boss.difficulties[key];local trusted=type(entry)=="table"and entry.source=="blizzard-statistic"and tonumber(entry.statisticId);local kills=trusted and tonumber(entry.kills)or nil;seen[key]=seen[key]or{};if kills and kills>0 and not seen[key][identity]then seen[key][identity]=true;totals[key]=(totals[key]or 0)+1 end end end end
+ local best;for _,key in ipairs({"LFR","NORMAL","HEROIC","MYTHIC"})do if totals[key]and totals[key]>0 then best={difficulty=key,killed=totals[key],total=totals[key]}end end
  local total=0;for _,raid in ipairs(type(snapshot)=="table"and snapshot.raids or{})do if self:RaidIdentityMatches(raid,raidIdentity)then total=math.max(total,#(raid.bosses or{}))end end;if best then best.total=total>0 and total or best.killed end
- -- bestProgress in older snapshots is global. It is safe for the summary, but
- -- must never be attached to a specific raid row without a raid identity.
- if not best and raidIdentity==nil and snapshot and snapshot.bestProgress then local d=self:GetDifficultyById(snapshot.bestProgress.difficultyId);best={difficulty=d and d.id or"UNKNOWN",killed=snapshot.bestProgress.killed or 0,total=snapshot.bestProgress.total or 0}end;return best
+ return best
 end
 function CharacterUI:CanUseTab(definition)
  if definition.permission and HolyStorm.Policy and not HolyStorm.Policy:Can(definition.permission)then return false,"PERMISSION"end

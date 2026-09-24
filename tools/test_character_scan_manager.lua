@@ -3,6 +3,7 @@ unpack=unpack or table.unpack
 local metadata,queued,logs,listeners={},{},{},{}
 local clock=100000
 local blockMetadata={identity={version=1,updatedAt=clock},mythicPlus={version=1,updatedAt=clock-10},raid={version=1,updatedAt=clock-10}}
+local blockSnapshots={mythicPlus={dungeons={{affixScores={}}}}};local inspectMythic=false
 local HolyStorm={Utils={},Tasks={definitions={}},Events={},PlayerData={},AddonLoader={}}
 function HolyStorm:GetAddon()return self end
 function LibStub(name)if name=="AceAddon-3.0"then return HolyStorm end;return{GetLocale=function()return setmetatable({},{__index=function(_,key)return key end})end}end
@@ -16,8 +17,9 @@ function HolyStorm.Tasks:Queue(id,options)queued[#queued+1]={id=id,options=optio
 function HolyStorm.Events:Register(event,_,callback)listeners[event]=callback end
 function HolyStorm.Events:Emit()end
 function HolyStorm.PlayerData:GetMetadata(_,block)return blockMetadata[block]end
+function HolyStorm.PlayerData:GetBlock(_,block)return blockSnapshots[block]end
 function HolyStorm.PlayerData:GetBlockFreshness(_,block)local meta=blockMetadata[block];local staleAfter=21600;local updatedAt=meta and(tonumber(meta.updatedAt)or 0)or nil;local age=updatedAt and clock-updatedAt or nil;return{metadata=meta,metadataExists=meta~=nil,stale=not meta or age>staleAfter,updatedAt=updatedAt,staleAfter=staleAfter,age=age}end
-function HolyStorm.AddonLoader:GetCharacterDataDefinitions()return{{block="equipment",capability="character.scan.equipment",addonId="equipment",order=10},{block="mythicPlus",capability="character.scan.mythicplus",addonId="mythicPlus",order=20},{block="raid",capability="character.scan.raids",addonId="raids",order=30}}end
+function HolyStorm.AddonLoader:GetCharacterDataDefinitions()return{{block="equipment",capability="character.scan.equipment",addonId="equipment",order=10},{block="mythicPlus",capability="character.scan.mythicplus",addonId="mythicPlus",order=20,inspectFresh=inspectMythic},{block="raid",capability="character.scan.raids",addonId="raids",order=30}}end
 function UnitGUID()return"Player-Local"end
 
 assert(loadfile(root.."Core/Tasks/CharacterScanManager.lua"))();local scans=HolyStorm.CharacterScans;scans:Initialize()
@@ -28,12 +30,12 @@ scans:RegisterProvider("MythicPlus",{block="mythicPlus",capability="character.sc
 
 assert(scans:QueueBootstrapBlocks()and#scans.queue==1 and scans.queue[1].block=="equipment"and scans.queue[1].reason=="INITIAL_MISSING_BLOCK","a missing block queues exactly one missing initial scan")
 scans:QueueBootstrapBlocks();assert(#scans.queue==1,"repeated bootstrap discovery merges the same missing block without a refresh loop")
-local equipmentDecision=logs[#logs-2].context;assert(equipmentDecision.block=="equipment"and not equipmentDecision.metadataExists and equipmentDecision.stale and equipmentDecision.queued and equipmentDecision.reason=="INITIAL_MISSING_BLOCK"and equipmentDecision.staleAfter==21600,"missing-block bootstrap logging records the complete decision")
+local equipmentDecision=logs[#logs-2].context;assert(equipmentDecision.block=="equipment"and equipmentDecision.provider=="Equipment"and equipmentDecision.addonId=="equipment"and not equipmentDecision.metadataExists and equipmentDecision.stale and equipmentDecision.queued and equipmentDecision.reason=="INITIAL_MISSING_BLOCK"and equipmentDecision.skipReason=="NONE"and equipmentDecision.staleAfter==21600,"missing-block bootstrap logging records the complete decision")
 assert(scans:Advance()and scans.active.block=="equipment"and#started==1 and started[1].reason=="INITIAL_MISSING_BLOCK","the missing block starts with its bootstrap reason")
 assert(scans:Finish({workflowId=scans.active.workflowId},"COMPLETED"))
 
 scans.active=nil;scans.pending={};scans.queue={};blockMetadata.equipment={version=1,updatedAt=clock-10};assert(scans:QueueBootstrapBlocks()and#scans.queue==0,"existing fresh blocks do not receive an initial scan")
-local freshDecision=logs[#logs-2].context;assert(freshDecision.block=="equipment"and freshDecision.metadataExists and not freshDecision.stale and not freshDecision.queued and freshDecision.reason=="FRESH"and freshDecision.updatedAt==clock-10 and freshDecision.age==10,"fresh-block bootstrap logging records timestamp and age")
+local freshDecision=logs[#logs-2].context;assert(freshDecision.block=="equipment"and freshDecision.metadataExists and not freshDecision.stale and not freshDecision.queued and freshDecision.reason=="FRESH"and freshDecision.skipReason=="BLOCK_FRESH"and freshDecision.updatedAt==clock-10 and freshDecision.age==10,"fresh-block bootstrap logging records timestamp and age")
 
 scans.active=nil;scans.pending={};scans.queue={};blockMetadata.equipment.updatedAt=clock-21601;blockMetadata.mythicPlus.updatedAt=clock-21602;blockMetadata.raid.updatedAt=clock-21603
 assert(scans:QueueBootstrapBlocks()and#scans.queue==3 and scans.queue[1].block=="equipment"and scans.queue[2].block=="mythicPlus"and scans.queue[3].block=="raid","multiple stale blocks are queued in stable provider order")
@@ -48,6 +50,13 @@ assert(scans:Finish({workflowId=scans.active.workflowId},"COMPLETED"));assert(sc
 scans.active=nil;scans.pending={};scans.queue={};blockMetadata.equipment=nil;blockMetadata.mythicPlus.updatedAt=clock-21601;blockMetadata.raid.updatedAt=clock
 assert(scans:QueueBootstrapBlocks()and#scans.queue==2 and scans.queue[1].block=="equipment"and scans.queue[1].reason=="INITIAL_MISSING_BLOCK"and scans.queue[2].block=="mythicPlus"and scans.queue[2].reason=="INITIAL_STALE_BLOCK","mixed missing and stale blocks are queued together in stable order")
 local queuedBeforeLogin=#queued;listeners.PLAYER_LOGIN();assert(queued[#queued].id=="CharacterScan.InitialBootstrap"and#queued==queuedBeforeLogin+1,"login schedules the renamed bootstrap task exactly once")
+
+scans.active=nil;scans.pending={};scans.queue={};blockMetadata.equipment={version=1,updatedAt=clock};blockMetadata.mythicPlus={version=1,updatedAt=clock};blockMetadata.raid={version=1,updatedAt=clock};inspectMythic=true;scans.providers.mythicPlus=nil
+local loadCalls=0;function HolyStorm.AddonLoader:LoadById(addonId,context)assert(addonId=="mythicPlus"and context.block=="mythicPlus");loadCalls=loadCalls+1;scans:RegisterProvider("MythicPlus",{block="mythicPlus",capability="character.scan.mythicplus",addonId="mythicPlus",order=20,needsRefresh=function(snapshot)for _,dungeon in pairs(snapshot.dungeons or{})do if next(dungeon.affixScores or{})then for _,entry in pairs(dungeon.affixScores)do if entry.category=="TYRANNICAL"or entry.category=="FORTIFIED"then return false,"BLOCK_FRESH"end end;return true,"AFFIX_CATEGORIES_UNRESOLVED"end end;return false,"BLOCK_FRESH"end,request=function(_,reason)started[#started+1]={block="mythicPlus",reason=reason};return"wf-mythicplus-lod"end});return true end
+blockSnapshots.mythicPlus={dungeons={{affixScores={{name="Unresolved"}}}}};assert(scans:QueueBootstrapBlocks()and loadCalls==1 and#scans.queue==1 and scans.queue[1].block=="mythicPlus"and scans.queue[1].reason=="INITIAL_INCOMPLETE_BLOCK","a fresh structurally incomplete LoD block loads its provider and queues one refresh")
+scans:QueueBootstrapBlocks();assert(loadCalls==1 and#scans.queue==1,"repeated bootstrap inspection merges the incomplete block without reloading or looping")
+assert(scans:Advance()and scans.active.block=="mythicPlus"and started[#started].reason=="INITIAL_INCOMPLETE_BLOCK","the LoD provider starts the incomplete-block workflow")
+assert(scans:Finish({workflowId=scans.active.workflowId},"COMPLETED"));scans.active=nil;scans.pending={};scans.queue={};blockSnapshots.mythicPlus={dungeons={{affixScores={{category="TYRANNICAL"},{category="FORTIFIED"}}}}};assert(scans:QueueBootstrapBlocks()and#scans.queue==0,"a fresh complete Mythic+ block does not scan again")
 
 local projectRoot=arg[0]:gsub("tools[/\\]test_character_scan_manager.lua$","")
 local eventContracts={

@@ -12,7 +12,7 @@ local function sortQueue(left,right)local lo=tonumber(left.order)or 100;local ro
 
 function CharacterScans:RegisterProvider(owner,definition)
  if not valid(owner)or type(definition)~="table"or not valid(definition.block)or not valid(definition.capability)or type(definition.request)~="function"then return false,"INVALID_CHARACTER_SCAN_PROVIDER"end
- self.providers[definition.block]={owner=owner,block=definition.block,capability=definition.capability,addonId=definition.addonId,order=tonumber(definition.order)or 100,request=definition.request}
+ self.providers[definition.block]={owner=owner,block=definition.block,capability=definition.capability,addonId=definition.addonId,order=tonumber(definition.order)or 100,request=definition.request,needsRefresh=definition.needsRefresh}
  if HolyStorm.Events then HolyStorm.Events:Emit("HS_CHARACTER_SCAN_PROVIDER_REGISTERED",definition.block,owner)end
  return true
 end
@@ -22,7 +22,7 @@ function CharacterScans:GetDeclarations()
  if HolyStorm.AddonLoader and HolyStorm.AddonLoader.GetCharacterDataDefinitions then
   for _,definition in ipairs(HolyStorm.AddonLoader:GetCharacterDataDefinitions())do declarations[#declarations+1]=definition;seen[definition.block]=true end
  end
- for block,provider in pairs(self.providers)do if not seen[block]then declarations[#declarations+1]={block=block,capability=provider.capability,addonId=provider.addonId,order=provider.order}end end
+ for block,provider in pairs(self.providers)do if not seen[block]then declarations[#declarations+1]={block=block,capability=provider.capability,addonId=provider.addonId,order=provider.order,inspectFresh=type(provider.needsRefresh)=="function"}end end
  table.sort(declarations,sortQueue);return declarations
 end
 
@@ -39,10 +39,15 @@ end
 function CharacterScans:QueueBootstrapBlocks()
  local guid=UnitGUID("player");if not guid then return false end
  for _,definition in ipairs(self:GetDeclarations())do
-  local freshness=HolyStorm.PlayerData:GetBlockFreshness(guid,definition.block);local reason
+  local freshness=HolyStorm.PlayerData:GetBlockFreshness(guid,definition.block);local reason,skipReason,provider
   if not freshness.metadataExists then reason="INITIAL_MISSING_BLOCK"elseif freshness.stale then reason="INITIAL_STALE_BLOCK"end
+  if not reason and definition.inspectFresh then
+   provider=self:ResolveProvider({block=definition.block,addonId=definition.addonId,capability=definition.capability,reason="BOOTSTRAP_VALIDATION"})
+   if provider and type(provider.needsRefresh)=="function"then local snapshot=HolyStorm.PlayerData:GetBlock(guid,definition.block);local ok,needed,why=HolyStorm.Utils.SafeCall("character-scan-needs-refresh:"..definition.block,provider.needsRefresh,snapshot,freshness.metadata);if ok and needed==true then reason="INITIAL_INCOMPLETE_BLOCK"elseif ok then skipReason=why or"BLOCK_FRESH"else skipReason="PROVIDER_CHECK_FAILED";HolyStorm.Logger:Write("WARN","CharacterScan","bootstrap","Character scan provider freshness check failed",{block=definition.block,provider=provider.owner,addonId=definition.addonId,error=tostring(needed)})end else skipReason="PROVIDER_CHECK_UNAVAILABLE"end
+  end
   local queued=reason~=nil;if queued then self:Request(definition.block,reason,true,{initial=true,order=definition.order,addonId=definition.addonId,capability=definition.capability})end
-  HolyStorm.Logger:Write("DEBUG","CharacterScan","bootstrap","Character scan bootstrap decision",{block=definition.block,metadataExists=freshness.metadataExists,stale=freshness.stale,queued=queued,reason=reason or"FRESH",updatedAt=freshness.updatedAt or 0,staleAfter=freshness.staleAfter,age=freshness.age or 0})
+  provider=provider or self.providers[definition.block];skipReason=skipReason or(queued and"NONE"or"BLOCK_FRESH")
+  HolyStorm.Logger:Write("DEBUG","CharacterScan","bootstrap","Character scan bootstrap decision",{block=definition.block,provider=provider and provider.owner or definition.addonId or"UNREGISTERED",addonId=definition.addonId or"NONE",metadataExists=freshness.metadataExists,stale=freshness.stale,queued=queued,reason=reason or"FRESH",skipReason=skipReason,updatedAt=freshness.updatedAt or 0,staleAfter=freshness.staleAfter,age=freshness.age or 0})
  end
  return true
 end

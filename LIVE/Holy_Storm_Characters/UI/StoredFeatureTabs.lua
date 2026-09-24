@@ -74,7 +74,7 @@ do
   if not bosses or#bosses==0 then tooltip:AddLine(L["NO_DATA"],.55,.55,.55)end;return true
  end
  local function shortDifficulty(key)return key=="MYTHIC"and"M"or key=="HEROIC"and"H"or key=="NORMAL"and"N"or key=="TIMEWALKING"and"TW"or key=="LFR"and"LFR"or"?"end
- local function bestText(snapshot,row)local C=HolyStorm.CharacterUI;local best=C:GetBestProgress(snapshot,row);if not best and row then for _,key in ipairs({"LFR","NORMAL","HEROIC","MYTHIC","TIMEWALKING"})do local lockout=row.weekly[key];if lockout and(tonumber(lockout.killed)or 0)>0 then best={difficulty=key,killed=tonumber(lockout.killed)or 0,total=tonumber(lockout.total)or row.total or 0}end end end;if best and(tonumber(best.killed)or 0)>0 then return C:ColorDifficulty(best.difficulty,string.format("%s %d/%d",shortDifficulty(best.difficulty),best.killed,best.total))end;return snapshot.catalogReady==true and""or C:FormatState(nil)end
+ local function bestText(snapshot,row)local C=HolyStorm.CharacterUI;local best=C:GetBestProgress(snapshot,row);if best and(tonumber(best.killed)or 0)>0 then return C:ColorDifficulty(best.difficulty,string.format("%s %d/%d",shortDifficulty(best.difficulty),best.killed,best.total))end;return snapshot.catalogReady==true and""or C:FormatState(nil)end
  local function bestTooltip(row,tooltip)
   local C=HolyStorm.CharacterUI;tooltip:SetText(L["BEST_TOOLTIP"]);local trustedById,trustedByName,fallbackByName,shown,shownTrusted={},{},{},0,{};local bestRows=C:BuildRaidBestRows(row.snapshot)
   for _,boss in ipairs(bestRows)do if C:RaidIdentityMatches(boss,row)then local nameKey=raidKey(boss.bossName);if boss.bossIdStable then trustedById[tostring(boss.bossId)]=boss else fallbackByName[nameKey]=boss end;trustedByName[nameKey]=boss end end

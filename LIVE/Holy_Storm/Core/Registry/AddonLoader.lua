@@ -25,6 +25,11 @@ local function metadataNumber(value)
     return parsed
 end
 
+local function metadataBoolean(value)
+    value = trim(value)
+    return value == "1" or value == "true"
+end
+
 local function addonNameAt(index)
     if not C_AddOns or not C_AddOns.GetAddOnInfo then return nil end
     local first = C_AddOns.GetAddOnInfo(index)
@@ -48,6 +53,7 @@ function Loader:Discover()
                 characterBlock = trim(C_AddOns.GetAddOnMetadata(addonName, "X-HolyStorm-CharacterBlock")),
                 characterCapability = trim(C_AddOns.GetAddOnMetadata(addonName, "X-HolyStorm-CharacterCapability")),
                 characterOrder = metadataNumber(C_AddOns.GetAddOnMetadata(addonName, "X-HolyStorm-CharacterOrder")),
+                characterInspectFresh = metadataBoolean(C_AddOns.GetAddOnMetadata(addonName, "X-HolyStorm-CharacterInspectFresh")),
             }
             self.addonsById[id] = definition
             count = count + 1
@@ -72,7 +78,7 @@ function Loader:GetCharacterDataDefinitions()
     local result = {}
     for _, definition in pairs(self.addonsById) do
         if definition.characterBlock and definition.characterCapability then
-            result[#result + 1] = { block=definition.characterBlock, capability=definition.characterCapability, addonId=definition.id, order=definition.characterOrder or 100 }
+            result[#result + 1] = { block=definition.characterBlock, capability=definition.characterCapability, addonId=definition.id, order=definition.characterOrder or 100, inspectFresh=definition.characterInspectFresh==true }
         end
     end
     table.sort(result, function(left, right) if left.order == right.order then return left.block < right.block end; return left.order < right.order end)

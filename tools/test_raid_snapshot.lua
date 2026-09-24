@@ -91,4 +91,33 @@ oldSnapshot={lifetime={bosses={historic={id=501,name="Boss A",raidInstanceId=100
 instances={};tierCount=1;currentTier=1;selectedTier=1;raidCatalogByTier={};raidCatalog={{id=100,name="Raid One",icon=12345}}
 local expired=module:Collect();assert(#expired.lockouts==0,"a fresh raid snapshot omits an expired lockout that Blizzard no longer returns")
 assert(expired.lifetime.bosses.historic.difficulties.MYTHIC.kills==7 and expired.lifetime.seen.historic,"historical raid best data survives while weekly lockouts are rebuilt")
+
+local statistics={
+ {id=7001,name="Boss A kills (Normal Raid One)",assetId=9501,value="27"},
+ {id=7002,name="Boss A kills (Heroic Raid One)",assetId=9501,value="1"},
+ {id=7003,name="Boss A kills (Mythic Raid One)",assetId=9501,value="--"},
+ {id=7004,name="Boss B kills (Normal Raid One)",assetId=9502,value="4"},
+ {id=7005,name="Boss B kills (Normal Raid One)",assetId=9502,value="5"},
+ {id=7006,name="Boss A kills (Raid Finder Other Raid)",assetId=9501,value="99"},
+}
+function EJ_GetCreatureInfo(index,encounterId)if index~=1 then return nil end;if encounterId==501 then return 9501 elseif encounterId==502 then return 9502 end end
+function GetStatisticsCategoryList()return{900}end
+function GetCategoryNumAchievements(categoryId)assert(categoryId==900);return#statistics end
+function GetStatistic(categoryOrId,index)
+ if index then local statistic=statistics[index];return statistic.value,false,statistic.id end
+ for _,statistic in ipairs(statistics)do if statistic.id==categoryOrId then return statistic.value end end
+end
+function GetAchievementInfo(statisticId)for _,statistic in ipairs(statistics)do if statistic.id==statisticId then return statistic.id,statistic.name end end end
+function GetAchievementNumCriteria(statisticId)return GetAchievementInfo(statisticId)and 1 or 0 end
+function GetAchievementCriteriaInfo(statisticId)for _,statistic in ipairs(statistics)do if statistic.id==statisticId then return statistic.name,0,false,0,0,nil,0,statistic.assetId end end end
+function GetDifficultyInfo(difficultyId)return({[17]="Raid Finder",[14]="Normal",[15]="Heroic",[16]="Mythic"})[difficultyId]end
+
+oldSnapshot=nil;instances={};module.lifetimeStatisticCandidates=nil;logs={}
+local statistical=module:Collect();local bossA=assert(statistical.lifetime.bosses[501])
+assert(bossA.difficulties.NORMAL.kills==27 and bossA.difficulties.NORMAL.statisticId==7001 and bossA.difficulties.NORMAL.source=="blizzard-statistic","the exact Blizzard statistic ID and its real multi-kill value are stored")
+assert(bossA.difficulties.HEROIC.kills==1 and bossA.difficulties.MYTHIC==nil and bossA.difficulties.LFR==nil,"unknown or unavailable statistics remain unknown")
+assert(statistical.lifetime.bosses[502]==nil,"ambiguous statistics are rejected instead of guessed")
+local accepted,ambiguous=false,false
+for _,entry in ipairs(logs)do if entry.message=="RAID_LIFETIME_STAT"then local context=entry.context or{};assert(context.raidInstanceId and context.bossId and context.difficulty and context.statisticId~=nil and context.value~=nil and context.accepted~=nil and context.reason,"lifetime debug entries expose the complete mapping decision");accepted=accepted or(context.statisticId==7001 and context.accepted==true and context.value=="27"and context.reason=="ACCEPTED");ambiguous=ambiguous or(context.bossId==502 and context.difficulty=="NORMAL"and context.accepted==false and context.reason=="AMBIGUOUS_STATISTIC")end end
+assert(accepted and ambiguous,"RAID_LIFETIME_STAT logs both accepted and rejected mappings")
 print("Raid catalog availability, retry preservation, difficulty ordering and lifetime deduplication tests passed")

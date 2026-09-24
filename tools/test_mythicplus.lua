@@ -1,12 +1,14 @@
 local root=(arg[0]:gsub("tools[/\\]test_mythicplus.lua$","")).."LIVE/Holy_Storm/"
 local featureRoot=(arg[0]:gsub("tools[/\\]test_mythicplus.lua$","")).."LIVE/Holy_Storm_MythicPlus/"
-local Module={};local registeredEvents={};local capabilities={};local requested={affixes=0,maps=0,rewards=0};local workflows={created=0,merged=0,active=false,queueCalls=0}
+local Module={};local registeredEvents={};local capabilities={};local requested={affixes=0,maps=0,rewards=0};local workflows={created=0,merged=0,active=false,queueCalls=0};local commits,emitted,blockEvents=0,{},{}
 local logs={}
-local HolyStorm={Utils={Now=function()return 100 end},Data={CharacterStore={}},Snapshots={},Events={},Logger={}}
+local HolyStorm={Utils={Now=function()return 100 end},Data={CharacterStore={}},Snapshots={},Events={},Logger={},PlayerData={}}
 function HolyStorm.Logger:Write(level,source,category,message,context)logs[#logs+1]={level=level,source=source,category=category,message=message,context=context}end
 HolyStorm.CharacterScans={providers={},requests={}}
 function HolyStorm.CharacterScans:RegisterProvider(_,definition)self.providers[definition.block]=definition;return true end
 function HolyStorm.CharacterScans:Request(block,reason,sync)self.requests[#self.requests+1]={block=block,reason=reason,sync=sync};return true,"QUEUED"end
+function HolyStorm.PlayerData:RegisterBlock(block,definition)blockEvents[block]=definition.event;return true end
+function HolyStorm.PlayerData:WriteOwnedBlock(_,block,snapshot)commits=commits+1;emitted[#emitted+1]={event=blockEvents[block],block=block,snapshot=snapshot};return true end
 local registeredMetadata
 function HolyStorm:RegisterModule(metadata,callback)registeredMetadata=metadata;callback(Module)end
 function HolyStorm:ApplyModuleMetadata()end
@@ -26,6 +28,7 @@ assert(loadfile(featureRoot.."MythicPlus.lua"))()
 assert(registeredMetadata and registeredMetadata.id=="mythicPlus" and registeredMetadata.name=="MythicPlus" and registeredMetadata.displayName=="DISPLAY_NAME" and registeredMetadata.description=="DESCRIPTION" and registeredMetadata.version=="2.2.0" and registeredMetadata.moduleType=="feature" and registeredMetadata.category=="feature","MythicPlus exposes the central module contract")
 assert(registeredMetadata.capabilities[1]=="character.scan.mythicplus" and registeredMetadata.data.block=="mythicPlus" and registeredMetadata.data.snapshotType=="mythicplus" and registeredMetadata.data.schemaVersion==3 and registeredMetadata.sync.domains[1]=="character","MythicPlus contract describes capabilities, snapshot data and sync integration")
 Module:OnInitialize();Module:OnEnable();assert(type(registeredEvents.MYTHIC_PLUS_CURRENT_AFFIX_UPDATE)=="function"and type(registeredEvents.CHALLENGE_MODE_MAPS_UPDATE)=="function"and not registeredEvents.PLAYER_ENTERING_WORLD,"specific asynchronous events remain registered without PLAYER_ENTERING_WORLD")
+assert(Module:NeedsBootstrapRefresh({dungeons={{affixScores={{name="Unknown"}}}}})==true and Module:NeedsBootstrapRefresh({dungeons={{affixScores={{category="TYRANNICAL"}}}}})==false,"provider freshness distinguishes unresolved from usable affix snapshots")
 registeredEvents.MYTHIC_PLUS_CURRENT_AFFIX_UPDATE("MYTHIC_PLUS_CURRENT_AFFIX_UPDATE");assert(#HolyStorm.CharacterScans.requests==1 and workflows.created==0,"an affix update enters the central character-scan queue")
 local provider=assert(HolyStorm.CharacterScans.providers.mythicPlus);provider.request(true,"MYTHIC_PLUS_CURRENT_AFFIX_UPDATE");assert(workflows.created==1,"the serialized provider starts one snapshot workflow")
 local pending=workflows.scanner();local valid,reason=Module:Validate(pending);assert(not valid and reason=="dungeon scores pending","overall rating without loaded map scores is retried instead of committed");assert(requested.affixes==0 and requested.maps==0 and requested.rewards==0 and workflows.created==1,"API update events scan available data without re-requesting the same API and creating a loop")
@@ -42,5 +45,7 @@ workflows.active=false;provider.request(true,"INITIAL_MISSING_BLOCK");assert(req
 local createdAfterInitial=workflows.created;local requestsAfterInitial=requested.affixes+requested.maps+requested.rewards;workflows.scanner();assert(workflows.created==createdAfterInitial and requested.affixes+requested.maps+requested.rewards==requestsAfterInitial,"the resulting snapshot cannot recursively request data or create another workflow")
 Module.initialDataRequested=false;workflows.active=false;provider.request(true,"INITIAL_STALE_BLOCK");assert(requested.affixes==2 and requested.maps==2 and requested.rewards==2 and workflows.created==createdAfterInitial+1,"a stale initial snapshot requests Blizzard data and starts a fresh workflow")
 local requestsAfterStale=requested.affixes+requested.maps+requested.rewards;workflows.scanner();assert(requested.affixes+requested.maps+requested.rewards==requestsAfterStale,"a stale snapshot workflow does not recursively request Blizzard data")
-capabilities["character.scan.mythicplus"](Module,true);assert(#HolyStorm.CharacterScans.requests==11,"an explicit capability refresh is serialized instead of starting parallel work")
+Module.initialDataRequested=false;workflows.active=false;provider.request(true,"INITIAL_INCOMPLETE_BLOCK");assert(requested.affixes==3 and requested.maps==3 and requested.rewards==3,"an incomplete fresh snapshot actively requests Blizzard data")
+local committedSnapshot=Module:Collect();assert(workflows.commit(committedSnapshot)and commits==1 and emitted[1].event=="HS_MYTHICPLUS_UPDATED"and emitted[1].block=="mythicPlus","the producer workflow commits through PlayerData and emits the Mythic+ update contract")
+capabilities["character.scan.mythicplus"](Module,true);assert(#HolyStorm.CharacterScans.requests==14,"an explicit capability refresh is serialized instead of starting parallel work")
 print("Mythic+ request separation, workflow coalescing and best-run parsing tests passed")

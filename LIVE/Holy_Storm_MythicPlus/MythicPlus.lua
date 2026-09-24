@@ -24,6 +24,11 @@ end
 HolyStorm:RegisterModule(metadata,function(Module)
  HolyStorm:ApplyModuleMetadata(Module,metadata)
  function Module:GetCharacterSnapshot(guid)return HolyStorm.Data.CharacterStore:GetBlock(guid,"mythicPlus")end
+ function Module:NeedsBootstrapRefresh(snapshot)
+  if type(snapshot)~="table"or type(snapshot.dungeons)~="table"or next(snapshot.dungeons)==nil then return true,"MYTHICPLUS_SNAPSHOT_INCOMPLETE"end
+  for _,dungeon in pairs(snapshot.dungeons)do if type(dungeon)~="table"or type(dungeon.affixScores)~="table"then return true,"AFFIX_SCORES_MISSING"elseif next(dungeon.affixScores)then local usable=false;for _,entry in pairs(dungeon.affixScores)do if type(entry)=="table"and(entry.category=="TYRANNICAL"or entry.category=="FORTIFIED")then usable=true;break end end;if not usable then return true,"AFFIX_CATEGORIES_UNRESOLVED"end end end
+  return false,"BLOCK_FRESH"
+ end
  function Module:RequestData(force)
   if self.initialDataRequested and not force then return false end;self.initialDataRequested=true;local mp=C_MythicPlus;if not mp then return false end;local requested=false;if mp.RequestCurrentAffixes then mp.RequestCurrentAffixes();requested=true end;if mp.RequestMapInfo then mp.RequestMapInfo();requested=true end;if mp.RequestRewards then mp.RequestRewards();requested=true end;return requested
  end
@@ -41,7 +46,7 @@ HolyStorm:RegisterModule(metadata,function(Module)
  function Module:Queue(sync,delay)return HolyStorm.Snapshots:Queue("mythicplus",function()return Module:Collect()end,function(s)return Module:Validate(s)end,function(s,f)return Module:Commit(s,f,sync)end,{source="MythicPlus",delay=delay or 1.5,retryDelay=2.5,priority=4})end
  function Module:RefreshPage()if not self.page or not self.page:IsShown()then return end;local r=HolyStorm.Data.CharacterStore:Get(UnitGUID("player"));local d=r and r.mythicPlus;if not d then self.text:SetText(L["NO_MYTHIC_DATA"]);return end;local lines={string.format("Season %s  |  Score %.1f",d.seasonId or"-",d.overallScore or 0)};for _,x in ipairs(d.dungeons or{})do lines[#lines+1]=string.format("%s  +%s  %.1f",x.name or"-",x.bestInTime and x.bestInTime.level or"-",x.score or 0)end;self.text:SetText(table.concat(lines,"\n"))end
  function Module:OnInitialize()
-  HolyStorm.CharacterScans:RegisterProvider("MythicPlus",{block="mythicPlus",capability="character.scan.mythicplus",addonId="mythicPlus",order=20,request=function(sync,reason)if reason=="INITIAL_MISSING_BLOCK"or reason=="INITIAL_STALE_BLOCK"then Module:RequestData(false)elseif reason=="CAPABILITY"then Module:RequestData(true)end;local shortDelay=reason=="CHALLENGE_MODE_COMPLETED"or reason=="CHALLENGE_MODE_MAPS_UPDATE";local _,workflowId=Module:Queue(sync,shortDelay and.5 or 1.5);return workflowId end})
+  HolyStorm.CharacterScans:RegisterProvider("MythicPlus",{block="mythicPlus",capability="character.scan.mythicplus",addonId="mythicPlus",order=20,needsRefresh=function(snapshot,meta)return Module:NeedsBootstrapRefresh(snapshot,meta)end,request=function(sync,reason)if reason=="INITIAL_MISSING_BLOCK"or reason=="INITIAL_STALE_BLOCK"or reason=="INITIAL_INCOMPLETE_BLOCK"then Module:RequestData(false)elseif reason=="CAPABILITY"then Module:RequestData(true)end;local shortDelay=reason=="CHALLENGE_MODE_COMPLETED"or reason=="CHALLENGE_MODE_MAPS_UPDATE";local _,workflowId=Module:Queue(sync,shortDelay and.5 or 1.5);return workflowId end})
   HolyStorm:RegisterCapability("MythicPlus","character.scan.mythicplus",function(_,sync,reason)return HolyStorm.CharacterScans:Request("mythicPlus",reason or"CAPABILITY",sync,{order=20})end)
  end
  function Module:OnEnable()if not C_MythicPlus or not C_ChallengeMode then self:Disable();return end;self.initialDataRequested=false;for _,ev in ipairs({"CHALLENGE_MODE_COMPLETED","CHALLENGE_MODE_MAPS_UPDATE","MYTHIC_PLUS_CURRENT_AFFIX_UPDATE","MYTHIC_PLUS_NEW_WEEKLY_RECORD"})do local event=ev;HolyStorm.Events:Register(event,"mythicplus",function()HolyStorm.CharacterScans:Request("mythicPlus",event,true,{order=20})end)end;local context=self.loadContext;if context and context.reason=="event"then HolyStorm.CharacterScans:Request("mythicPlus",context.trigger,true,{order=20})end end
