@@ -8,8 +8,10 @@ local function files(root)
 end
 local definitions,seenAssignments={},{}
 local luaFiles=files(workspace.."/LIVE")
+local commonMojibake={"\195\131\198\146","\195\131\226\128\154","\195\131\194\162","\195\175\194\191\194\189"}
 for _,path in ipairs(luaFiles)do
  local source=read(path)
+ for _,pattern in ipairs(commonMojibake)do assert(not source:find(pattern,1,true),"common mojibake in "..path)end
  for _,pattern in ipairs({"Ãƒ","Ã‚","Ã¢","ï¿½"})do assert(not source:find(pattern,1,true),"known mojibake in "..path..": "..pattern)end
   local namespace,locale=source:match('NewLocale%(%s*"([^"]+)"%s*,%s*"([^"]+)"')
   if not namespace then locale=path:match("([%a]+)%.lua$");if path:find("/Holy_Storm/Locales/",1,true)then namespace="Holy_Storm"end end
@@ -29,6 +31,7 @@ local skippedFiles={}
 for _,path in ipairs(luaFiles)do
  if not path:match("Locales[\\/]?.*%.lua$")then
   local source=read(path);local namespace=source:match('GetLocale%(%s*"([^"]+)"')
+  for _,pattern in ipairs(commonMojibake)do assert(not source:find(pattern,1,true),"common mojibake in "..path)end
   if namespace and not skippedPrefixProxy[path:sub(#workspace+2)]then
    local available=definitions[namespace]
    for key in source:gmatch('L%["([%w_%.%-]+)"%]%s*[^=]')do
