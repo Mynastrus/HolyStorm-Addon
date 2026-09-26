@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Added structured Raid lifetime discovery, mapping, snapshot and commit diagnostics for manual scans, plus `/hs scan raid status` for the stored snapshot. Manual scans refresh Blizzard statistic discovery, and empty results are no longer cached.
 - Fixed the Retail Activity Points Administration crash by using the shared PolicyUI selector for rule events and decay mode. Administration now logs a failed section build once, hides its partial UI, and keeps other sections usable.
 - Fixed Raid Best tooltip headers to resolve through the Raid locale proxy once, and calculate compact lifetime progression from each boss's highest verified difficulty within the selected raid.
 - Fixed Guild Roster version resolution: the local character uses the loaded core addon metadata, remote versions use recent Sync presence, and stale or unobserved presence stays unknown.
@@ -14,6 +15,7 @@
 
 ### Deutsche Änderungen
 
+- Manuelle Raid-Scans protokollieren nun die Erkennung, Zuordnung, Snapshot-Erstellung und Speicherung von Lebenszeit-Statistiken. `/hs scan raid status` zeigt den gespeicherten Snapshot; manuelle Scans lesen die Blizzard-Statistikkategorien neu und leere Ergebnisse werden nicht mehr zwischengespeichert.
 - Der Retail-Absturz der Activity-Points-Administration wurde behoben: Ereignis und Verfallsart verwenden nun die gemeinsamen PolicyUI-Dropdowns. Fehlgeschlagene Administrationsseiten werden einmal protokolliert, ihre unvollständige Oberfläche wird ausgeblendet und andere Seiten bleiben nutzbar.
 - Raid-Best-Tooltips verwenden die vorhandenen Raid-Locale-Schlüssel ohne doppeltes Präfix. Der kompakte Raid-Fortschritt wählt pro Boss den höchsten bestätigten Lebenszeit-Schwierigkeitsgrad innerhalb des ausgewählten Raids.
 - Die Versionsspalte der Gildenliste verwendet für den lokalen Charakter die geladene Core-Version und für andere Charaktere nur aktuelle Sync-Presence; unbekannte oder veraltete Presence bleibt unbekannt.

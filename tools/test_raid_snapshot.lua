@@ -113,7 +113,7 @@ function GetAchievementCriteriaInfo(statisticId)for _,statistic in ipairs(statis
 function GetDifficultyInfo(difficultyId)return({[17]="Raid Finder",[14]="Normal",[15]="Heroic",[16]="Mythic"})[difficultyId]end
 
 oldSnapshot=nil;instances={};module.lifetimeStatisticCandidates=nil;logs={}
-local statistical=module:Collect();local bossA=assert(statistical.lifetime.bosses[501])
+local statistical=module:Collect(true);local bossA=assert(statistical.lifetime.bosses[501])
 assert(bossA.difficulties.NORMAL.kills==27 and bossA.difficulties.NORMAL.statisticId==7001 and bossA.difficulties.NORMAL.source=="blizzard-statistic","the exact Blizzard statistic ID and its real multi-kill value are stored")
 assert(bossA.difficulties.HEROIC.kills==1 and bossA.difficulties.MYTHIC==nil and bossA.difficulties.LFR==nil,"unknown or unavailable statistics remain unknown")
 assert(statistical.lifetime.bosses[502]==nil,"ambiguous statistics are rejected instead of guessed")

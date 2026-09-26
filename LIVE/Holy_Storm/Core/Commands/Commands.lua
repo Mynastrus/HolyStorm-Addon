@@ -33,6 +33,14 @@ local function registerScanCommand()
             local manager=HolyStorm.CharacterScans
             if not manager or not UnitGUID or not UnitGUID("player")then Commands:PrintUserMessage(L["COMMAND_SCAN_ALL_UNAVAILABLE"]);return end
             local declarations=declarationsByBlock(manager)
+            if target=="raid status"then
+                local definition=declarations.raid
+                local provider=definition and manager:ResolveProvider({block="raid",addonId=definition.addonId,capability=definition.capability,reason="MANUAL_STATUS"})
+                if not provider or type(provider.status)~="function"then Commands:PrintUserMessage(L["COMMAND_SCAN_UNAVAILABLE_RAID"]);return end
+                local lines=provider.status()
+                for _,line in ipairs(type(lines)=="table"and lines or{})do Commands:PrintUserMessage(line)end
+                return
+            end
             if target=="all"then
                 local started=0
                 for _,definition in ipairs(manager:GetDeclarations())do

@@ -20,3 +20,8 @@ L["UNKNOWN"] = "Unbekannt"
 
 L["DISPLAY_NAME"] = "Schlachtzüge"
 L["DESCRIPTION"] = "Stellt schlachtzugbezogene Funktionen bereit."
+L["RAID_STATUS_NO_SNAPSHOT"] = "Raid-Snapshot: nicht vorhanden."
+L["RAID_STATUS_VALID"] = "gültig"
+L["RAID_STATUS_INVALID"] = "ungültig"
+L["RAID_STATUS_SUMMARY"] = "Raid-Snapshot v%s, Blockrevision %s (%s): Katalog %d, wöchentlich %d, Lebenszeit-Bosse %d (%d positiv), aktualisiert %s, Validierung %s."
+L["RAID_STATUS_RAID"] = "%s: Katalog %d, Lebenszeit zugeordnet %d, Bestwert %s."

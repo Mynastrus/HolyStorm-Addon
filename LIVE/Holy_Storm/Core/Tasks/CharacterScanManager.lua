@@ -11,8 +11,8 @@ local function valid(value)return type(value)=="string"and value~=""end
 local function sortQueue(left,right)local lo=tonumber(left.order)or 100;local ro=tonumber(right.order)or 100;if lo==ro then return left.block<right.block end;return lo<ro end
 
 function CharacterScans:RegisterProvider(owner,definition)
- if not valid(owner)or type(definition)~="table"or not valid(definition.block)or not valid(definition.capability)or type(definition.request)~="function"then return false,"INVALID_CHARACTER_SCAN_PROVIDER"end
- self.providers[definition.block]={owner=owner,block=definition.block,capability=definition.capability,addonId=definition.addonId,order=tonumber(definition.order)or 100,request=definition.request,needsRefresh=definition.needsRefresh}
+ if not valid(owner)or type(definition)~="table"or not valid(definition.block)or not valid(definition.capability)or type(definition.request)~="function"or definition.status~=nil and type(definition.status)~="function"then return false,"INVALID_CHARACTER_SCAN_PROVIDER"end
+ self.providers[definition.block]={owner=owner,block=definition.block,capability=definition.capability,addonId=definition.addonId,order=tonumber(definition.order)or 100,request=definition.request,needsRefresh=definition.needsRefresh,status=definition.status}
  if HolyStorm.Events then HolyStorm.Events:Emit("HS_CHARACTER_SCAN_PROVIDER_REGISTERED",definition.block,owner)end
  return true
 end

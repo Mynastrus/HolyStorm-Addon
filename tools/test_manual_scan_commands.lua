@@ -10,7 +10,7 @@ local definitions={
 local requests,unavailable,output={},{},{}
 local manager={}
 function manager:GetDeclarations()return definitions end
-function manager:ResolveProvider(request)if unavailable[request.block]then return nil end;return{capability=request.capability}end
+function manager:ResolveProvider(request)if unavailable[request.block]then return nil end;return{capability=request.capability,status=request.block=="raid"and function()return{"Stored raid snapshot","Lifetime bosses: 3"}end or nil}end
 function manager:Request(block,reason,sync,options)requests[#requests+1]={block=block,reason=reason,sync=sync,options=options};return true,"QUEUED"end
 local locale=setmetatable({ADDON_PREFIX="[Holy Storm] "},{__index=function(_,key)return key end})
 local HolyStorm={CharacterScans=manager,Utils={Trim=function(value)return tostring(value):match("^%s*(.-)%s*$")end}}
@@ -43,8 +43,10 @@ print=oldPrint;assert(table.concat(output,"\n"):find("COMMAND_SCAN_COMPLETED_RAI
 assert(not Commands:OnCharacterScanCompleted("raid","COMPLETED",{BOSS_KILL=true}),"automatic scans do not produce manual-command feedback")
 
 local beforeUsage=#requests;assert(run(""):find("COMMAND_SCAN_USAGE",1,true),"empty scan prints usage");assert(#requests==beforeUsage,"empty scan does not scan everything")
+local beforeStatus=#requests;local status=run("raid status");assert(status:find("Stored raid snapshot",1,true)and status:find("Lifetime bosses: 3",1,true),"raid status prints the provider's stored-snapshot report");assert(#requests==beforeStatus,"raid status must not enqueue another scan")
 local unknown=run("foo");assert(unknown:find("COMMAND_SCAN_UNKNOWN_TARGET",1,true)and unknown:find("COMMAND_SCAN_USAGE",1,true),"unknown target prints localized error and usage")
 local beforeUnavailable=#requests;unavailable.raid=true;assert(run("raid"):find("COMMAND_SCAN_UNAVAILABLE_RAID",1,true),"unavailable provider produces localized feedback");assert(#requests==beforeUnavailable,"unavailable provider does not enqueue a dead workflow")
+assert(run("raid status"):find("COMMAND_SCAN_UNAVAILABLE_RAID",1,true),"raid status handles an unloaded provider")
 
 assert(not source:find("CharacterStore",1,true)and not source:find("HS_Player_DB",1,true)and not source:find("SnapshotManager",1,true),"commands do not mutate snapshots, CharacterStore, or SavedVariables directly")
 assert(source:find("HS_CHARACTER_SCAN_COMPLETED",1,true),"command completion feedback subscribes to the scan manager lifecycle signal")
