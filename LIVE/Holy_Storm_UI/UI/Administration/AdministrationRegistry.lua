@@ -199,14 +199,28 @@ end
 
 function Administration:EnsureSectionBuilt(section)
     if section._frame then return true end
+    if section._buildFailureReason then return false,section._buildFailureReason end
     local parent=self.sectionViewport and self.sectionViewport.content or self.tree and self.tree.content or self.host
     local page=section.page
     if not page and section.build then
+        local existing={}
+        if parent and parent.GetChildren then for _,child in ipairs({parent:GetChildren()}) do existing[child]=true end end
         local ok,result=HolyStorm.Utils.SafeCall("administration.build:"..section.id,section.build,parent,self:GetContext(section,parent))
-        if not ok or not result then return false,"BUILD_FAILED" end
+        if not ok or not result then
+            if parent and parent.GetChildren then
+                for _,child in ipairs({parent:GetChildren()}) do if not existing[child] and child.Hide then child:Hide() end end
+            end
+            section._buildFailureReason="BUILD_FAILED"
+            if HolyStorm.Logger then HolyStorm.Logger:Write("ERROR","Administration","section-build","Administration section build failed",{sectionId=section.id,owner=section.owner,reason=section._buildFailureReason,detail=tostring(result)}) end
+            return false,section._buildFailureReason
+        end
         page=result; section._builtByHost=true
     end
-    if not page then return false,"MISSING_PAGE" end
+    if not page then
+        section._buildFailureReason="MISSING_PAGE"
+        if HolyStorm.Logger then HolyStorm.Logger:Write("ERROR","Administration","section-build","Administration section page missing",{sectionId=section.id,owner=section.owner,reason=section._buildFailureReason}) end
+        return false,section._buildFailureReason
+    end
     section._controller=type(page)=="table" and page.frame and page or nil
     section._widget=section._controller and page.type and page or nil
     section._frame=section._controller and section._controller.frame or page
@@ -329,10 +343,10 @@ Administration.RefreshSections = Administration.RefreshNavigation
 
 function Administration:Open(sectionId)
     self:RefreshNavigation()
-    if sectionId and self:IsSectionAvailable(sectionId) then self.activeId=sectionId end
-    if not self.activeId then return false,"NO_AVAILABLE_SECTION" end
+    local target=sectionId and self:IsSectionAvailable(sectionId) and sectionId or self.activeId
+    if not target then return false,"NO_AVAILABLE_SECTION" end
     if self:EnsureHost() then HolyStorm.UI:ShowPage("administration") end
-    return self:ShowSection(self.activeId)
+    return self:ShowSection(target)
 end
 
 function Administration:DestroySection(section)

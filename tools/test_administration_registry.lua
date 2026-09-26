@@ -14,11 +14,13 @@ local granted={admin=true,featureAdmin=true}
 local modules={feature={enabled=true},disabled={enabled=false}}
 local capabilities={featureCapability={feature=true}}
 local shown={}
+local buildDiagnostics={}
 local HolyStorm={
     Utils={DeepCopy=deepCopy,SafeCall=function(_,callback,...)local values={pcall(callback,...)};return table.unpack(values)end},
     PermissionEngine={HasPermission=function(_,_,_,permission)return granted[permission]==true end},
     PolicyState={IsGuildModuleEnabled=function(_,id)return not modules[id]or modules[id].guildEnabled~=false end},
     Events={listeners={}}, UI={},
+    Logger={Write=function(_,level,source,category,message,context)buildDiagnostics[#buildDiagnostics+1]={level=level,source=source,category=category,message=message,context=context}end},
 }
 function HolyStorm:GetAddon()return self end
 function HolyStorm:IsModuleAvailable(id)return modules[id]and modules[id].enabled==true or false end
@@ -43,6 +45,25 @@ assert(not Admin:RegisterSection({id="core",page=frame()}),"duplicate section mu
 assert(Admin:IsSectionAvailable("core"))
 assert(Admin:Open("core")and Admin.activeId=="core"and lifecycle.build==1 and lifecycle.show==1 and lifecycle.refresh==1)
 Admin:Open("core");assert(lifecycle.build==1,"a section is built once")
+
+local failedBuilds=0
+local viewport={children={}}
+function viewport:GetChildren()return table.unpack(self.children)end
+Admin.sectionViewport={content=viewport}
+local partialFrame=frame()
+partialFrame:Show()
+assert(Admin:RegisterSection({id="broken",category="general",owner="test-extension",build=function()failedBuilds=failedBuilds+1;viewport.children[#viewport.children+1]=partialFrame;error("intentional builder failure")end}))
+for _=1,7 do assert(not Admin:Open("broken"),"broken section must fail to open") end
+assert(failedBuilds==1,"a failed section must not be rebuilt on every navigation attempt")
+assert(not partialFrame.shown and Admin.activeId=="core","failed build must hide partial UI and preserve the usable active section")
+assert(#buildDiagnostics==1 and buildDiagnostics[1].context.sectionId=="broken" and buildDiagnostics[1].context.owner=="test-extension" and buildDiagnostics[1].context.reason=="BUILD_FAILED","build failure must be logged with section identity once")
+assert(buildDiagnostics[1].context.detail:find("intentional builder failure",1,true),"diagnostic must retain the original error")
+assert(Admin:Open("core"),"other Administration sections must remain usable")
+assert(Admin:UnregisterSection("broken"),"failed section must be removable")
+assert(Admin:RegisterSection({id="broken",category="general",build=function()return frame()end}))
+assert(Admin:Open("broken"),"re-registration must allow a corrected section to build")
+assert(Admin:UnregisterSection("broken"))
+Admin.sectionViewport=nil
 
 local controllerDestroyed=0
 assert(Admin:RegisterSection({id="sharedController",category="general",title="Shared",order=30,build=function()return{frame=frame(),Destroy=function()controllerDestroyed=controllerDestroyed+1 end}end}))

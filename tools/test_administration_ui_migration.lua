@@ -40,7 +40,8 @@ assert(permissions:find('draft.id==Groups.systemIds.LEADERSHIP',1,true),"protect
 assert(permissions:find("StaticPopupDialogs.HOLYSTORM_PERMISSION_RESET",1,true)and permissions:find("State:RestoreDefaults",1,true),"factory reset confirmation must delegate to PolicyState")
 assert(policyUI:find('L["UNAVAILABLE"]',1,true),"unavailable provider state is not rendered")
 assert(activityPoints:find('CreateScrollContainer(parent)',1,true)and activityPoints:find('CreateLabeledField',1,true),"Activity Points admin form must use a bounded scroll area and shared labeled fields")
-assert(activityPoints:find('CreateSelector(rules.content',1,true)and activityPoints:find('ACTIVITY_POINTS_DECAY_MODE',1,true),"event type and decay mode must be actual labeled selectors")
+assert(activityPoints:find('HolyStorm.PolicyUI:CreateSelector(rules.content',1,true)and activityPoints:find('HolyStorm.PolicyUI:CreateSelector(decay.content',1,true),"event type and decay mode must use the production PolicyUI selector")
+assert(not activityPoints:find('C:CreateSelector(',1,true),"UIComponents has no CreateSelector method")
 for _,key in ipairs({"ACTIVITY_POINTS_RULE_NAME","ACTIVITY_POINTS_DECAY_INTERVAL","ACTIVITY_POINTS_DECAY_AMOUNT","ACTIVITY_POINTS_TARGET","ACTIVITY_POINTS_ADJUSTMENT_AMOUNT"})do for _,locale in ipairs({"enUS","deDE"})do local source=read("../Holy_Storm_Guild/Locales/Activity_"..locale..".lua");assert(source:find('L["'..key..'"]',1,true),locale.." misses Activity Points field label "..key)end end
 assert(policyUI:find("MoveSelected",1,true)and policyUI:find("IndentSelected",1,true)and policyUI:find("OutdentSelected",1,true),"nested editor movement controls regressed")
 

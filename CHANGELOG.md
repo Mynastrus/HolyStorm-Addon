@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Fixed the Retail Activity Points Administration crash by using the shared PolicyUI selector for rule events and decay mode. Administration now logs a failed section build once, hides its partial UI, and keeps other sections usable.
 - Fixed Raid Best tooltip headers to resolve through the Raid locale proxy once, and calculate compact lifetime progression from each boss's highest verified difficulty within the selected raid.
 - Fixed Guild Roster version resolution: the local character uses the loaded core addon metadata, remote versions use recent Sync presence, and stale or unobserved presence stays unknown.
 - Hardened Calendar collection against secret/unavailable Retail values. Protected fields become neutral placeholders before snapshots or fingerprints; detail failures are isolated and logged without recording protected values.
@@ -13,6 +14,7 @@
 
 ### Deutsche Änderungen
 
+- Der Retail-Absturz der Activity-Points-Administration wurde behoben: Ereignis und Verfallsart verwenden nun die gemeinsamen PolicyUI-Dropdowns. Fehlgeschlagene Administrationsseiten werden einmal protokolliert, ihre unvollständige Oberfläche wird ausgeblendet und andere Seiten bleiben nutzbar.
 - Raid-Best-Tooltips verwenden die vorhandenen Raid-Locale-Schlüssel ohne doppeltes Präfix. Der kompakte Raid-Fortschritt wählt pro Boss den höchsten bestätigten Lebenszeit-Schwierigkeitsgrad innerhalb des ausgewählten Raids.
 - Die Versionsspalte der Gildenliste verwendet für den lokalen Charakter die geladene Core-Version und für andere Charaktere nur aktuelle Sync-Presence; unbekannte oder veraltete Presence bleibt unbekannt.
 - Die Kalender-Erfassung schützt vor geheimen oder nicht verfügbaren Retail-Werten. Geschützte Felder werden vor Snapshot und Fingerprint neutralisiert; Fehler einzelner Details werden isoliert protokolliert.
