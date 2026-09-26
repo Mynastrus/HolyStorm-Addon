@@ -11,6 +11,8 @@
 ## X-HolyStorm-ID: ui
 ## X-HolyStorm-Requires: core
 
+Libs\LibQTip-1.0\LibQTip-1.0.lua
+
 Libs\AceDBOptions-3.0\AceDBOptions-3.0.lua
 Libs\AceConfig-3.0\AceConfigRegistry-3.0\AceConfigRegistry-3.0.lua
 Libs\AceGUI-3.0\AceGUI-3.0.lua
@@ -42,6 +44,7 @@ UI\Locales\enUS.lua
 UI\Locales\deDE.lua
 UI\Framework\Layout.lua
 UI\Framework\Components.lua
+UI\Framework\Tooltips.lua
 UI\Framework\Table.lua
 UI\Framework\UIManager.lua
 UI\Framework\Notifications.lua

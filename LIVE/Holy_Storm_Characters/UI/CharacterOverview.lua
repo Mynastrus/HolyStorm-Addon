@@ -123,6 +123,7 @@ function C:RefreshTab(id)
  local ok,err=HolyStorm.Utils.SafeCall("character.tab.refresh:"..id,definition.refresh,view,self.context,definition);if not ok then logFailure("refresh",err);self:SetTableView(view,{}, {emptyText=L["TAB_ERROR"]})end;Page.dirty[id]=nil;return ok
 end
 function C:SelectTab(id)
+ if HolyStorm.Tooltips then HolyStorm.Tooltips:Release("raid-best")end
  local definition=self.tabs[id]or self.tabs.summary;if not definition then return false end;id=definition.id;self.activeTab=id
  for tabId,view in pairs(Page.views)do view.frame:SetShown(tabId==id)end;Page:UpdateTabVisuals();if not Page.views[id]then self:RefreshTab(id)end;self:LayoutTabView(Page.views[id]);Page.views[id].frame:Show();if Page.dirty[id]then self:RefreshTab(id)end;self:RefreshHeader();return true
 end

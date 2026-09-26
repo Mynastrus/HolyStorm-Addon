@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- Embedded LibQTip centrally in Holy Storm UI and migrated the Raid Best tooltip to the shared structured tooltip service.
+
 ## 5.5.0 — 15.09.2026
 
 - Feature-Permissions wurden aus der zentralen Definitionsliste in die besitzenden Modulmetadaten verlagert. Die zentrale PermissionRegistry bleibt die einzige Registry; modulare Defaults werden für Systemgruppen angewendet, optionale Rechte erscheinen erst beim Laden des Moduls und unbekannte persistierte Permission-IDs bleiben für spätere Re-Registrierung erhalten.

@@ -96,7 +96,7 @@ function TableMethods:AcquireRow(index)
         local column;for _,candidate in ipairs(self.columns)do if candidate.id==columnId then column=candidate;break end end
         if column and column.onClick then column.onClick(frame.rowData,button,column,self)elseif self.options.onRowClick then self.options.onRowClick(frame.rowData,button,self)end
     end)
-    frame:SetScript("OnEnter",function(owner)self:ShowTooltip(owner,frame.rowData,nil)end);frame:SetScript("OnLeave",function()if GameTooltip then GameTooltip:Hide()end end)
+    frame:SetScript("OnEnter",function(owner)self:ShowTooltip(owner,frame.rowData,nil)end);frame:SetScript("OnLeave",function(owner)if HolyStorm.Tooltips then HolyStorm.Tooltips:ReleaseOwner(owner)end;if GameTooltip then GameTooltip:Hide()end end)
     self.rowFrames[index]=row;return row
 end
 function TableMethods:AcquireCell(row,index)
@@ -106,7 +106,7 @@ function TableMethods:AcquireCell(row,index)
     cell={frame=frame,text=text}
     function cell:SetDisplay(value,truncateSource,formatter)self.rawText=tostring(truncateSource or value or"");self.formatter=formatter;self.text:SetText(formatter and formatter(self.rawText)or tostring(value or""))end
     frame:SetScript("OnClick",function(_,button)local column=self.columns[index];if column and column.onClick then column.onClick(row.frame.rowData,button,column,self)elseif self.options.onRowClick then self.options.onRowClick(row.frame.rowData,button,self)end end)
-    frame:SetScript("OnEnter",function(owner)self:ShowTooltip(owner,row.frame.rowData,self.columns[index])end);frame:SetScript("OnLeave",function()if GameTooltip then GameTooltip:Hide()end end)
+    frame:SetScript("OnEnter",function(owner)self:ShowTooltip(owner,row.frame.rowData,self.columns[index])end);frame:SetScript("OnLeave",function(owner)if HolyStorm.Tooltips then HolyStorm.Tooltips:ReleaseOwner(owner)end;if GameTooltip then GameTooltip:Hide()end end)
     row.cells[index]=cell;return cell
 end
 function TableMethods:ShowTooltip(owner,row,column)

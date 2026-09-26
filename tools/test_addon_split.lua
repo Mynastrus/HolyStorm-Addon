@@ -52,6 +52,8 @@ local uiRoot=live.."Holy_Storm_UI";local uiToc=read(uiRoot.."/Holy_Storm_UI.toc"
 assert(uiToc:find("## Title: Holy Storm: |cff24a7deUI|r",1,true),"UI title contract")
 assert(uiToc:find("## RequiredDeps: Holy_Storm",1,true),"UI must depend only on core")
 for _,contract in ipairs({"UI\\Framework\\UIManager.lua","UI\\Framework\\MainWindow.lua","AceGUI-3.0","AceConfigDialog-3.0","AceDBOptions-3.0"})do assert(uiToc:find(contract,1,true),"UI TOC missing "..contract)end
+assert(uiToc:find("Libs\\LibQTip-1.0\\LibQTip-1.0.lua",1,true)and uiToc:find("UI\\Framework\\Tooltips.lua",1,true),"UI must centrally load LibQTip and shared tooltip infrastructure")
+assert(exists(uiRoot.."/Libs/LibQTip-1.0/LibQTip-1.0.lua")and exists(uiRoot.."/Libs/LibQTip-1.0/LICENSE.txt"),"embedded LibQTip source and license are required")
 tocEntries(uiRoot,uiToc)
 
 local interface=assert(coreToc:match("## Interface:%s*(%d+)"))
@@ -76,6 +78,8 @@ local bootstrap=read(coreRoot.."/Core/Bootstrap/Bootstrap.lua");local loader=rea
 for _,name in ipairs({"Holy_Storm_Equipment","Holy_Storm_Raids","Holy_Storm_MythicPlus","Holy_Storm_Delves"})do assert(not loader:find(name,1,true)and not bootstrap:find(name,1,true),"core loader hardcodes feature "..name)end
 for _,contract in ipairs({"X-HolyStorm-ID","X-HolyStorm-Requires","X-HolyStorm-LoadOnEvent","C_AddOns.GetNumAddOns","C_AddOns.GetAddOnMetadata","C_AddOns.LoadAddOn"})do assert(loader:find(contract,1,true),"generic loader contract missing: "..contract)end
 local storedFeatureTabs=read(live.."Holy_Storm_Characters/UI/StoredFeatureTabs.lua");for _,id in ipairs({"equipment","mythicPlus","raid","delves"})do assert(storedFeatureTabs:find('id="'..id..'"',1,true),"Characters storage consumer is missing fixed tab "..id)end
+assert(storedFeatureTabs:find('ShowTable("raid-best"',1,true),"Raid Best must use the shared structured tooltip infrastructure")
+assert(not read(live.."Holy_Storm_Raids/Holy_Storm_Raids.toc"):find("LibQTip",1,true),"Raid addon must not embed LibQTip")
 for _,addon in ipairs({"Holy_Storm_Equipment","Holy_Storm_Raids","Holy_Storm_MythicPlus","Holy_Storm_Delves"})do local toc=read(live..addon.."/"..addon..".toc");assert(not toc:find("UI\\CharacterTab.lua",1,true),addon.." still owns a runtime Character Overview adapter")end
 for _,coupling in ipairs({"CanUseTab","permission=","moduleId=","IsAddOnLoaded","IsModuleAvailable","GetModule"})do assert(not storedFeatureTabs:find(coupling,1,true),"stored Character tab adapters depend on producer runtime: "..coupling)end
 local achievementSource=read(live.."Holy_Storm_Achievements/Achievements.lua");assert(achievementSource:find("RegisterCharacterTab",1,true),"Achievements does not use the late-load character registry")

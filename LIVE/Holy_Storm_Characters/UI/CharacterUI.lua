@@ -76,6 +76,7 @@ function CharacterUI:ResolveContext(characterUUID)
  return{characterUUID=characterUUID,guid=characterUUID,accountUUID=accountUUID,name=name,realm=realm,fullName=record.fullName or(rawName~=name and rawName or name),level=record.level or(member and member.level),classFile=classFile,className=record.class or(member and member.class)or className(classFile),spec=spec,guild=guild,member=member,record=record}
 end
 function CharacterUI:SetContext(characterUUID,addHistory)
+ if HolyStorm.Tooltips then HolyStorm.Tooltips:Release("raid-best")end
  local context=self:ResolveContext(characterUUID);if not context then return nil end
  if addHistory~=false and self.context and self.context.characterUUID~=characterUUID then self.history[#self.history+1]={characterUUID=self.context.characterUUID,tabId=self.activeTab};while#self.history>self.maxHistory do table.remove(self.history,1)end end
  self.contextToken=self.contextToken+1;context.token=self.contextToken;self.context=context;return context

@@ -120,6 +120,14 @@ erhält `(row, column, table, GameTooltip, owner)` und kann entweder Text
 zurückgeben oder den Tooltip selbst befüllen und `true` zurückgeben. Fachliche
 Tooltip-Inhalte gehören immer in den Adapter, nicht in `Table.lua`.
 
+## Strukturierte Tooltips
+
+`Holy_Storm_UI` embeds LibQTip-1.0 centrally and exposes
+`HolyStorm.Tooltips:ShowTable`, `Release`, `ReleaseOwner` and `ReleaseAll`.
+Structured or multi-column tooltips should use this shared infrastructure so
+acquisition, ownership and release stay in the UI layer. Existing GameTooltip
+uses remain valid and have not all been migrated.
+
 ## Einheitliche UI-Zustände
 
 `UIComponents.State` und `UIComponents:FormatState` unterscheiden drei
