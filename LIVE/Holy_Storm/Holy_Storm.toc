@@ -5,6 +5,7 @@
 ## Notes-deDE: Gilden-Verwaltungssystem - Entwickelt für die Gilde |cff3FC7EB<Holy Storm>|r auf dem Server Norgannon-EU.
 ## Author: Mynastrus - Norgannon - EU
 ## Category: Holy Storm
+## IconTexture: Interface\AddOns\Holy_Storm\Images\minimap_logo.png
 ## DefaultState: enabled
 ## Version: @project-version@
 ## X-Curse-Project-ID: 1701433

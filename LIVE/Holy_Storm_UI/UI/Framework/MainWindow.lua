@@ -73,7 +73,12 @@ function UI:OnInitialize()
     title:SetText(L["WINDOW_TITLE"])
     if frame.TitleText then frame.TitleText:Hide() end
     local portrait = frame.portrait or frame.Portrait or (frame.PortraitContainer and frame.PortraitContainer.portrait)
-    if portrait then portrait:SetTexture("Interface\\Icons\\Spell_Holy_HolyBolt") end
+    if portrait then
+        local iconPath = HolyStorm.Libraries and HolyStorm.Libraries.ADDON_ICON
+        local iconSet = iconPath and pcall(portrait.SetTexture, portrait, iconPath)
+        if not iconSet then pcall(portrait.SetTexture, portrait, HolyStorm.Libraries and HolyStorm.Libraries.ADDON_ICON_FALLBACK or "Interface\\Icons\\INV_Misc_QuestionMark") end
+        if portrait.SetTexCoord then portrait:SetTexCoord(0, 1, 0, 1) end
+    end
 
     if not tContains(UISpecialFrames, "HolyStormMainFrame") then table.insert(UISpecialFrames, "HolyStormMainFrame") end
     local aceGUI = LibStub("AceGUI-3.0")
@@ -112,7 +117,7 @@ function UI:OnInitialize()
     specIcon.frame:EnableMouse(false)
     identity:AddChild(specIcon)
     local identityText = aceGUI:Create("SimpleGroup")
-    identityText:SetLayout("List"); identityText:SetRelativeWidth(0.82); identityText:SetHeight(70); identityText.noAutoHeight = true
+    identityText:SetLayout("List"); identityText:SetRelativeWidth(0.70); identityText:SetHeight(70); identityText.noAutoHeight = true
     identity:AddChild(identityText)
     local characterName = aceGUI:Create("Label")
     characterName:SetText(UNKNOWN); characterName:SetFontObject(GameFontHighlightLarge); characterName:SetFullWidth(true); characterName:SetHeight(30)

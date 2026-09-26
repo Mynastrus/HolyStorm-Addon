@@ -4,6 +4,8 @@ local L = LibStub("AceLocale-3.0"):GetLocale("Holy_Storm")
 
 local Libraries = {
     version = addonVersion,
+    ADDON_ICON = "Interface\\AddOns\\Holy_Storm\\Images\\minimap_logo.png",
+    ADDON_ICON_FALLBACK = "Interface\\Icons\\INV_Misc_QuestionMark",
     definitions = {
         "LibQTip-1.0",
         "LibDataBroker-1.1",
@@ -92,7 +94,7 @@ function Libraries:Initialize()
         type = "launcher",
         label = L["CORE_DISPLAY_NAME"],
         text = string.format("%s v%s", L["CORE_DISPLAY_NAME"], tostring(HolyStorm.version)),
-        icon = "Interface\\Icons\\INV_Misc_QuestionMark",
+        icon = self.ADDON_ICON or self.ADDON_ICON_FALLBACK,
         OnClick = function(_, button)
             if button == "LeftButton" then Libraries:ToggleMainWindow() end
         end,

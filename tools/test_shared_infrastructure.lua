@@ -89,6 +89,7 @@ assert(loadfile(core .. "Core/Infrastructure/Libraries.lua"))()
 local manager = HolyStorm.Libraries
 assert(manager:Initialize())
 assert(dataObject and dataObject.type == "launcher", "canonical launcher exists and is a launcher")
+assert(dataObject.icon == "Interface\\AddOns\\Holy_Storm\\Images\\minimap_logo.png", "launcher uses canonical Holy Storm icon")
 assert(dataObject.text == "Holy Storm vtest", "launcher displays current version")
 assert(registerCount == 1, "one minimap launcher registration")
 dataObject.OnClick(dataObject, "LeftButton")
