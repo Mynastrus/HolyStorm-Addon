@@ -38,6 +38,8 @@ Für owner-kontrollierte Objekte ist `owner` die stabile fachliche Herkunft. `re
 5. `PAYLOAD` wird deserialisiert, validiert, autorisiert und importiert.
 6. Domain- und Feature-Events aktualisieren Verbraucher.
 
+Domains mit empfängerabhängiger Sichtbarkeit können `canShare(metadata, recipientGuid, recipientName, reason)` und `getRecipients(metadata, reason)` registrieren. Der SyncManager filtert damit Discovery-Metadaten vor dem Angebot, sendet solche Angebote per Whisper und prüft `FETCH` vor dem Export. `guildNotes` nutzt diesen Vertrag; private Notizen besitzen ausdrücklich keine Domain. Das ersetzt keine Kryptografie und schützt nicht vor einem manipulierten, bereits autorisierten Client.
+
 Live-Domains wie `guild-position` nutzen direkte, kurzlebige Publishes und keinen persistenten Catch-up. Andere Domains können Discovery und passive Heilung verwenden.
 
 ## Login-Presence, Versionen und Diagnose

@@ -59,6 +59,8 @@ Capabilities sind benannte, von Modulen registrierte Handler. Equipment-, Raid-,
 
 `HolyStorm.Administration` ist der generische Erweiterungspunkt für Admin-Seiten. Ein einzelner Host im bestehenden Hauptfenster stellt eine kategorisierte Tree-Navigation, Lifecycle, gezielten Refresh sowie Permission-, Modul- und Capability-Gating bereit. Nicht verfügbare, deaktivierte oder nicht autorisierte Sections fehlen vollständig in der Navigation. Gruppen/Berechtigungen, Regeln, Filter und Policy-Diagnose werden lazy gebaut und verwenden `UILayout`, `UIComponents`, TabGroup, gemeinsame Scroll-Container und die generische Table; ihre Fachoperationen verwenden direkt die Permission-Komponenten. Der externe `page`-Compatibility-Vertrag bleibt erhalten, erzeugt aber keinen zweiten Host. Der vollständige Vertrag steht in `ADMINISTRATION_ARCHITECTURE.md`.
 
+`Holy_Storm_Guild` besitzt außerdem den registrierbaren Parent `HolyStorm.GuildManagement`. Dessen einzelne UI-View baut die untergeordneten Notes-/Absence-Seiten erst bei Auswahl und verwendet die gemeinsame UI-Schicht. Datenmodell, Privacy-Grenze, Sync-Domänen und Erweiterungsvertrag stehen in `GUILD_MANAGEMENT_ARCHITECTURE.md`.
+
 ## Permissions, Gruppen, Rules und Filter
 
 Holy Storm besitzt eigenständige, wiederverwendbare Rule-Objekte neben Filter-Objekten. Beide enthalten denselben Expression Tree und werden ausschließlich von `RuleEngine` ausgewertet; es existiert keine zweite Rule- oder Filterauswertung in der Administration. Die ownergebundene Field Registry, die zentrale Operator-Registry, typabhängige Validierung und `PASS`/`FAIL`/`UNKNOWN` bleiben die fachliche Source of Truth.

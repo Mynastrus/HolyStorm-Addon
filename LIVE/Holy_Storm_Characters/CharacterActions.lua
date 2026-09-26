@@ -1,7 +1,7 @@
 local addonVersion="1.0.0"
 local HolyStorm=LibStub("AceAddon-3.0"):GetAddon("Holy_Storm")
 local L=LibStub("AceLocale-3.0"):GetLocale("Holy_Storm_Twinks")
-local Actions={version=addonVersion}
+local Actions={version=addonVersion,providers={}}
 local function enabled(item,value)if item and item.SetEnabled then item:SetEnabled(not not value)end;return item end
 
 function Actions:Resolve(characterUUID)
@@ -14,9 +14,19 @@ function Actions:Whisper(characterUUID)local data=self:Resolve(characterUUID);if
 function Actions:CopyName(characterUUID)
  local data=self:Resolve(characterUUID);if not data then return false end;if ChatEdit_GetActiveWindow and ChatEdit_GetActiveWindow()and ChatEdit_InsertLink then ChatEdit_InsertLink(data.name);return true end;if not StaticPopupDialogs or not StaticPopup_Show then return false end;StaticPopupDialogs.HOLYSTORM_COPY_NAME={text=L["CHARACTER_COPY_HELP"],button1=OKAY,hasEditBox=true,editBoxWidth=280,OnShow=function(dialog,value)local box=dialog.EditBox or dialog.editBox;if box then box:SetText(value or"");box:HighlightText();box:SetFocus()end end,EditBoxOnEscapePressed=function(box)box:GetParent():Hide()end,timeout=0,whileDead=true,hideOnEscape=true};StaticPopup_Show("HOLYSTORM_COPY_NAME",nil,nil,data.name);return true
 end
+function Actions:RegisterProvider(id,provider)
+ if type(id)~="string"or id==""or type(provider)~="function"then return false,"INVALID_PROVIDER"end
+ self.providers[id]=provider;return true
+end
+function Actions:UnregisterProvider(id)if not self.providers[id]then return false end;self.providers[id]=nil;return true end
+function Actions:GetProviderActions(characterUUID,data)
+ local result,ids={},{};for id in pairs(self.providers)do ids[#ids+1]=id end;table.sort(ids)
+ for _,id in ipairs(ids)do local ok,actions=pcall(self.providers[id],characterUUID,data);if ok then for _,action in ipairs(type(actions)=="table"and actions or{})do if type(action)=="table"and type(action.text)=="string"and type(action.callback)=="function"then result[#result+1]=action end end end end
+ return result
+end
 function Actions:CreateContextMenu(owner,characterUUID,extraActions)
- local data=self:Resolve(characterUUID);if not data then return false end;if not MenuUtil or not MenuUtil.CreateContextMenu then return self:Open(characterUUID)end;MenuUtil.CreateContextMenu(owner,function(_,root)
-  root:CreateTitle(data.name);enabled(root:CreateButton(L["CHARACTER_ACTION_INVITE"],function()Actions:Invite(characterUUID)end),data.online);enabled(root:CreateButton(L["CHARACTER_ACTION_WHISPER"],function()Actions:Whisper(characterUUID)end),data.online);root:CreateButton(L["CHARACTER_ACTION_COPY_NAME"],function()Actions:CopyName(characterUUID)end);root:CreateButton(L["CHARACTER_ACTION_OPEN"],function()Actions:Open(characterUUID)end);enabled(root:CreateButton(L["CHARACTER_ACTION_OPEN_MAIN"],function()Actions:OpenMain(characterUUID)end),data.main and(data.main.accountMain or data.main.guildMain));for _,action in ipairs(extraActions or{})do enabled(root:CreateButton(action.text,function()action.callback(characterUUID,data)end),action.enabled~=false)end
+ local data=self:Resolve(characterUUID);if not data then return false end;if not MenuUtil or not MenuUtil.CreateContextMenu then return self:Open(characterUUID)end;local actions=self:GetProviderActions(characterUUID,data);for _,action in ipairs(extraActions or{})do actions[#actions+1]=action end;MenuUtil.CreateContextMenu(owner,function(_,root)
+  root:CreateTitle(data.name);enabled(root:CreateButton(L["CHARACTER_ACTION_INVITE"],function()Actions:Invite(characterUUID)end),data.online);enabled(root:CreateButton(L["CHARACTER_ACTION_WHISPER"],function()Actions:Whisper(characterUUID)end),data.online);root:CreateButton(L["CHARACTER_ACTION_COPY_NAME"],function()Actions:CopyName(characterUUID)end);root:CreateButton(L["CHARACTER_ACTION_OPEN"],function()Actions:Open(characterUUID)end);enabled(root:CreateButton(L["CHARACTER_ACTION_OPEN_MAIN"],function()Actions:OpenMain(characterUUID)end),data.main and(data.main.accountMain or data.main.guildMain));for _,action in ipairs(actions)do enabled(root:CreateButton(action.text,function()action.callback(characterUUID,data)end),action.enabled~=false)end
  end);return true
 end
 function Actions:Initialize()

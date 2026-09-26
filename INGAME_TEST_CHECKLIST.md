@@ -89,6 +89,12 @@ Mit aktivierten Lua-Fehlern testen. Nach Reload/Login prüfen, dass gespeicherte
 
 ## Feature-Smoke-Tests
 
+- Guild Management: Notes-/Absence-Tabs erst beim Öffnen bauen lassen, Resize/Scroll/Empty States prüfen und die Actions aus Guild Roster sowie Character-Kontext auslösen.
+- Private Notes über zwei eigene Characters nach Reload prüfen und mit einem zweiten Client bestätigen, dass weder Metadaten noch Payloads gesendet werden.
+- Shared Notes je Sichtbarkeit mit Mitglied-, Offizier-, Raidleitungs- und Gildenleitungs-Accounts prüfen; unberechtigte Clients dürfen weder Offer noch Payload erhalten. Edit/Delete durch Autor und berechtigten Dritten sowie Tombstone-Konvergenz testen.
+- Absences für Main/Twink desselben Accounts, mehrere aktive/zukünftige Einträge, Vergangenheit, administrative Änderung und Cancellation zwischen zwei Clients prüfen. Relay-Provenance und stale Resurrection mit einem dritten Client testen.
+- Note-Ablauf ohne Polling sowie die Rule-Felder für aktive/nächste Abwesenheit prüfen. Calendar muss ohne Integration unverändert funktionieren.
+
 - Achievements: Entwurf, Aktivierung, Vergabe, Widerruf, Archiv und Sync.
 - News/Guides: CRUD, Publish, RichContent, Read Receipt und Sync.
 - POI: persönliche/Gilden-/Gruppen-/Raid-Ziele, Kartenpins, Ablauf und Berechtigungen.

@@ -83,6 +83,13 @@ Weitere Erweiterungspunkte sind `RegisterCapability` / `CallCapability`,
 `RichLinks:RegisterType`, `PlayerData:RegisterBlock` und
 `Rules:RegisterField`.
 
+`Holy_Storm_Guild` verwendet zwei zusätzliche, feature-nahe Verträge: Der
+registrierbare Parent `HolyStorm.GuildManagement` ordnet lazy gebaute
+Unterseiten, und `HolyStorm.CharacterActions:RegisterProvider` ergänzt
+Charakter-/Roster-Kontextaktionen ohne direkte Kopplung an `GuildRoster`.
+Aktuell registriert der Parent ausschließlich Notes und Absences; Activity,
+Points und Recommendations sind keine implementierten Module.
+
 ## Anforderungen an neue Feature-Addons
 
 1. Eigenes TOC mit `RequiredDeps: Holy_Storm` und stabiler `X-HolyStorm-ID`.

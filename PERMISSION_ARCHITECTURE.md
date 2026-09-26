@@ -42,6 +42,16 @@ PermissionEngine liefert strukturierte Gründe; die Administration zeigt die Que
 
 Rechte sind additiv: Die Vereinigungsmenge der Permissions aller effektiven Gruppen gilt. Es gibt keine Deny-Vererbung. Ein tatsächlicher Blizzard-Gildenleiter oder ein Mitglied von `guild-leadership` erhält dynamisch jede aktuell in PermissionRegistry registrierte Permission; dafür existiert keine statische Vollzugriffsliste in der UI.
 
+Guild Management registriert seine stabilen `guild-notes-*`- und
+`guild-absences-*`-IDs über Modulmetadaten in derselben Registry. Mitglieder
+erhalten standardmäßig öffentliche Notes-/Absence-Sicht sowie Verwaltung der
+eigenen Account-Abwesenheiten. Offiziere erhalten zusätzlich eingeschränkte
+Note-Sichten, Shared-Note-Mutationen, Kategorieverwaltung und Verwaltung aller
+Abwesenheiten. `guild-notes-view-leadership` hat bewusst keinen statischen
+Default; der Zugriff der Gildenleitung folgt ausschließlich aus dem oben
+beschriebenen dynamischen Vollzugriff. Private Notes benötigen keine dieser
+Gilden-Permissions.
+
 Modul-Defaults initialisieren eine Permission pro Gilden-State genau einmal. `PolicyState.permissionDefaults` merkt bekannte Permission-IDs; erneute Modulregistrierung, Login, Reload oder State-Upgrade wenden denselben Default nicht erneut an. Eine vom Administrator entfernte Zuweisung bleibt deshalb entfernt. Neue Gilden-States entstehen weiterhin aus den zu diesem Zeitpunkt registrierten Modul-Defaults.
 
 `managerGroupIds` bedeutet ausschließlich, dass Mitglieder der referenzierten Manager-Gruppen die Zielgruppe im Rahmen weiterer Core-Invarianten verwalten dürfen. Die Manager-Gruppe erhält weder Mitgliedschaft noch Permissions der Zielgruppe. Manager-Zyklen werden bei State-Validierung abgelehnt. Wird eine Custom-Gruppe gelöscht, entfernt dieselbe `GROUP_DELETE`-Revision alle eingehenden Manager-Referenzen; Membership-, Filter-/Rule- und Permission-Zuweisungen der gelöschten Gruppe verschwinden mit ihr.

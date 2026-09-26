@@ -11,4 +11,12 @@
 
 Locales\enUS.lua
 Locales\deDE.lua
+Locales\GuildManagement_enUS.lua
+Locales\GuildManagement_deDE.lua
+GuildManagementRegistry.lua
+Persistence\GuildManagementStore.lua
+Services\PlayerNotes.lua
+Services\Absences.lua
+UI\GuildManagementUI.lua
+GuildManagement.lua
 Guild.lua

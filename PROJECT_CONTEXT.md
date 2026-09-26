@@ -48,6 +48,10 @@ Module registrieren Metadaten über `RegisterModule`, `RegisterRequiredModule` o
 
 ## Aktuelle Restschulden
 
+Die erste Guild-Management-Grundlage liegt in `Holy_Storm_Guild`: Ein registrierbarer Parent hostet lazy Notes und Absences. Private Notes sind accountweit lokal; Shared Notes und accountorientierte Absences verwenden getrennte versionierte DataManager-Schemas, zentrale Sync-Domains, Revisionen und Tombstones. Sichtbare Shared-Note-Metadaten/Payloads werden über PermissionEngine vor dem Versand gefiltert. Die Rule-Felder `guild.absence.current`, `guild.absence.start` und `guild.absence.end` sind modul-owned. Details: `GUILD_MANAGEMENT_ARCHITECTURE.md`.
+
+Calendar besitzt noch keinen externen Event-Provider-Vertrag. Absences werden deshalb derzeit nicht im Calendar dargestellt. Activity, Points und Recommendations sind nicht implementiert; spätere Empfehlungen dürfen niemals automatisch Gildenrang- oder Entfernungsaktionen ausführen.
+
 - Feature-Permissions gehören den Modulen: Sie werden über die `permissions`-Metadaten und die zentrale `PermissionRegistry` registriert. Systemgruppen-Defaults kommen aus den registrierten Definitionen; unbekannte persistierte IDs bleiben defensiv erhalten.
 - Feature-Rule-Felder gehören ebenfalls den Modulen und werden über die zentrale `HolyStorm.Rules:RegisterField`-API registriert. Nicht geladene optionale Module stellen ihre Felder nicht bereit; gespeicherte Regeln bleiben erhalten und werden bei späterer Registrierung wieder auswertbar.
 - `RuleEngine.lua` enthält noch Feature-Felder und Provider für Equipment, Mythic+, Raid, Delves sowie Quest-/Achievement-Demands. Die Feldregistry ist erweiterbar, die Eigentümerschaft ist aber noch nicht vollständig in die Module verschoben.

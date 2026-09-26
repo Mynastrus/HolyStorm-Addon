@@ -69,6 +69,13 @@ Die Factory gibt Controller mit einem `frame` zurück. Container besitzen
 Factory-Methode und optionaler `Build`-Typ ergänzt; Features erzeugen keine
 zweite Layout-Engine.
 
+Guild Management folgt demselben Vertrag mit genau einer registrierten View.
+Ein gemeinsamer TabGroup-Host materialisiert die registrierten Notes- und
+Absence-Unterseiten erst bei ihrer ersten Auswahl. Toolbars verwenden
+`CreateRow`/`CreateColumn`, Listen die generische Table mit Selection und Empty
+State, und Editoren die gemeinsamen EditBox-/Button-Komponenten. Domain- und
+Permission-Entscheidungen bleiben dabei in den Guild-Management-Services.
+
 ## Table API
 
 Eine Tabelle ist vollständig generisch:

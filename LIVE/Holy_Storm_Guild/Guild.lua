@@ -125,6 +125,13 @@ function GuildRoster:CreateMemberMenu()
         if not member then return end
         HolyStorm.Actions:Execute("guild.save-notes", member.index, menu.note.edit:GetText(), menu.officerNote.edit:GetText(), menu.canEditNote, menu.canEditOfficerNote)
     end)
+    menu.contextActions = {}
+    for index = 1, 3 do
+        local action = CreateFrame("Button", nil, menu, "UIPanelButtonTemplate")
+        action:SetSize(100, 22); action:SetPoint("BOTTOMLEFT", menu, "BOTTOMLEFT", 20 + ((index - 1) * 106), 50); action:Hide()
+        action:SetScript("OnClick", function(button) if button.callback and menu.member then button.callback(menu.member.guid, button.context) end end)
+        menu.contextActions[index] = action
+    end
     menu.close = CreateFrame("Button", nil, menu, "UIPanelCloseButton")
     menu.close:SetPoint("TOPRIGHT", menu, "TOPRIGHT", -4, -4)
     self.memberMenu = menu
@@ -191,6 +198,9 @@ function GuildRoster:ShowGuildMemberMenu(row, member)
     end
     menu.rankButton:SetShown(policyCanManage and canChangeRank and not InCombatLockdown())
     menu.rankApply:Hide()
+    local context=HolyStorm.CharacterActions and HolyStorm.CharacterActions:Resolve(member.guid)
+    local actions=context and HolyStorm.CharacterActions:GetProviderActions(member.guid,context)or{}
+    for index,button in ipairs(menu.contextActions or{})do local action=actions[index];button.callback=action and action.callback or nil;button.context=context;button:SetText(action and action.text or"");button:SetEnabled(action and action.enabled~=false or false);button:SetShown(action~=nil)end
     menu:ClearAllPoints(); menu:SetPoint("TOPLEFT", row, "BOTTOMLEFT", 18, 2); menu:Show(); menu:Raise()
 end
 

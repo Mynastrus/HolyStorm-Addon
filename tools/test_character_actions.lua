@@ -14,6 +14,8 @@ function ChatEdit_GetActiveWindow()return true end
 function ChatEdit_InsertLink(name)inserted=name end
 MenuUtil={CreateContextMenu=function(_,builder)buttons={};local rootMenu={CreateTitle=function()end,CreateButton=function(_,text,callback)local item={text=text,callback=callback};function item:SetEnabled(value)self.enabled=value end;buttons[#buttons+1]=item;return item end};builder(nil,rootMenu)end}
 assert(loadfile(featureRoot.."CharacterActions.lua"))();local Actions=HolyStorm.CharacterActions;Actions:Initialize()
+assert(Actions:RegisterProvider("guild-management",function(guid)return{{text="Notes",enabled=guid=="Player-A",callback=function()end}}end))
 assert(Actions:Open("Player-A")and opened.guid=="Player-A");assert(Actions:OpenMain("Player-A")and opened.guid=="Player-Main");assert(Actions:Invite("Player-A")and invited=="Alpha-Realm");assert(Actions:Whisper("Player-A")and whispered=="Alpha-Realm");assert(Actions:CopyName("Player-A")and inserted=="Alpha-Realm")
-assert(Actions:CreateContextMenu({},"Player-A",{{text="POI",enabled=true,callback=function()end}}));assert(#buttons==6 and buttons[1].enabled and buttons[2].enabled and buttons[5].enabled and buttons[6].enabled,"central context actions and main action are enabled for an online known character")
+assert(Actions:CreateContextMenu({},"Player-A",{{text="POI",enabled=true,callback=function()end}}));assert(#buttons==7 and buttons[1].enabled and buttons[2].enabled and buttons[5].enabled and buttons[6].text=="Notes"and buttons[6].enabled and buttons[7].enabled,"central and provider context actions are enabled for an online known character")
+assert(Actions:UnregisterProvider("guild-management")and#Actions:GetProviderActions("Player-A",Actions:Resolve("Player-A"))==0,"context provider unregister")
 print("Central character context action tests passed")

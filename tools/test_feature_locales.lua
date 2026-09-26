@@ -11,8 +11,8 @@ end
 for _,name in ipairs(folders)do
  local root=live.."/Holy_Storm_"..name;local definitions={};local luaFiles=files(root)
  for _,path in ipairs(luaFiles)do
-  if path:match("/Locales/enUS%.lua$")then
-   local german=path:gsub("/enUS%.lua$","/deDE.lua");local en,de=keys(read(path)),keys(read(german))
+  if path:match("/Locales/.*enUS%.lua$")then
+   local german=path:gsub("enUS%.lua$","deDE.lua");local en,de=keys(read(path)),keys(read(german))
    for key in pairs(en)do assert(de[key],german.." missing "..key)end
    for key in pairs(de)do assert(en[key],path.." missing "..key)end
    for key in pairs(en)do definitions[key]=true end
