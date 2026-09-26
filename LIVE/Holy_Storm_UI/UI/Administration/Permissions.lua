@@ -13,7 +13,8 @@ local function keys(value)local out={};for key in pairs(value or{})do out[#out+1
 local function contains(values,wanted)for _,value in ipairs(values or{})do if value==wanted then return true end end;return false end
 local function setArrayValue(values,id,enabled)local set={};for _,value in ipairs(values or{})do set[value]=true end;set[id]=enabled and true or nil;return keys(set)end
 local function displayTime(value)return value and date("%Y-%m-%d %H:%M",value)or L["NONE"]end
-local function categoryName(definition)local key="CATEGORY_"..tostring(definition.category or"Core"):gsub("[^%w]","_"):upper();return L[key]or definition.category or"Core"end
+local categoryLocaleKeys={Administration="CATEGORY_ADMINISTRATION",Core="CATEGORY_CORE",Sync="CATEGORY_SYNC",Roster="CATEGORY_ROSTER",Characters="CATEGORY_CHARACTERS",News="CATEGORY_NEWS",Calendar="CATEGORY_CALENDAR",Raid="CATEGORY_RAID",["Mythic+"]="CATEGORY_MYTHIC_",Delves="CATEGORY_DELVES",Equipment="CATEGORY_EQUIPMENT",Logs="CATEGORY_LOGS",["Task Manager"]="CATEGORY_TASK_MANAGER",POI="CATEGORY_POI",["Guild positions"]="CATEGORY_POSITIONS",Achievements="CATEGORY_ACHIEVEMENTS",["guild.activity"]="CATEGORY_ACTIVITY",["guild.activityPoints"]="CATEGORY_ACTIVITY_POINTS",["guild.absences"]="CATEGORY_ABSENCES",["guild.notes"]="CATEGORY_NOTES"}
+local function categoryName(definition)local category=definition.category or"Core";local key=categoryLocaleKeys[category];return key and L[key]or category end
 
 function Page:GetGroups()
  local out={};local search=string.lower(self.search and self.search:GetText()or"")

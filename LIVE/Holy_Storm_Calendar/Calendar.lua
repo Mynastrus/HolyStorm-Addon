@@ -14,23 +14,57 @@ HolyStorm:RegisterModule(metadata, function(Events)
         return HolyStorm.Database:Get("guildEvents", "global")
     end
 
+    local SafeCalendarScalar
     local function GetEventTimestamp(event)
-        return time({ year = event.year, month = event.month, day = event.monthDay, hour = event.hour, min = event.minute })
+        local year,month,day=tonumber(SafeCalendarScalar(event.year)),tonumber(SafeCalendarScalar(event.month)),tonumber(SafeCalendarScalar(event.monthDay))
+        if not year or not month or not day then return 0 end
+        return time({ year = year, month = month, day = day, hour = tonumber(SafeCalendarScalar(event.hour))or 0, min = tonumber(SafeCalendarScalar(event.minute))or 0 })
     end
 
     local UNKNOWN_STATUS = "UNKNOWN"
     local calendarStatusNames = { "Invited", "Available", "Declined", "Confirmed", "Out", "Standby", "Signedup", "NotSignedup", "Tentative" }
 
+    local function IsUnavailableCalendarValue(value)
+        local isSecretValue, canAccessValue = _G.issecretvalue, _G.canaccessvalue
+        if type(isSecretValue) == "function" then
+            local ok, secret = pcall(isSecretValue, value)
+            if ok and secret == true then
+                if type(canAccessValue) ~= "function" then return true end
+                local accessOk, accessible = pcall(canAccessValue, value)
+                return not accessOk or accessible ~= true
+            end
+        end
+        if type(canAccessValue) == "function" then
+            local ok, accessible = pcall(canAccessValue, value)
+            if ok and accessible == false then return true end
+        end
+        return false
+    end
+
+    local function SafeCalendarText(value, fallback)
+        if IsUnavailableCalendarValue(value) then return fallback or L["STATUS_UNKNOWN"] end
+        local valueType = type(value)
+        if valueType == "string" then return value end
+        if valueType == "number" or valueType == "boolean" then return tostring(value) end
+        return fallback or ""
+    end
+
+    SafeCalendarScalar=function(value)
+        if IsUnavailableCalendarValue(value) then return nil end
+        local kind=type(value)
+        if kind=="string"or kind=="number"or kind=="boolean"then return value end
+        return nil
+    end
+
+    local function SafeCalendarBoolean(value)
+        return SafeCalendarScalar(value)==true
+    end
+
     -- Calendar invite fields can be Secret Values in restricted WoW 12.x states.
     -- Normalize while access is known to be legal; inaccessible values never leave
     -- this boundary and therefore cannot reach UI comparisons or persisted fingerprints.
     local function NormalizeCalendarStatus(status)
-        local isSecretValue, canAccessValue = _G.issecretvalue, _G.canaccessvalue
-        if type(isSecretValue) == "function" and isSecretValue(status) then
-            if type(canAccessValue) ~= "function" or canAccessValue(status) ~= true then return UNKNOWN_STATUS end
-        elseif type(canAccessValue) == "function" and canAccessValue(status) ~= true then
-            return UNKNOWN_STATUS
-        end
+        if IsUnavailableCalendarValue(status) then return UNKNOWN_STATUS end
         if status == nil then return UNKNOWN_STATUS end
         local calendarStatus = _G.Enum and _G.Enum.CalendarStatus
         for _, name in ipairs(calendarStatusNames) do
@@ -55,7 +89,7 @@ HolyStorm:RegisterModule(metadata, function(Events)
 
     local function IsEventLocked(event, details)
         details = details or (event and event.details)
-        return (event and event.isLocked) or (details and (details.isLocked or details.locked)) or false
+        return (event and event.isLocked==true) or (details and (SafeCalendarBoolean(details.isLocked) or SafeCalendarBoolean(details.locked))) or false
     end
 
     local function GetStatusLabel(status)
@@ -129,10 +163,10 @@ HolyStorm:RegisterModule(metadata, function(Events)
     function Events:GetFingerprint(event)
         local attendees = {}
         for _, invite in ipairs(event.allInvites or {}) do
-            table.insert(attendees, table.concat({ invite.name or "", NormalizeCalendarStatus(invite.inviteStatus), invite.classFilename or "" }, "\031"))
+            table.insert(attendees, table.concat({ SafeCalendarText(invite.name), NormalizeCalendarStatus(invite.inviteStatus), SafeCalendarText(invite.classFilename) }, "\031"))
         end
         table.sort(attendees)
-        return table.concat({ event.title or "", tostring(event.year), tostring(event.month), tostring(event.monthDay), tostring(event.hour), tostring(event.minute), event.description or "", table.concat(attendees, "\030") }, "\029")
+        return table.concat({ SafeCalendarText(event.title), SafeCalendarText(event.year), SafeCalendarText(event.month), SafeCalendarText(event.monthDay), SafeCalendarText(event.hour), SafeCalendarText(event.minute), SafeCalendarText(event.description), table.concat(attendees, "\030") }, "\029")
     end
 
     function Events:UpdateNotification()
@@ -377,7 +411,7 @@ HolyStorm:RegisterModule(metadata, function(Events)
         HolyStorm.Tasks:Enqueue("calendar.respond", function()
             local liveDetails = calendar.GetEventInfo and calendar.GetEventInfo()
             if IsEventLocked(event, liveDetails) then
-                event.details, event.isLocked, Events.responsePending = liveDetails, true, false
+                event.isLocked, Events.responsePending = true, false
                 if calendar.CloseEvent then calendar.CloseEvent() end
                 Events:ShowDetails(event)
                 return
@@ -420,7 +454,7 @@ HolyStorm:RegisterModule(metadata, function(Events)
         HolyStorm.Tasks:Enqueue("calendar.set-status", function()
             local liveDetails = calendar.GetEventInfo and calendar.GetEventInfo()
             if IsEventLocked(event, liveDetails) then
-                event.details, event.isLocked, Events.responsePending = liveDetails, true, false
+                event.isLocked, Events.responsePending = true, false
                 if calendar.CloseEvent then calendar.CloseEvent() end
                 Events:ShowDetails(event)
                 return
@@ -451,18 +485,22 @@ HolyStorm:RegisterModule(metadata, function(Events)
         if not selection or not calendar.OpenEvent or not calendar.OpenEvent(selection.offsetMonths, selection.monthDay, selection.eventIndex) then
             self:LoadEventDetails(events, index + 1); return
         end
+        local runCollectDetails
         local function CollectDetails(attempt)
             if not Events:IsEnabled() then return end
             if calendar.AreNamesReady and not calendar.AreNamesReady() and attempt < 10 then
-                HolyStorm.Tasks:Enqueue("calendar.names-ready", function() CollectDetails(attempt + 1) end, { priority=2, debounce=0.2, combat="defer" }); return
+                HolyStorm.Tasks:Enqueue("calendar.names-ready", function() runCollectDetails(attempt + 1) end, { priority=2, debounce=0.2, combat="defer" }); return
             end
-            local details = calendar.GetEventInfo and calendar.GetEventInfo(); event.details = details; event.isLocked = details and (details.isLocked or details.locked) or false; event.canEdit = (HolyStorm.PermissionEngine or HolyStorm.Policy):Can("calendar-manage") and calendar.EventCanEdit and calendar.EventCanEdit() or false; event.description = details and details.description or nil
-            event.raidInfo = calendar.GetRaidInfo and calendar.GetRaidInfo(selection.offsetMonths, selection.monthDay, selection.eventIndex) or nil
+            local details = calendar.GetEventInfo and calendar.GetEventInfo()
+            event.details = details and {description=SafeCalendarText(details.description,L["NO_DESCRIPTION"]),isLocked=SafeCalendarBoolean(details.isLocked),locked=SafeCalendarBoolean(details.locked),inviteType=SafeCalendarScalar(details.inviteType)} or nil
+            event.isLocked = event.details and (event.details.isLocked or event.details.locked) or false; event.canEdit = (HolyStorm.PermissionEngine or HolyStorm.Policy):Can("calendar-manage") and calendar.EventCanEdit and calendar.EventCanEdit() or false; event.description = event.details and event.details.description or nil
+            local raidInfo=calendar.GetRaidInfo and calendar.GetRaidInfo(selection.offsetMonths, selection.monthDay, selection.eventIndex) or nil
+            event.raidInfo=type(raidInfo)=="table"and{name=SafeCalendarText(raidInfo.name,L["STATUS_UNKNOWN"])}or nil
             if calendar.GetNumInvites and calendar.EventGetInvite then
                 for inviteIndex = 1, calendar.GetNumInvites() do
                     local invite = calendar.EventGetInvite(inviteIndex)
                     if invite then
-                        local entry = { index = inviteIndex, name = invite.name, level = invite.level, className = invite.className, classFilename = invite.classFilename, inviteStatus = NormalizeCalendarStatus(invite.inviteStatus), inviteIsMine = invite.inviteIsMine, guid = invite.guid }
+                        local entry = { index = inviteIndex, name = SafeCalendarText(invite.name), level = SafeCalendarText(invite.level), className = SafeCalendarText(invite.className), classFilename = SafeCalendarText(invite.classFilename), inviteStatus = NormalizeCalendarStatus(invite.inviteStatus), inviteIsMine = SafeCalendarBoolean(invite.inviteIsMine), guid = SafeCalendarText(invite.guid) }
                         table.insert(event.allInvites, entry)
                         if IsActiveParticipant(entry) then event.signupCount = event.signupCount + 1 end
                         if IsSignedUp(entry) or entry.inviteStatus == UNKNOWN_STATUS then table.insert(event.invites, entry) end
@@ -472,7 +510,16 @@ HolyStorm:RegisterModule(metadata, function(Events)
             if calendar.CloseEvent then calendar.CloseEvent() end
             Events:LoadEventDetails(events, index + 1)
         end
-        HolyStorm.Tasks:Enqueue("calendar.collect-details", function() CollectDetails(1) end, { priority=2, debounce=0.2, combat="defer" })
+        runCollectDetails=function(attempt)
+            local ok=pcall(CollectDetails,attempt)
+            if not ok then
+                event.details=nil;event.raidInfo=nil;event.description=L["NO_DESCRIPTION"]
+                if calendar.CloseEvent then pcall(calendar.CloseEvent)end
+                if HolyStorm.Logger and HolyStorm.Logger.Write then HolyStorm.Logger:Write("WARN","Calendar","details","Calendar event details partially unavailable",{reason="CALENDAR_DETAIL_COLLECTION_FAILED",eventIndex=index})end
+                Events:LoadEventDetails(events,index+1)
+            end
+        end
+        HolyStorm.Tasks:Enqueue("calendar.collect-details", function() runCollectDetails(1) end, { priority=2, debounce=0.2, combat="defer" })
     end
 
     function Events:Refresh(markRead, automatic)
@@ -489,8 +536,11 @@ HolyStorm:RegisterModule(metadata, function(Events)
             if not Events:IsEnabled() or not calendar.GetNumGuildEvents or not calendar.GetGuildEventInfo then Events.isRefreshing = false; Events:SetLoading(false); return end
             local events = {}
             for index = 1, calendar.GetNumGuildEvents() do
-                local event = calendar.GetGuildEventInfo(index)
-                if event then event.selection = calendar.GetGuildEventSelectionInfo and calendar.GetGuildEventSelectionInfo(index); table.insert(events, event) end
+                local rawEvent = calendar.GetGuildEventInfo(index)
+                if rawEvent then
+                    local event={title=SafeCalendarText(rawEvent.title,L["UNTITLED"]),year=SafeCalendarScalar(rawEvent.year),month=SafeCalendarScalar(rawEvent.month),monthDay=SafeCalendarScalar(rawEvent.monthDay),hour=SafeCalendarScalar(rawEvent.hour),minute=SafeCalendarScalar(rawEvent.minute),description=SafeCalendarText(rawEvent.description,L["NO_DESCRIPTION"]),texture=SafeCalendarScalar(rawEvent.texture),eventID=SafeCalendarScalar(rawEvent.eventID)}
+                    event.selection = calendar.GetGuildEventSelectionInfo and calendar.GetGuildEventSelectionInfo(index); table.insert(events, event)
+                end
             end
             table.sort(events, function(left, right) return GetEventTimestamp(left) < GetEventTimestamp(right) end)
             Events:LoadEventDetails(events, 1)

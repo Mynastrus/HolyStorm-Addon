@@ -2,7 +2,7 @@ local addonVersion = "2.4.0"
 local HolyStorm = LibStub("AceAddon-3.0"):GetAddon("Holy_Storm")
 HolyStorm.Data.Schema = {
     fileVersion = addonVersion,
-    version = 12,
+    version = 13,
     defaults = {
         profile = {
             enabled = true, debug = false,

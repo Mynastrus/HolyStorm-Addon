@@ -132,8 +132,20 @@ function CharacterUI:RaidIdentityMatches(value,identity)
  return type(wantedName)=="string"and type(valueName)=="string"and wantedName==valueName
 end
 function CharacterUI:GetBestProgress(snapshot,raidIdentity)
- local totals,seen={},{};local lifetime=type(snapshot)=="table"and snapshot.lifetime
- for bossKey,boss in pairs(type(lifetime)=="table"and type(lifetime.bosses)=="table"and lifetime.bosses or{})do if self:RaidIdentityMatches(boss,raidIdentity)then local identity=tostring(boss.raidInstanceId or boss.journalInstanceId or boss.raidName or"").."\031"..tostring(boss.id or boss.name or bossKey);for _,key in ipairs({"LFR","NORMAL","HEROIC","MYTHIC"})do local entry=type(boss.difficulties)=="table"and boss.difficulties[key];local trusted=type(entry)=="table"and entry.source=="blizzard-statistic"and tonumber(entry.statisticId);local kills=trusted and tonumber(entry.kills)or nil;seen[key]=seen[key]or{};if kills and kills>0 and not seen[key][identity]then seen[key][identity]=true;totals[key]=(totals[key]or 0)+1 end end end end
+  local totals,seen={},{};local lifetime=type(snapshot)=="table"and snapshot.lifetime
+  for bossKey,boss in pairs(type(lifetime)=="table"and type(lifetime.bosses)=="table"and lifetime.bosses or{})do
+   if self:RaidIdentityMatches(boss,raidIdentity)then
+    local identity=tostring(boss.raidInstanceId or boss.journalInstanceId or boss.raidName or"").."\031"..tostring(boss.id or boss.name or bossKey)
+    local selected
+    for _,key in ipairs({"LFR","NORMAL","HEROIC","MYTHIC"})do
+     local entry=type(boss.difficulties)=="table"and boss.difficulties[key]
+     local trusted=type(entry)=="table"and entry.source=="blizzard-statistic"and tonumber(entry.statisticId)
+     local kills=trusted and tonumber(entry.kills)or nil
+     if kills and kills>0 then selected=key end
+    end
+    if selected then seen[selected]=seen[selected]or{};if not seen[selected][identity]then seen[selected][identity]=true;totals[selected]=(totals[selected]or 0)+1 end end
+   end
+  end
  local best;for _,key in ipairs({"LFR","NORMAL","HEROIC","MYTHIC"})do if totals[key]and totals[key]>0 then best={difficulty=key,killed=totals[key],total=totals[key]}end end
  local total=0;for _,raid in ipairs(type(snapshot)=="table"and snapshot.raids or{})do if self:RaidIdentityMatches(raid,raidIdentity)then total=math.max(total,#(raid.bosses or{}))end end;if best then best.total=total>0 and total or best.killed end
  return best

@@ -5,6 +5,8 @@ local Database = { version=addonVersion, areas = {}, diagnosticSources = {}, ini
 
 function Database:Initialize()
     self.initialized = false
+    self.migrationBlocked = false
+    self.migrationError = nil
     local legacy = type(HolyStormDB) == "table" and HolyStormDB.profiles == nil and HolyStorm.Utils.DeepCopy(HolyStormDB) or nil
     HolyStorm.db = LibStub("AceDB-3.0"):New("HolyStormDB", HolyStorm.Data.Schema.defaults, true)
     HS_Player_DB = type(HS_Player_DB) == "table" and HS_Player_DB or {}
@@ -13,7 +15,10 @@ function Database:Initialize()
         if type(legacy.optionalModules) == "table" then HolyStorm.db.profile.optionalModules = HolyStorm.Utils.ApplyDefaults(legacy.optionalModules, HolyStorm.Data.Schema.defaults.profile.optionalModules) end
     end
     local ok, err = HolyStorm.Data.Migrations:Run(HolyStorm.db.global, HolyStorm.db.global.schemaVersion, legacy)
-    if not ok then error("Holy Storm database: " .. tostring(err)) end
+    if not ok then
+        self.migrationBlocked=true;self.migrationError=err
+        if err~="SCHEMA_VERSION_NEWER" and HolyStorm.Logger then HolyStorm.Logger:Write("ERROR","Database","migration","SavedVariables retained because migration could not complete",{domain="database",migrationId="database.startup",success=false,reason="MIGRATION_BLOCKED"})end
+    end
     self.initialized = true
     self:RegisterDiagnosticSource("HolyStormDB",function()return HolyStorm.db end)
     self:RegisterDiagnosticSource("HS_Player_DB",function()return HS_Player_DB end)

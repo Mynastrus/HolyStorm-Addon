@@ -139,3 +139,7 @@ metadata.administration = {
 ```
 
 Das Beispiel ist ausschließlich Dokumentation und registriert keine Produktiv-Section.
+
+## Section layout sizing contract
+
+Administration content is parented to a shared scroll viewport inside the AceGUI section pane and uses the shared `UILayout`/`UIComponents` row and column primitives. Its content area has a 720-pixel minimum height, allowing pages with fixed minimum body heights to remain reachable at the host's minimum size and when resized. A section must not position controls relative to the global main window or outside its assigned content frame. Shared labeled fields keep labels associated with native controls, and selectors use the shared Policy UI contract. Activity Points also keeps an inner scroll container for its rule, decay, and manual-adjustment forms. Permissions, Rules, Filters, and Policy Inspector use the host viewport for overflow; their final Retail sizing still requires the checklist in the stabilization report.

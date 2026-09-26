@@ -143,7 +143,7 @@ function Sync:RunCatchUp()
  -- Each domain is a distinct logical scope. Discover() merges repeated catch-up requests per domain/scope.
  if not IsInGuild()then return false end;for domainId,domain in pairs(self.domains)do if domain.catchUp~=false then self:Discover(domainId,nil,{reason="LOGIN_CATCHUP",priority=98,watermark=HolyStorm.PlayerData:GetForeignWatermark(domainId)})end end;log("DEBUG","catchup","Delayed login catch-up started",{watermark=HolyStorm.PlayerData:GetForeignWatermark(),domains=HolyStorm.Utils.TableCount(self.domains)});return true
 end
-function Sync:GetKnownVersion(guid)local entry=type(guid)=="string"and self.knownVersions[guid];return entry and entry.version or nil end
+function Sync:GetKnownVersion(guid)local entry=type(guid)=="string"and self.knownVersions[guid];if not entry then return nil end;if now()-(tonumber(entry.receivedAt)or 0)>self.presenceTimeout then self.knownVersions[guid]=nil;return nil end;return entry.version end
 function Sync:BeginLoginSession()
  self.loginSessionId="LOGIN-"..self:NewRequestId();self.presencePublished=false;self.peerVersionReceived=false;self.outdatedNotified=false;self.knownVersions={}
  return HolyStorm.Tasks:Queue("Sync.LoginPresence",{delay=1.5,startupPhase=4,priority=98,triggerSource="PLAYER_LOGIN",metadata={sessionId=self.loginSessionId}})

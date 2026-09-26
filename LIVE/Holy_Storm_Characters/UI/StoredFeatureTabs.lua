@@ -121,7 +121,7 @@ do
   for _,boss in ipairs(bestRows)do if C:RaidIdentityMatches(boss,row)and not shownTrusted[boss]then addBest(boss)end end
   if#rows==0 then rows[1]={cells={L["NO_DATA"],unknown,unknown}}end
   local tooltips=HolyStorm.Tooltips
-  return tooltips and tooltips:ShowTable("raid-best",owner,{anchor={point="LEFT",relativePoint="RIGHT",x=8,y=0},columns={{align="LEFT"},{align="CENTER"},{align="RIGHT"},},headers={{L["RAID_COLUMN_BOSS"],L["RAID_COLUMN_BEST"],L["RAID_COLUMN_KILLS"]}},separator=true,rows=rows})or false
+   return tooltips and tooltips:ShowTable("raid-best",owner,{anchor={point="LEFT",relativePoint="RIGHT",x=8,y=0},columns={{align="LEFT"},{align="CENTER"},{align="RIGHT"},},headers={{L["COLUMN_BOSS"],L["COLUMN_BEST"],L["COLUMN_KILLS"]}},separator=true,rows=rows})or false
  end
  local function raidTooltip(row,_,_,tooltip,owner)if row.weekly.TIMEWALKING then return weeklyTooltip(row,"TIMEWALKING",owner)end;tooltip:SetText(row.name);tooltip:AddLine(L["OPEN_JOURNAL"],1,1,1,true);return true end
  local function columns()local result={{id="name",title=L["COLUMN_RAID"],weight=1,minWidth=200,truncate=true,renderCell=raidCell,onClick=openJournal,tooltip=function(row,_,_,tooltip,owner)return raidTooltip(row,nil,nil,tooltip,owner)end}};for _,key in ipairs(baseDifficultyKeys)do local difficultyKey=key;result[#result+1]={id=difficultyKey:lower(),title=L["DIFFICULTY_"..difficultyKey],width=90,compactWidth=68,align="RIGHT",tooltip=function(row,_,_,tooltip,owner)return weeklyTooltip(row,difficultyKey,owner)end}end;result[#result+1]={id="best",title=L["COLUMN_BEST"],width=180,compactWidth=100,align="RIGHT",tooltip=function(row,_,_,tooltip,owner)return bestTooltip(row,nil,nil,nil,owner)end};return result end

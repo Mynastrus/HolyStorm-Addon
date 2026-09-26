@@ -91,7 +91,7 @@ for _,name in ipairs({"PermissionRegistry","PermissionEngine","GroupManager","Fi
 local registryFile=assert(io.open(coreRoot.."Core/Registry/ModuleRegistry.lua","rb"));local registrySource=registryFile:read("*a");registryFile:close()
 for _,contract in ipairs({"RegisterModuleAdministration","FlushAdministrationSections","IsModuleAvailable","IsCapabilityAvailable","HS_MODULE_AVAILABILITY_CHANGED"})do assert(registrySource:find(contract,1,true),"ModuleRegistry misses administration contract "..contract)end
 local hostFile=assert(io.open(root.."UI/Administration/AdministrationRegistry.lua","rb"));local hostSource=hostFile:read("*a");hostFile:close()
-for _,optionalName in ipairs({"Equipment","MythicPlus","Raids","Delves","Content","POI","Calendar","TaskManager","SyncManager"})do assert(not hostSource:find(optionalName,1,true),"Administration host hardcodes optional module "..optionalName)end
+for _,optionalName in ipairs({"Equipment","MythicPlus","Raids","Delves","Holy_Storm_Content","POI","Calendar","TaskManager","SyncManager"})do assert(not hostSource:find(optionalName,1,true),"Administration host hardcodes optional module "..optionalName)end
 
 for _,locale in ipairs({"enUS","deDE"})do
     local file=assert(io.open(root.."UI/Administration/Locales/"..locale..".lua","rb"));local text=file:read("*a");file:close()

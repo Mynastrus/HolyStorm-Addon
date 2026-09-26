@@ -296,7 +296,7 @@ function GuildRoster:Refresh()
     local members, memberCount = {}, 0
     for _, stored in pairs(guild and guild.roster or {}) do
         memberCount = memberCount + 1
-        if settings.showOffline or stored.online then local c=HolyStorm.Data.CharacterStore:Get(stored.guid);local discoveredVersion=HolyStorm.Sync and HolyStorm.Sync:GetKnownVersion(stored.guid);table.insert(members, { index=stored.index,guid=stored.guid,name=stored.name,rank=stored.rank,rankIndex=stored.rankIndex or math.huge,level=stored.level,className=stored.class,zone=stored.zone,note=stored.note,officerNote=stored.officerNote,online=stored.online,status=stored.status,isMobile=stored.isMobile,classFileName=stored.classFile,itemLevel=c and c.itemLevel,mythicScore=c and c.mythicPlus and c.mythicPlus.overallScore,addonVersion=discoveredVersion or(c and c.addon and c.addon.version) }) end
+        if settings.showOffline or stored.online then local c=HolyStorm.Data.CharacterStore:Get(stored.guid);local localGuid=UnitGUID and UnitGUID("player");local discoveredVersion=HolyStorm.Sync and HolyStorm.Sync:GetKnownVersion(stored.guid);local version=stored.guid==localGuid and HolyStorm.version or discoveredVersion;table.insert(members, { index=stored.index,guid=stored.guid,name=stored.name,rank=stored.rank,rankIndex=stored.rankIndex or math.huge,level=stored.level,className=stored.class,zone=stored.zone,note=stored.note,officerNote=stored.officerNote,online=stored.online,status=stored.status,isMobile=stored.isMobile,classFileName=stored.classFile,itemLevel=c and c.itemLevel,mythicScore=c and c.mythicPlus and c.mythicPlus.overallScore,addonVersion=version }) end
     end
     if self.filterBar then members=self.filterBar:Apply(members)end
     table.sort(members, function(left, right)

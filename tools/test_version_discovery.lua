@@ -20,5 +20,10 @@ Sync.loginSessionId="LOGIN-test";Sync.presencePublished=false;Sync.outdatedNotif
 assert(Sync:OnPresence({version="5.10.0",responseTo="LOGIN-test"},"Peer-Realm","Player-Peer"));assert(#notices==0 and not Sync:EvaluateOutdatedVersion(),"the update hint waits until this login's own presence was published")
 Sync.presencePublished=true;assert(Sync:EvaluateOutdatedVersion()and#notices==1,"a higher peer version triggers the localized update hint")
 assert(not Sync:EvaluateOutdatedVersion()and#notices==1,"the update hint is emitted only once per login session")
-Sync.outdatedNotified=false;Sync.peerVersionReceived=true;Sync.knownVersions={peer={version="5.8.9",sender="Peer-Realm",guid="Player-Peer"}};assert(not Sync:EvaluateOutdatedVersion()and#notices==1,"older peer versions never trigger a hint")
+Sync.outdatedNotified=false;Sync.peerVersionReceived=true;Sync.knownVersions={peer={version="5.8.9",sender="Peer-Realm",guid="Player-Peer",receivedAt=1000}};assert(not Sync:EvaluateOutdatedVersion()and#notices==1,"older peer versions never trigger a hint")
+assert(Sync:GetKnownVersion("peer")=="5.8.9","recent presence exposes its known version")
+Sync.knownVersions.peer.receivedAt=1000-Sync.presenceTimeout-1
+assert(Sync:GetKnownVersion("peer")==nil and Sync.knownVersions.peer==nil,"stale presence no longer supplies a roster version")
+local rosterSource=assert(io.open(root.."../Holy_Storm_Guild/Guild.lua","rb")):read("*a")
+assert(rosterSource:find("stored.guid==localGuid and HolyStorm.version",1,true),"the local roster character reads the loaded core addon version directly")
 print("Semantic version discovery and once-per-login update notice tests passed")

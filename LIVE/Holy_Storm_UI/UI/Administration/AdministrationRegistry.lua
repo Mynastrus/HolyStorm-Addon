@@ -199,7 +199,7 @@ end
 
 function Administration:EnsureSectionBuilt(section)
     if section._frame then return true end
-    local parent=self.tree and self.tree.content or self.host
+    local parent=self.sectionViewport and self.sectionViewport.content or self.tree and self.tree.content or self.host
     local page=section.page
     if not page and section.build then
         local ok,result=HolyStorm.Utils.SafeCall("administration.build:"..section.id,section.build,parent,self:GetContext(section,parent))
@@ -278,9 +278,16 @@ function Administration:EnsureHost()
         if section and GameTooltip then GameTooltip:SetOwner(button,"ANCHOR_RIGHT");GameTooltip:SetText(Administration:GetTitle(section));GameTooltip:AddLine(Administration:GetDescription(section),.9,.9,.9,true);GameTooltip:Show()end
     end)
     tree:SetCallback("OnButtonLeave",function()if GameTooltip then GameTooltip:Hide()end end)
+    local sectionViewport
+    if HolyStorm.UI.Components and tree.content then
+        sectionViewport=HolyStorm.UI.Components:CreateScrollContainer(tree.content)
+        sectionViewport.frame:SetAllPoints(tree.content)
+        sectionViewport:SetContentHeight(math.max(720,tree.content.GetHeight and tree.content:GetHeight()or 0))
+        sectionViewport:Relayout()
+    end
     host:HookScript("OnShow",function()Administration:OnHostShown()end)
     host:HookScript("OnHide",function()Administration:HideSection(Administration.activeId)end)
-    self.host,self.tree,self.hostLayout=host,tree,hostLayout
+    self.host,self.tree,self.hostLayout,self.sectionViewport=host,tree,hostLayout,sectionViewport
     if HolyStorm.UI.RegisterView then
         local ok=HolyStorm.UI:RegisterView({id="administration",owner="ui.administration",title=L["ADMINISTRATION_TITLE"],page=host,refresh=function()Administration:OnHostShown()end})
         if not ok then return false end

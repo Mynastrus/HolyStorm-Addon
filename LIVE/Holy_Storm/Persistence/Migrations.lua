@@ -113,11 +113,57 @@ Migrations.steps[12] = function(global)
  global.achievements=HolyStorm.Utils.ApplyDefaults(global.achievements,{guilds={},schemaVersion=1});local achievementPermissions={"achievement-view","achievement-create","achievement-edit","achievement-delete","achievement-publish","achievement-award","achievement-revoke","achievement-admin","achievement-test"}
  for _,state in pairs(type(global.permissionStates)=="table"and global.permissionStates or{})do local groups=type(state)=="table"and state.groups;if groups then local member=groups["guild-member"];if member then member.permissions=type(member.permissions)=="table"and member.permissions or{};member.permissions["achievement-view"]=true end;local officers=groups.officers;if officers then officers.permissions=type(officers.permissions)=="table"and officers.permissions or{};for _,permission in ipairs(achievementPermissions)do officers.permissions[permission]=true end end end end
 end
+Migrations.steps[13] = function(global)
+    -- Consolidate one-time character/profile aliases into HS_Player_DB before
+    -- removing the old mirrors. Guild-scoped `global.data.guilds` is retained.
+    local root=type(HS_Player_DB)=="table"and HS_Player_DB or{}
+    if type(root.characters)~="table"then
+        local flat=root;root={schemaVersion=2,characters={},players={},characterOwners={}}
+        for guid,record in pairs(flat)do if type(guid)=="string"and type(record)=="table"then root.characters[guid]=HolyStorm.Utils.DeepCopy(record)end end
+    end
+    root.players=type(root.players)=="table"and root.players or{}
+    root.characterOwners=type(root.characterOwners)=="table"and root.characterOwners or{}
+    local counts={characters=0,players=0,owners=0}
+    local function copyRecords(source,target,countKey)
+        if source==nil then return end
+        if type(source)~="table"then error("INVALID_LEGACY_"..string.upper(countKey))end
+        for id,record in pairs(source)do
+            if type(id)~="string"or type(record)~="table"then error("MALFORMED_LEGACY_"..string.upper(countKey))end
+            if target[id]==nil then target[id]=HolyStorm.Utils.DeepCopy(record);counts[countKey]=counts[countKey]+1 end
+        end
+    end
+    if global.data~=nil and type(global.data)~="table"then error("MALFORMED_LEGACY_DATA_ROOT")end
+    local globalData=type(global.data)=="table"and global.data or{}
+    copyRecords(globalData.characters,root.characters,"characters")
+    copyRecords(globalData.players,root.players,"players")
+    copyRecords(global.playerProfiles,root.players,"players")
+    if type(globalData.characterOwners)~="table"and globalData.characterOwners~=nil then error("MALFORMED_LEGACY_OWNERS")end
+    if type(global.characterOwners)~="table"and global.characterOwners~=nil then error("MALFORMED_LEGACY_OWNERS")end
+    for _,owners in ipairs({globalData.characterOwners or{},global.characterOwners or{}})do
+        for guid,accountId in pairs(owners)do
+            if type(guid)~="string"or type(accountId)~="string"then error("MALFORMED_LEGACY_OWNERS")end
+            if root.characterOwners[guid]==nil then root.characterOwners[guid]=accountId;counts.owners=counts.owners+1 end
+        end
+    end
+    copyRecords(global.twinks,root.characters,"characters")
+    root.schemaVersion=2;HS_Player_DB=root
+    global.data=globalData;globalData.characters=nil;globalData.players=nil;globalData.characterOwners=nil
+    global.playerProfiles=nil;global.characterOwners=nil;global.twinks=nil
+    if HolyStorm.Logger and HolyStorm.Logger.Write then HolyStorm.Logger:Write("INFO","Database","migration","Legacy character aliases consolidated",{domain="player-data",oldSchema=12,newSchema=13,migrationId="database.12-to-13.player-alias-cleanup",cleanup=true,charactersCopied=counts.characters,playersCopied=counts.players,ownersCopied=counts.owners})end
+end
 function Migrations:Run(global, fromVersion, legacy)
     local target = HolyStorm.Data.Schema.version
-    for version = math.max(0, tonumber(fromVersion) or 0) + 1, target do
+    fromVersion=tonumber(fromVersion)or 0
+    if fromVersion>target then
+        if HolyStorm.Logger and HolyStorm.Logger.Write then HolyStorm.Logger:Write("ERROR","Database","migration","SavedVariables schema is newer than this addon",{domain="database",oldSchema=fromVersion,newSchema=target,migrationId="database.forward-version-check",success=false,reason="SCHEMA_VERSION_NEWER"})end
+        return false,"SCHEMA_VERSION_NEWER"
+    end
+    for version = math.max(0, fromVersion) + 1, target do
         local migration = self.steps[version]; if migration then
-            local ok, err = pcall(migration, global, legacy); if not ok then return false, string.format("migration %d failed: %s", version, tostring(err)) end
+            local ok, err = pcall(migration, global, legacy); if not ok then
+                if HolyStorm.Logger and HolyStorm.Logger.Write then HolyStorm.Logger:Write("ERROR","Database","migration","SavedVariables migration failed",{domain="database",oldSchema=version-1,newSchema=version,migrationId="database."..tostring(version-1).."-to-"..tostring(version),success=false,reason="MIGRATION_FAILED"})end
+                return false, string.format("migration %d failed: %s", version, tostring(err))
+            end
         end
         global.schemaVersion = version
     end

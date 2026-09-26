@@ -73,6 +73,19 @@ function Components:CreateText(parent,options)
     return{frame=text,text=text,SetText=function(_,value)text:SetText(value or"")end}
 end
 
+function Components:CreateLabeledField(parent,label,control,options)
+    options=options or{}
+    local frame=CreateFrame("Frame",nil,parent)
+    local layout=HolyStorm.UILayout:CreateContainer(frame,{frame=frame,axis="column",gap=options.gap or 3,padding=options.padding or 0,autoHeight=true})
+    local labelWidget=self:CreateText(frame,{text=label,font=options.labelFont or"GameFontNormalSmall",wrap=true})
+    layout:Add(labelWidget,{height=options.labelHeight or 18})
+    layout:Add(control,{weight=1,min=options.controlHeight or 28})
+    local result={frame=frame,label=labelWidget,control=control,layout=layout}
+    function result:SetLabel(value)self.label:SetText(value)end
+    function result:Relayout()self.layout:Relayout()end
+    return result
+end
+
 function Components:CreateIcon(parent,options)
     options=options or{};local frame=CreateFrame("Frame",nil,parent);local size=options.size or 18;frame:SetSize(options.width or size,options.height or size)
     local texture=frame:CreateTexture(nil,options.layer or"ARTWORK");texture:SetAllPoints();texture:SetTexture(options.texture or self:GetToken("textures","fallbackIcon"))

@@ -61,6 +61,10 @@ for id in pairs(permissionIds)do
 end
 for category in pairs(categories)do requireKey("CATEGORY_"..category:gsub("[^%w]","_"):upper(),"category "..category)end
 requireKey("CATEGORY_CHARACTERS","Characters permissions")
+for _,key in ipairs({"CATEGORY_ACTIVITY","CATEGORY_ACTIVITY_POINTS","CATEGORY_ABSENCES","CATEGORY_NOTES"})do requireKey(key,"guild-management permission categories")end
+local managementSource=read(workspace.."/LIVE/Holy_Storm_Guild/GuildManagement.lua")
+for _,id in ipairs({"guild.notes","guild.absences","guild.activity","guild.activityPoints"})do assert(managementSource:find('"'..id..'"',1,true),"Guild Management must use stable permission category ID "..id)end
+assert(not read(uiRoot.."UI/Administration/Permissions.lua"):find('definition.category or"Core"):gsub',1,true),"Policy categories must not derive locale IDs from display text")
 for _,key in ipairs({
     "GROUP_GUILD_LEADERSHIP","GROUP_OFFICERS","GROUP_GUILD_MEMBER",
     "GROUP_DESC_GUILD_LEADERSHIP","GROUP_DESC_OFFICERS","GROUP_DESC_GUILD_MEMBER",

@@ -1,9 +1,7 @@
 local addonVersion = "1.1.0"
 local HolyStorm = LibStub("AceAddon-3.0"):GetAddon("Holy_Storm")
 
--- HS_Player_DB is the canonical persistent owner-controlled data store.  The
--- legacy HolyStormDB.global.data tables are aliases installed during startup so
--- older readers remain compatible without creating a second source of truth.
+-- HS_Player_DB is the canonical persistent owner-controlled data store.
 local PlayerData = {
     version = addonVersion,
     schemaVersion = 2,
@@ -58,18 +56,22 @@ function PlayerData:HasBlock(id)return self.blocks[id]~=nil end
 
 function PlayerData:Initialize()
     HS_Player_DB=type(HS_Player_DB)=="table"and HS_Player_DB or{}
+    if tonumber(HS_Player_DB.schemaVersion)and tonumber(HS_Player_DB.schemaVersion)>self.schemaVersion then
+        self.futureSchema=true;self.root={schemaVersion=self.schemaVersion,characters={},players={},characterOwners={},sync={foreignWatermark=0,foreignWatermarks={}},normalizedBlocks={}}
+        if HolyStorm.Logger and HolyStorm.Logger.Write then HolyStorm.Logger:Write("ERROR","PlayerData","migration","Character database is newer than this addon; persistent data is read-only",{domain="player-data",oldSchema=HS_Player_DB.schemaVersion,newSchema=self.schemaVersion,migrationId="player-data.future-schema",success=false,reason="SCHEMA_VERSION_NEWER"})end
+        return true
+    end
     local legacyFlat=HS_Player_DB.characters==nil and HS_Player_DB or nil
     local root=legacyFlat and{}or HS_Player_DB
     root.schemaVersion=self.schemaVersion;root.characters=type(root.characters)=="table"and root.characters or{};root.players=type(root.players)=="table"and root.players or{};root.characterOwners=type(root.characterOwners)=="table"and root.characterOwners or{};root.sync=type(root.sync)=="table"and root.sync or{};root.sync.foreignWatermark=tonumber(root.sync.foreignWatermark)or 0;root.sync.foreignWatermarks=type(root.sync.foreignWatermarks)=="table"and root.sync.foreignWatermarks or{};root.normalizedBlocks=type(root.normalizedBlocks)=="table"and root.normalizedBlocks or{}
     if legacyFlat then for guid,record in pairs(legacyFlat)do if validId(guid)and type(record)=="table"then root.characters[guid]=copy(record)end end;HS_Player_DB=root end
-    local old=HolyStorm.db.global.data or{}
-    local oldCharacters=type(old.characters)=="table"and old.characters or{}
-    local oldPlayers=type(old.players)=="table"and old.players or{}
-    local oldOwners=type(old.characterOwners)=="table"and old.characterOwners or{}
-    if oldCharacters~=root.characters then for guid,record in pairs(oldCharacters)do if validId(guid)and type(record)=="table"and not root.characters[guid]then root.characters[guid]=copy(record)end end end
-    if oldPlayers~=root.players then for id,record in pairs(oldPlayers)do if validId(id)and type(record)=="table"and not root.players[id]then root.players[id]=copy(record)end end end
-    if oldOwners~=root.characterOwners then for guid,id in pairs(oldOwners)do if validId(guid)and validId(id)and not root.characterOwners[guid]then root.characterOwners[guid]=id end end end
-    HolyStorm.db.global.data=old;old.characters=root.characters;old.players=root.players;old.characterOwners=root.characterOwners
+    local old=type(HolyStorm.db.global.data)=="table"and HolyStorm.db.global.data or{}
+    if HolyStorm.Database and HolyStorm.Database.migrationBlocked then
+        for guid,record in pairs(type(old.characters)=="table"and old.characters or{})do if validId(guid)and type(record)=="table"and root.characters[guid]==nil then root.characters[guid]=copy(record)end end
+        for id,record in pairs(type(old.players)=="table"and old.players or{})do if validId(id)and type(record)=="table"and root.players[id]==nil then root.players[id]=copy(record)end end
+        for guid,id in pairs(type(old.characterOwners)=="table"and old.characterOwners or{})do if validId(guid)and validId(id)and root.characterOwners[guid]==nil then root.characterOwners[guid]=id end end
+    end
+    HolyStorm.db.global.data=old
     self.root=root
     if tonumber(root.normalizationVersion)~=1 then
         -- One migration pass replaces the former independent character/profile
@@ -138,6 +140,7 @@ function PlayerData:ValidateBlock(blockId,data)
     return true
 end
 function PlayerData:ApplyBlock(guid,blockId,data,meta,mode)
+    if self.futureSchema then return false,"FUTURE_SCHEMA_READ_ONLY"end
     if not validId(guid)or type(meta)~="table"then return false,"INVALID_IDENTITY"end;local valid,reason=self:ValidateBlock(blockId,data);if not valid then return false,reason end
     local record=self:GetOrCreateCharacter(guid);local definition=self.blocks[blockId];local current=record.blockMeta[blockId]
     if mode=="remote"then

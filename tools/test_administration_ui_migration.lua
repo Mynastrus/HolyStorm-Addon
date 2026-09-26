@@ -12,8 +12,10 @@ local rules=read("UI/Administration/Rules.lua")
 local filters=read("UI/Administration/Filters.lua")
 local inspector=read("UI/Administration/PolicyInspector.lua")
 local administration=permissions..rules..filters..inspector
+local activityPoints=read("../Holy_Storm_Guild/Services/ActivityPoints.lua")
 
 assert(components:find("CreateEditBox",1,true)and components:find("CreateEmptyState",1,true),"shared controls required by Administration are missing")
+assert(components:find("CreateLabeledField",1,true),"shared labeled-field layout primitive is missing")
 assert(tableSource:find("SetSelection",1,true)and tableSource:find("isRowSelected",1,true),"shared Table selection state is missing")
 assert(policyUI:find("Components:CreateTable",1,true),"policy lists and rule trees must use the shared Table")
 assert(not policyUI:find('CreateFrame("CheckButton',1,true),"legacy policy checklist renderer remains")
@@ -26,6 +28,7 @@ for name,source in pairs({Permissions=permissions,Rules=rules,Filters=filters,Po
 end
 assert(host:find("components=HolyStorm.UI and HolyStorm.UI.Components",1,true),"Administration extension context must expose shared components")
 assert(host:find("hostLayout:Add",1,true),"Administration host must use shared layout")
+assert(host:find("CreateScrollContainer(tree.content)",1,true)and host:find("sectionViewport:SetContentHeight",1,true)and host:find("sectionViewport.content",1,true),"all Administration sections must share a bounded, scrollable host viewport")
 
 for _,contract in ipairs({"Registry:GetPermissions","Engine:GetPermissionMatrix","Engine:GetMembershipReasons","Groups:SaveGroup","Filters:SaveRule","Filters:SaveFilter","State:RestoreDefaults"})do
     assert(administration:find(contract,1,true),"domain API missing from migrated Administration: "..contract)
@@ -36,6 +39,9 @@ end
 assert(permissions:find('draft.id==Groups.systemIds.LEADERSHIP',1,true),"protected leadership rendering is missing")
 assert(permissions:find("StaticPopupDialogs.HOLYSTORM_PERMISSION_RESET",1,true)and permissions:find("State:RestoreDefaults",1,true),"factory reset confirmation must delegate to PolicyState")
 assert(policyUI:find('L["UNAVAILABLE"]',1,true),"unavailable provider state is not rendered")
+assert(activityPoints:find('CreateScrollContainer(parent)',1,true)and activityPoints:find('CreateLabeledField',1,true),"Activity Points admin form must use a bounded scroll area and shared labeled fields")
+assert(activityPoints:find('CreateSelector(rules.content',1,true)and activityPoints:find('ACTIVITY_POINTS_DECAY_MODE',1,true),"event type and decay mode must be actual labeled selectors")
+for _,key in ipairs({"ACTIVITY_POINTS_RULE_NAME","ACTIVITY_POINTS_DECAY_INTERVAL","ACTIVITY_POINTS_DECAY_AMOUNT","ACTIVITY_POINTS_TARGET","ACTIVITY_POINTS_ADJUSTMENT_AMOUNT"})do for _,locale in ipairs({"enUS","deDE"})do local source=read("../Holy_Storm_Guild/Locales/Activity_"..locale..".lua");assert(source:find('L["'..key..'"]',1,true),locale.." misses Activity Points field label "..key)end end
 assert(policyUI:find("MoveSelected",1,true)and policyUI:find("IndentSelected",1,true)and policyUI:find("OutdentSelected",1,true),"nested editor movement controls regressed")
 
 for _,locale in ipairs({"enUS","deDE"})do

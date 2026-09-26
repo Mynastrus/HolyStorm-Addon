@@ -37,11 +37,12 @@ local secretMeta={
  __tostring=function()error("secret status serialized")end,
 }
 local secretStatus=setmetatable({secret=true},secretMeta)
+local secretName=setmetatable({secret=true},secretMeta)
 local secretEnum=setmetatable({enum=true},secretMeta)
 local oldConfirmed=Enum.CalendarStatus.Confirmed
 Enum.CalendarStatus.Confirmed=secretEnum
-issecretvalue=function(value)return rawequal(value,secretStatus)end
-canaccessvalue=function(value)return not rawequal(value,secretStatus)end
+issecretvalue=function(value)return rawequal(value,secretStatus)or rawequal(value,secretName)end
+canaccessvalue=function(value)return not rawequal(value,secretStatus)and not rawequal(value,secretName)end
 
 assert(Calendar:NormalizeCalendarStatus(secretStatus)=="UNKNOWN","inaccessible status becomes UNKNOWN")
 local ok,result=pcall(function()return Calendar:HasStatus(secretStatus,"Confirmed")end)
@@ -58,6 +59,10 @@ local event={title="Raid",year=2026,month=9,monthDay=18,hour=20,minute=0,descrip
 local fingerprint=Calendar:GetFingerprint(event)
 assert(fingerprint:find("UNKNOWN",1,true),"fingerprint uses the neutral status marker")
 assert(not fingerprint:find("secret",1,true),"fingerprint contains no secret representation")
+event.allInvites[1].name=secretName
+local protectedNameFingerprint=Calendar:GetFingerprint(event)
+assert(not protectedNameFingerprint:find("secret",1,true)and protectedNameFingerprint:find("Unavailable",1,true),"a protected invite name becomes a safe placeholder before table.concat")
+event.allInvites[1].name="A"
 local secondSecret=setmetatable({secret=true},secretMeta)
 local oldIsSecret=issecretvalue
 issecretvalue=function(value)return rawequal(value,secretStatus)or rawequal(value,secondSecret)end
@@ -77,7 +82,7 @@ C_Calendar={
  GetRaidInfo=function()return nil end,
  EventCanEdit=function()return false end,
  GetNumInvites=function()return 1 end,
- EventGetInvite=function()return{name="Secret Player",inviteStatus=secretStatus,classFilename="MAGE"}end,
+ EventGetInvite=function()return{name=secretName,inviteStatus=secretStatus,classFilename="MAGE"}end,
  CloseEvent=function()closed=closed+1 end,
 }
 function Calendar:IsEnabled()return true end
@@ -94,6 +99,7 @@ table.remove(queued,1).callback()
 assert(finishedEvents==events and closed==1,"retry path completes the refresh")
 assert(events[1].signupCount==0,"unknown status is not counted")
 assert(#events[1].allInvites==1 and events[1].allInvites[1].inviteStatus=="UNKNOWN","snapshot retains only normalized status")
+assert(events[1].allInvites[1].name=="Unavailable","unavailable invite identity is replaced before entering the snapshot")
 assert(#events[1].invites==1,"unknown invite remains visible with its neutral UI status")
 
 -- Finishing an asynchronous refresh must never hide Blizzard's protected CalendarFrame.
@@ -121,4 +127,7 @@ assert(ownHides==2 and ownShows==3 and renders==1,"Holy Storm-owned frame naviga
 
 local source=assert(io.open(featureRoot.."Calendar.lua","rb")):read("*a")
 assert(not source:find("HideUIPanel",1,true),"calendar task path contains no Blizzard panel hide")
+assert(source:find("SafeCalendarText(invite.name)",1,true)and not source:find('table.concat({ invite.name',1,true),"protected Calendar identity is normalized before any concatenation")
+assert(source:find('CALENDAR_DETAIL_COLLECTION_FAILED',1,true)and source:find('pcall(CollectDetails',1,true),"detail collection failures are isolated and logged without exception payloads")
+assert(source:find('event.details = details and {',1,true),"raw Calendar detail tables are not retained in snapshots")
 print("Calendar Secret Value compatibility tests passed")

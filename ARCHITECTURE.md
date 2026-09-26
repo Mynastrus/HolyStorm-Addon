@@ -110,3 +110,17 @@ Feature-Pakete wie Equipment, MythicPlus, Raids, Delves und POI werden als separ
 - Der Bootstrap initialisiert einige konkrete Services statt ausschließlich deklarative Lifecycle-Hooks zu nutzen.
 - Modulmetadaten sind vorhanden, werden aber noch nicht in allen Modulen vollständig für UI, Administration, Data und Sync genutzt.
 - `HolyStorm.Policy` bleibt als öffentliche Compatibility-Fassade bestehen. Neue fachliche Autorisierungen verwenden `PermissionEngine`; Test- und Altverbraucher können während der Übergangszeit auf die Fassade zurückfallen.
+
+## Raid progression and localization contracts
+
+The Raid character snapshot keeps lifetime boss kills from Blizzard's Statistics API separate from the weekly lockout returned by the Encounter Journal. Lifetime values are collected for LFR, Normal, Heroic, and Mythic and travel in the existing generic character Sync block; weekly lockout data remains a separate field. A boss's Best result is the highest difficulty with a verified positive lifetime count, and its displayed count belongs to that difficulty. Unavailable Statistics data stays unknown; it is not inferred from weekly lockouts. For remote characters the UI uses only the synchronized snapshot and does not substitute the local client's Statistics.
+
+Locale keys are stable ASCII identifiers and must never be derived from translated labels. Any key prefix supplied by a feature locale proxy is applied exactly once; Raid tooltip headers reuse the canonical Boss/Best/Kills keys. The offline localization contract test checks enUS/deDE parity, statically discoverable requests, duplicate conflicts, and known mojibake patterns. Runtime-computed keys remain outside its static guarantee and need explicit contract tests.
+
+## Persistence schema and cleanup contract
+
+The central schema is now version 13. Its forward migration consolidates the verified legacy character/account mirror roots into `HS_Player_DB`, then removes those aliases only after successful copying. It retains guild roots, character records, Activity Points history, and permission revision data. Newer schemas are not downgraded; malformed or failed migrations keep their source data and produce structured diagnostics. Other SavedVariables domains still have independent or missing schema markers and remain documented migration debt; this migration does not claim to centralize every writer under DataManager.
+
+## Administration layout contract
+
+The Administration host wraps its AceGUI section pane in the shared scroll component with a minimum 720-pixel content canvas. Permissions, Rules, Filters, Policy Inspector, and registered module sections therefore stay within the host and can scroll when their fixed minimum layouts exceed the visible pane. Activity Points uses the shared labeled fields and selectors inside its own scroll form. This is a containment contract; actual Retail minimum-size and resize behavior remains part of the live verification checklist.

@@ -2,6 +2,24 @@
 
 ## Unreleased
 
+- Fixed Raid Best tooltip headers to resolve through the Raid locale proxy once, and calculate compact lifetime progression from each boss's highest verified difficulty within the selected raid.
+- Fixed Guild Roster version resolution: the local character uses the loaded core addon metadata, remote versions use recent Sync presence, and stale or unobserved presence stays unknown.
+- Hardened Calendar collection against secret/unavailable Retail values. Protected fields become neutral placeholders before snapshots or fingerprints; detail failures are isolated and logged without recording protected values.
+- Reworked Activity Points administration around the shared scroll and labeled-field layout, with real event/decay selectors and visible labels for rules, decay, and manual adjustments.
+- Replaced translated Policy category labels as locale-key inputs with stable Guild Management category IDs, corrected double-encoded German Activity Points labels, and removed conflicting Policy locale registrations.
+- Added database schema 13 migration to consolidate legacy character/account mirrors into `HS_Player_DB` and remove migrated aliases while retaining guild data and character history. Future schemas remain untouched; blocked migrations retain legacy input for recovery.
+- Added project-wide static AceLocale parity/request/mojibake checks and focused Calendar, roster-version, Administration, and migration regressions.
+
+### Deutsche Änderungen
+
+- Raid-Best-Tooltips verwenden die vorhandenen Raid-Locale-Schlüssel ohne doppeltes Präfix. Der kompakte Raid-Fortschritt wählt pro Boss den höchsten bestätigten Lebenszeit-Schwierigkeitsgrad innerhalb des ausgewählten Raids.
+- Die Versionsspalte der Gildenliste verwendet für den lokalen Charakter die geladene Core-Version und für andere Charaktere nur aktuelle Sync-Presence; unbekannte oder veraltete Presence bleibt unbekannt.
+- Die Kalender-Erfassung schützt vor geheimen oder nicht verfügbaren Retail-Werten. Geschützte Felder werden vor Snapshot und Fingerprint neutralisiert; Fehler einzelner Details werden isoliert protokolliert.
+- Die Activity-Points-Administration verwendet nun den gemeinsamen Scroll- und Beschriftungsaufbau mit Ereignis- und Verfalls-Dropdowns sowie sichtbaren Feldern für Regeln, Verfall und manuelle Korrekturen.
+- Policy-Kategorien verwenden stabile Guild-Management-IDs statt übersetzter Texte als Locale-Schlüssel. Doppelt UTF-8-kodierte Aktivitätspunkte-Texte und widersprüchliche Policy-Locale-Einträge wurden korrigiert.
+- Schema 13 führt alte Charakter-/Account-Spiegel in `HS_Player_DB` zusammen und entfernt migrierte Aliase. Gildendaten und Charakterhistorie bleiben erhalten; unbekannte neuere Schemas werden nicht überschrieben.
+- Ein projektweiter statischer AceLocale-Vertragstest sowie fokussierte Calendar-, Versions-, Administration- und Migrationstests wurden ergänzt.
+
 - Added the Guild Activity Points foundation: prospective versioned rules, an idempotent account ledger with character provenance, manual adjustments, deterministic fixed/percentage decay, generic synchronization, administration configuration, Guild Management score visibility, and raw/effective RuleEngine fields. Activity Score does not change guild ranks.
 - Completed the Character Overview audit: added stored race to the summary, made Raid summary progress raid-identity-safe, corrected Delves to the actual v2 producer schema and nested unknown states, kept missing Stats ratings unknown, moved weekly Raid boss lists to shared LibQTip, compacted Equipment columns, removed the redundant Achievements tab gate, and deleted unused producer-side Equipment/Raid/Delves renderers.
 - Completed the Character Overview Mythic+ table from current-season stored snapshots, including best-run level/time, per-dungeon rating, and explicit timed/depleted/unknown states. Removed the unused producer-side text renderer so the stored-data adapter is the sole Character Overview presentation path.
