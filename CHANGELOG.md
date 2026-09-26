@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Added the Guild Activity Points foundation: prospective versioned rules, an idempotent account ledger with character provenance, manual adjustments, deterministic fixed/percentage decay, generic synchronization, administration configuration, Guild Management score visibility, and raw/effective RuleEngine fields. Activity Score does not change guild ranks.
 - Completed the Character Overview audit: added stored race to the summary, made Raid summary progress raid-identity-safe, corrected Delves to the actual v2 producer schema and nested unknown states, kept missing Stats ratings unknown, moved weekly Raid boss lists to shared LibQTip, compacted Equipment columns, removed the redundant Achievements tab gate, and deleted unused producer-side Equipment/Raid/Delves renderers.
 - Completed the Character Overview Mythic+ table from current-season stored snapshots, including best-run level/time, per-dungeon rating, and explicit timed/depleted/unknown states. Removed the unused producer-side text renderer so the stored-data adapter is the sole Character Overview presentation path.
 - Bounded HSC1 receive reassembly to 300 fragments/66,000 bytes, capped incomplete transfers globally and per sender, added early frame validation and replacement-aware byte accounting, and exposed reject/eviction/expiry counters.

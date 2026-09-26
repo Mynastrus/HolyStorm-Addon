@@ -18,9 +18,11 @@ Locales\Activity_deDE.lua
 GuildManagementRegistry.lua
 Persistence\GuildManagementStore.lua
 Persistence\ActivityStore.lua
+Persistence\GuildActivityPointsStore.lua
 Services\PlayerNotes.lua
 Services\Absences.lua
 Services\GuildActivity.lua
+Services\ActivityPoints.lua
 Providers\OnlineActivity.lua
 Providers\GuildChatActivity.lua
 Providers\RaidActivity.lua
