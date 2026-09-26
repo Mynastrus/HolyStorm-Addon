@@ -1,6 +1,6 @@
 local root=(arg[0]:gsub("tools[/\\]test_character_scan_manager.lua$","")).."LIVE/Holy_Storm/"
 unpack=unpack or table.unpack
-local metadata,queued,logs,listeners={},{},{},{}
+local metadata,queued,logs,listeners,emitted={},{},{},{},{}
 local clock=100000
 local blockMetadata={identity={version=1,updatedAt=clock},mythicPlus={version=1,updatedAt=clock-10},raid={version=1,updatedAt=clock-10}}
 local blockSnapshots={mythicPlus={dungeons={{affixScores={}}}}};local inspectMythic=false
@@ -15,7 +15,7 @@ HolyStorm.Logger={Write=function(_,level,source,category,message,context)logs[#l
 function HolyStorm.Tasks:RegisterTaskType(id,definition)self.definitions[id]=definition end
 function HolyStorm.Tasks:Queue(id,options)queued[#queued+1]={id=id,options=options};return"task-"..#queued,"QUEUED"end
 function HolyStorm.Events:Register(event,_,callback)listeners[event]=callback end
-function HolyStorm.Events:Emit()end
+function HolyStorm.Events:Emit(event,...)emitted[#emitted+1]={event=event,args={...}}end
 function HolyStorm.PlayerData:GetMetadata(_,block)return blockMetadata[block]end
 function HolyStorm.PlayerData:GetBlock(_,block)return blockSnapshots[block]end
 function HolyStorm.PlayerData:GetBlockFreshness(_,block)local meta=blockMetadata[block];local staleAfter=21600;local updatedAt=meta and(tonumber(meta.updatedAt)or 0)or nil;local age=updatedAt and clock-updatedAt or nil;return{metadata=meta,metadataExists=meta~=nil,stale=not meta or age>staleAfter,updatedAt=updatedAt,staleAfter=staleAfter,age=age}end
@@ -32,7 +32,7 @@ assert(scans:QueueBootstrapBlocks()and#scans.queue==1 and scans.queue[1].block==
 scans:QueueBootstrapBlocks();assert(#scans.queue==1,"repeated bootstrap discovery merges the same missing block without a refresh loop")
 local equipmentDecision=logs[#logs-2].context;assert(equipmentDecision.block=="equipment"and equipmentDecision.provider=="Equipment"and equipmentDecision.addonId=="equipment"and not equipmentDecision.metadataExists and equipmentDecision.stale and equipmentDecision.queued and equipmentDecision.reason=="INITIAL_MISSING_BLOCK"and equipmentDecision.skipReason=="NONE"and equipmentDecision.staleAfter==21600,"missing-block bootstrap logging records the complete decision")
 assert(scans:Advance()and scans.active.block=="equipment"and#started==1 and started[1].reason=="INITIAL_MISSING_BLOCK","the missing block starts with its bootstrap reason")
-assert(scans:Finish({workflowId=scans.active.workflowId},"COMPLETED"))
+assert(scans:Finish({workflowId=scans.active.workflowId},"COMPLETED"));assert(emitted[#emitted].event=="HS_CHARACTER_SCAN_COMPLETED"and emitted[#emitted].args[1]=="equipment"and emitted[#emitted].args[2]=="COMPLETED","scan completion is exposed with block and workflow status")
 
 scans.active=nil;scans.pending={};scans.queue={};blockMetadata.equipment={version=1,updatedAt=clock-10};assert(scans:QueueBootstrapBlocks()and#scans.queue==0,"existing fresh blocks do not receive an initial scan")
 local freshDecision=logs[#logs-2].context;assert(freshDecision.block=="equipment"and freshDecision.metadataExists and not freshDecision.stale and not freshDecision.queued and freshDecision.reason=="FRESH"and freshDecision.skipReason=="BLOCK_FRESH"and freshDecision.updatedAt==clock-10 and freshDecision.age==10,"fresh-block bootstrap logging records timestamp and age")

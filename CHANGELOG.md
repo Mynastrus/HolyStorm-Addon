@@ -9,6 +9,7 @@
 - Replaced translated Policy category labels as locale-key inputs with stable Guild Management category IDs, corrected double-encoded German Activity Points labels, and removed conflicting Policy locale registrations.
 - Added database schema 13 migration to consolidate legacy character/account mirrors into `HS_Player_DB` and remove migrated aliases while retaining guild data and character history. Future schemas remain untouched; blocked migrations retain legacy input for recovery.
 - Added project-wide static AceLocale parity/request/mojibake checks and focused Calendar, roster-version, Administration, and migration regressions.
+- Added `/hs scan <target>` commands for forced Raid, Equipment, Mythic+, Delves, Stats, and queued all-provider character scans through CharacterScanManager, with localized usage, availability, and workflow-completion feedback.
 
 ### Deutsche Änderungen
 
@@ -19,6 +20,7 @@
 - Policy-Kategorien verwenden stabile Guild-Management-IDs statt übersetzter Texte als Locale-Schlüssel. Doppelt UTF-8-kodierte Aktivitätspunkte-Texte und widersprüchliche Policy-Locale-Einträge wurden korrigiert.
 - Schema 13 führt alte Charakter-/Account-Spiegel in `HS_Player_DB` zusammen und entfernt migrierte Aliase. Gildendaten und Charakterhistorie bleiben erhalten; unbekannte neuere Schemas werden nicht überschrieben.
 - Ein projektweiter statischer AceLocale-Vertragstest sowie fokussierte Calendar-, Versions-, Administration- und Migrationstests wurden ergänzt.
+- Manuelle Charakterscans lassen sich nun mit `/hs scan <target>` für Raid, Ausrüstung, Mythic+, Tiefen, Werte oder alle registrierten Provider einreihen; Hilfe, unbekannte Ziele, Provider-Verfügbarkeit und abgeschlossene Scan-Workflows werden lokalisiert rückgemeldet.
 
 - Added the Guild Activity Points foundation: prospective versioned rules, an idempotent account ledger with character provenance, manual adjustments, deterministic fixed/percentage decay, generic synchronization, administration configuration, Guild Management score visibility, and raw/effective RuleEngine fields. Activity Score does not change guild ranks.
 - Completed the Character Overview audit: added stored race to the summary, made Raid summary progress raid-identity-safe, corrected Delves to the actual v2 producer schema and nested unknown states, kept missing Stats ratings unknown, moved weekly Raid boss lists to shared LibQTip, compacted Equipment columns, removed the redundant Achievements tab gate, and deleted unused producer-side Equipment/Raid/Delves renderers.

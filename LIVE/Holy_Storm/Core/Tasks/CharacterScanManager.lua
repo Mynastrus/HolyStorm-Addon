@@ -81,6 +81,7 @@ function CharacterScans:Finish(workflow,status)
  local active=self.active;if not active or not workflow or workflow.workflowId~=active.workflowId then return false end
  self.active=nil
  HolyStorm.Logger:Write(status=="FAILED"and"WARN"or"DEBUG","CharacterScan","workflow","Character scan released",{block=active.block,workflowId=active.workflowId,status=status,reason=active.reason,resource="CHARACTER_SCAN"},active.workflowId)
+ HolyStorm.Events:Emit("HS_CHARACTER_SCAN_COMPLETED",active.block,status,copy(active.reasons),active.workflowId)
  HolyStorm.Tasks:Queue("CharacterScan.Advance",{delay=self.releaseDelay,priority=30,triggerSource="CHARACTER_SCAN_"..status});return true
 end
 
