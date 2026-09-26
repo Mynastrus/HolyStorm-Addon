@@ -83,6 +83,10 @@ PlayerStore und TwinkCore verwalten Account-/Player-UUIDs, Character-Zuordnungen
 
 Alle eingehenden Daten werden als untrusted behandelt. IDs, Payloadstruktur, Guild-Kontext, Owner und fachliche Berechtigungen werden in der jeweiligen Domain geprüft. Logs enthalten Metadaten und Korrelationsdaten, keine vollständigen Payloads. Da WoW-Addons keine Kryptografie oder serverseitige Autorität besitzen, kann ein modifizierter Client nicht vollständig ausgeschlossen werden; Revision Chain, Blizzard-Ränge, Owner-Bindung und Konflikterkennung sind die vorhandenen Schutzmechanismen.
 
+## Guild Activity
+
+`guildActivity` verwendet denselben Metadaten-/Offer-/Fetch-/Payload-Pfad wie andere persistente Domains. Objekt-ID ist die Account UUID; übertragen wird ein begrenzter owner-autoritärer Shard mit Revision, unveränderlichem Ursprung, Tages-/Wochenaggregaten und bounded Detail. Einzelne Chat-Nachrichten oder Hot Events werden nicht transportiert. `canShare` und `getRecipients` filtern Metadaten und Payloads über `guild-activity-view`; Import lehnt stale Revisionen und Owner-/Account-/Guild-Abweichungen ab und hält Relay-Provenance getrennt als `receivedFrom`.
+
 ## Compatibility und Restschuld
 
 Bestehende öffentliche APIs von Comms, SyncManager, PlayerDataStore und den Stores bleiben erhalten.

@@ -290,6 +290,8 @@ aber durch `UILayout` positioniert. Die `page`-Variante des Administration-
 Section-Vertrags bleibt für externe Compatibility-Verbraucher erhalten; die
 eingebauten Administration-Seiten verwenden nur noch den lazy `build`-Lifecycle.
 
+Guild Management registriert Notes, Absences und Activity in einem gemeinsamen Tab-Host. Activity wird erst bei Auswahl gebaut und verwendet `UILayout`, Buttons und zwei gemeinsame Tables für Account-Übersicht und bounded Detailhistorie. Auswahl, Scrollen, Resize, Empty States sowie Zeitraum-/Typ-/Provider-/Character-Filter bleiben in den Framework-Controllern; Renderer scannen weder die vollständige Datenbank noch berechnen sie Scores.
+
 Für neue Module gelten folgende Regeln:
 
 1. UI nur über `RegisterUIExtension` und `RegisterView` anbinden.

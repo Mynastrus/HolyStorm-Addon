@@ -94,6 +94,12 @@ Mit aktivierten Lua-Fehlern testen. Nach Reload/Login prüfen, dass gespeicherte
 - Shared Notes je Sichtbarkeit mit Mitglied-, Offizier-, Raidleitungs- und Gildenleitungs-Accounts prüfen; unberechtigte Clients dürfen weder Offer noch Payload erhalten. Edit/Delete durch Autor und berechtigten Dritten sowie Tombstone-Konvergenz testen.
 - Absences für Main/Twink desselben Accounts, mehrere aktive/zukünftige Einträge, Vergangenheit, administrative Änderung und Cancellation zwischen zwei Clients prüfen. Relay-Provenance und stale Resurrection mit einem dritten Client testen.
 - Note-Ablauf ohne Polling sowie die Rule-Felder für aktive/nächste Abwesenheit prüfen. Calendar muss ohne Integration unverändert funktionieren.
+- Activity: Login/Logout, `/reload`, reproduzierbaren Disconnect, Charakterwechsel und Main/Twink-Accountaggregation prüfen; recovered Sessions müssen ihre unsichere Endzeit sichtbar behalten.
+- Gildenchat senden und bestätigen, dass nur der Tageszähler steigt und weder Inhalt noch Whisper/Party/Raid/Battle.net-Nachrichten in SavedVariables oder Logs erscheinen.
+- Raidbegegnung und abgeschlossenen Mythisch+-Lauf in Vollgilden-, Mehrheits-, Teil- und Nichtgildengruppe prüfen; Klassifikation, Teilnehmerzuordnung und Multi-Client-Deduplizierung vergleichen.
+- `guildActivity`-Sync zwischen Owner, Empfänger und Relay bis zur Konvergenz prüfen; stale Revision, fehlende Berechtigung, optionales Provider-Unload/Reload und unbekannte Calendar-Attendance müssen sicher degradieren.
+- Activity-UI bei verschiedenen Fenstergrößen mit Scrollen, 7/30/90-Tage-, Typ-, Provider- und Character-Filtern, Empty State und `View activity`-Kontextaktion prüfen; factual Rule-Felder auf Wert, bekannte Null und `UNKNOWN` testen.
+- SavedVariables-Wachstum unter realistischer Langzeitnutzung beobachten und 90-/180-/730-Tage-Detailgrenzen, Tages-/Wochenverdichtung sowie 2.500-Detail-Cap in einer gealterten Testkopie validieren.
 
 - Achievements: Entwurf, Aktivierung, Vergabe, Widerruf, Archiv und Sync.
 - News/Guides: CRUD, Publish, RichContent, Read Receipt und Sync.

@@ -87,8 +87,8 @@ Weitere Erweiterungspunkte sind `RegisterCapability` / `CallCapability`,
 registrierbare Parent `HolyStorm.GuildManagement` ordnet lazy gebaute
 Unterseiten, und `HolyStorm.CharacterActions:RegisterProvider` ergänzt
 Charakter-/Roster-Kontextaktionen ohne direkte Kopplung an `GuildRoster`.
-Aktuell registriert der Parent ausschließlich Notes und Absences; Activity,
-Points und Recommendations sind keine implementierten Module.
+Aktuell registriert der Parent Notes, Absences und die factual Activity-
+Grundlage; Points und Recommendations sind keine implementierten Module.
 
 ## Anforderungen an neue Feature-Addons
 

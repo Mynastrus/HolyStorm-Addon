@@ -119,6 +119,10 @@ WoW-Addons besitzen keine kryptografische Identität, keine geheimen Schlüssel 
 
 Die Administration greift direkt auf Registry, Engine, GroupManager, FilterManager, Rules und PolicyState zu. Mutationen erfolgen ausschließlich über Manager-/State-APIs. Group-, Membership-, Permission-, Rule-/Filter-, Reset-, Revisions-, Catch-up-, Recovery- und Konfliktaktionen verwenden den zentralen Logger und die bestehenden Events. Die gemeinsame Table-/Layout-Darstellung zeigt getrennte Membership-Quellen, Manager, Filter/Rules, effektive Mitglieder und Suchfilter. Die Registry-basierte Permission-Matrix zeigt Modul, Kategorie, Defaults, direkte Zuweisungen, effektive Grants und eine Detailansicht; unbekannte persistierte Permission-IDs bleiben erhalten, erscheinen aber erst nach Registrierung wieder als aktive Matrixzeile. Leadership-Vollzugriff wird geschützt dargestellt und nicht als entfernbares Einzelrecht gerendert.
 
+## Guild Activity
+
+Guild Activity registriert ausschließlich `guild-activity-view`, da die Grundlage keine separate Reparatur-, Verwaltungs- oder sensitive Diagnoseaktion besitzt. `officers` und `guild-member` erhalten den Default; `guild-leadership` erhält das Recht dynamisch über den geschützten Vollzugriff. Dasselbe Recht schützt UI, Range-Abfragen, Rule-Resolver, Sync-Angebote und Payload-Exporte, ohne direkte Gildenrangprüfung im Feature.
+
 ## Verbleibende Restschuld
 
 Feature-Permissions werden von ihren Modulen über die ModuleRegistry in der zentralen PermissionRegistry registriert. Nicht geladene optionale Module hinterlassen ihre Feature-Permissions nicht im aktiven Registry-Bestand; persistierte unbekannte IDs bleiben jedoch erhalten und werden bei einer späteren Registrierung wieder wirksam.

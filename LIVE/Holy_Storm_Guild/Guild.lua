@@ -126,9 +126,9 @@ function GuildRoster:CreateMemberMenu()
         HolyStorm.Actions:Execute("guild.save-notes", member.index, menu.note.edit:GetText(), menu.officerNote.edit:GetText(), menu.canEditNote, menu.canEditOfficerNote)
     end)
     menu.contextActions = {}
-    for index = 1, 3 do
+    for index = 1, 4 do
         local action = CreateFrame("Button", nil, menu, "UIPanelButtonTemplate")
-        action:SetSize(100, 22); action:SetPoint("BOTTOMLEFT", menu, "BOTTOMLEFT", 20 + ((index - 1) * 106), 50); action:Hide()
+        action:SetSize(150, 22); action:SetPoint("BOTTOMLEFT", menu, "BOTTOMLEFT", 20 + (((index - 1) % 2) * 156), 48 + (math.floor((index - 1) / 2) * 26)); action:Hide()
         action:SetScript("OnClick", function(button) if button.callback and menu.member then button.callback(menu.member.guid, button.context) end end)
         menu.contextActions[index] = action
     end
