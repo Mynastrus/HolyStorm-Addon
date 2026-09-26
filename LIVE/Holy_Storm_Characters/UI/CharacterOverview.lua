@@ -124,6 +124,7 @@ function C:RefreshTab(id)
 end
 function C:SelectTab(id)
  if HolyStorm.Tooltips then HolyStorm.Tooltips:Release("raid-best")end
+ if HolyStorm.Tooltips then HolyStorm.Tooltips:Release("mythicplus-best-run")end
  local definition=self.tabs[id]or self.tabs.summary;if not definition then return false end;id=definition.id;self.activeTab=id
  for tabId,view in pairs(Page.views)do view.frame:SetShown(tabId==id)end;Page:UpdateTabVisuals();if not Page.views[id]then self:RefreshTab(id)end;self:LayoutTabView(Page.views[id]);Page.views[id].frame:Show();if Page.dirty[id]then self:RefreshTab(id)end;self:RefreshHeader();return true
 end

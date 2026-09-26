@@ -272,6 +272,12 @@ angeboten und fragen beim Hover/Klick den nativen Known-/Cooldown-Zustand ab.
 Raid-Tooltips werden aus den Snapshot-Rows erzeugt und halten keinen globalen
 Renderer-Zustand.
 
+Mythic+ zeigt ausschließlich v3-Snapshots der aktuellen Blizzard-Saison. Die
+Tabelle verwendet die gespeicherte Bestlauf-Stufe, Dungeon-Wertung und Laufzeit;
+In-Time/Over-Time stammt nur aus dem gespeicherten `bestRun.overTime`. Fehlende
+Bestlauf-Felder bleiben unbekannt, und der Character-Adapter fordert keine
+Mythic+-Scans an. Der Producer ist für die Darstellung nicht erforderlich.
+
 Tab-Views und ihre Table-Rows werden wiederverwendet. Layout und flexible
 Spalten reagieren auf `OnSizeChanged`; feste Status-/Progress-Spalten bleiben
 stabil, während Namen den verfügbaren Rest erhalten und gegebenenfalls

@@ -36,30 +36,65 @@ end
 
 do
  local L=locale("MYTHICPLUS_")
- local function affixEntry(dungeon,category)
-  -- The current MythicPlusAffixScoreInfo structure contains a localized name,
-  -- score, level, durationSec and overTime; it does not contain an affix ID.
-  for _,entry in pairs(type(dungeon.affixScores)=="table"and dungeon.affixScores or{})do if type(entry)=="table"and entry.category==category then return entry end end
- end
- local function affixDataState(dungeon)local scores=dungeon.affixScores;if type(scores)~="table"then return false,false end;if next(scores)==nil then return true,false end;for _,entry in pairs(scores)do if type(entry)=="table"and(entry.category=="TYRANNICAL"or entry.category=="FORTIFIED")then return true,false end end;return false,true end
- local function durationText(value)local seconds=tonumber(value);if not seconds or seconds<0 then return HolyStorm.CharacterUI:FormatState(nil)end;seconds=math.floor(seconds+.5);local hours=math.floor(seconds/3600);local minutes=math.floor((seconds%3600)/60);local remainder=seconds%60;if hours>0 then return string.format("%d:%02d:%02d",hours,minutes,remainder)end;return string.format("%d:%02d",minutes,remainder)end
- local function keyResult(entry,ready,timeLimit)
-  if type(entry)~="table"then return ready and""or HolyStorm.CharacterUI:FormatState(nil)end
-  local level=tonumber(entry.level or entry.bestLevel);if not level or level<=0 then return ready and""or HolyStorm.CharacterUI:FormatState(nil)end
-  local overTime=entry.overTime;if overTime==nil and tonumber(entry.durationSec)and tonumber(timeLimit)then overTime=tonumber(entry.durationSec)>tonumber(timeLimit)end
-  local text="+"..level.."  "..durationText(entry.durationSec);if overTime==nil then return"|cff888888"..text:gsub("|c%x%x%x%x%x%x%x%x",""):gsub("|r","").."|r"end
-  return overTime and("|cffff4040"..text.."|r")or("|cff20ff20"..text.."|r")
- end
  local function scoreText(value)local score=tonumber(value);if score==nil then return HolyStorm.CharacterUI:FormatState(nil)end;local text=score%1==0 and tostring(score)or string.format("%.1f",score);local color=C_ChallengeMode and C_ChallengeMode.GetDungeonScoreRarityColor and C_ChallengeMode.GetDungeonScoreRarityColor(score);if color then if color.WrapTextInColorCode then return color:WrapTextInColorCode(text)end;if color.r then return string.format("|cff%02x%02x%02x%s|r",math.floor(color.r*255+.5),math.floor(color.g*255+.5),math.floor(color.b*255+.5),text)end end;return text end
- local function teleportState(dungeon)local spellId=tonumber(dungeon.teleportSpellId or dungeon.teleportSpellID);if not spellId then return{state="UNAVAILABLE"}end;local known=(C_SpellBook and C_SpellBook.IsSpellKnown and C_SpellBook.IsSpellKnown(spellId))or(C_Spell and C_Spell.IsSpellKnown and C_Spell.IsSpellKnown(spellId))or(IsSpellKnownOrOverridesKnown and IsSpellKnownOrOverridesKnown(spellId))or(IsSpellKnown and IsSpellKnown(spellId));if not known then return{state="UNAVAILABLE",spellId=spellId}end;local hasCooldownAPI=C_Spell and C_Spell.GetSpellCooldown or GetSpellCooldown;if not hasCooldownAPI then return{state="UNAVAILABLE",spellId=spellId}end;local cooldown=C_Spell and C_Spell.GetSpellCooldown and C_Spell.GetSpellCooldown(spellId);local start,duration;if type(cooldown)=="table"then start,duration=cooldown.startTime,cooldown.duration elseif GetSpellCooldown then start,duration=GetSpellCooldown(spellId)end;if start==nil or duration==nil then return{state="UNAVAILABLE",spellId=spellId}end;local remaining=math.max(0,start+duration-((GetTime and GetTime())or 0));return{state=remaining>0 and"COOLDOWN"or"READY",spellId=spellId,remaining=remaining}end
- local function teleportTooltip(row,tooltip)local state=row.teleport;if state.spellId and tooltip.SetSpellByID then tooltip:SetSpellByID(state.spellId)else tooltip:SetText(row.name)end;if state.state=="READY"then tooltip:AddLine(L["TELEPORT_READY"],.2,1,.2,true)elseif state.state=="COOLDOWN"then local value=SecondsToClock and SecondsToClock(state.remaining)or tostring(math.ceil(state.remaining));tooltip:AddLine(string.format(L["TELEPORT_COOLDOWN"],value),1,.3,.3,true)else tooltip:AddLine(L["TELEPORT_UNAVAILABLE"],.7,.7,.7,true)end end
- local function castTeleport(row)local state=row.teleport;if not state or state.state~="READY"or not state.spellId then return end;if CastSpellByID then CastSpellByID(state.spellId)elseif C_Spell and C_Spell.CastSpell then C_Spell.CastSpell(state.spellId)end end
- local function dungeonCell(cell,_,row)if not cell.teleportButton then local button=CreateFrame("Button",nil,cell.frame);button:SetSize(20,20);button:SetPoint("LEFT",4,0);local texture=button:CreateTexture(nil,"ARTWORK");texture:SetAllPoints();button.texture=texture;button:SetScript("OnClick",function()castTeleport(cell.teleportRow)end);button:SetScript("OnEnter",function(owner)if not GameTooltip then return end;GameTooltip:SetOwner(owner,"ANCHOR_RIGHT");teleportTooltip(cell.teleportRow,GameTooltip);GameTooltip:Show()end);button:SetScript("OnLeave",function()if GameTooltip then GameTooltip:Hide()end end);cell.teleportButton=button;cell.text:ClearAllPoints();cell.text:SetPoint("LEFT",30,0);cell.text:SetPoint("RIGHT",-4,0)end;cell.teleportRow=row;cell.teleportButton.texture:SetTexture(row.texture or"Interface\\Icons\\Spell_Arcane_TeleportStormWind");cell.teleportButton:SetEnabled(row.teleport.state=="READY");cell.teleportButton:SetAlpha(row.teleport.state=="READY"and 1 or row.teleport.state=="COOLDOWN"and.65 or.3);cell:SetDisplay(row.name)end
+ local function durationText(value)local seconds=tonumber(value);if not seconds or seconds<0 then return nil end;seconds=math.floor(seconds+.5);local hours=math.floor(seconds/3600);local minutes=math.floor((seconds%3600)/60);local remainder=seconds%60;if hours>0 then return string.format("%d:%02d:%02d",hours,minutes,remainder)end;return string.format("%d:%02d",minutes,remainder)end
+ local function levelText(value)local level=tonumber(value);return level and level>0 and("+"..tostring(level))or nil end
+ local function timedText(overTime)if type(overTime)~="boolean"then return HolyStorm.CharacterUI:FormatState(nil)end;return overTime and L["NOT_TIMED"]or L["TIMED"]end
+ local function timedCell(cell,_,row)
+  if not cell.statusIcon then cell.statusIcon=cell.frame:CreateTexture(nil,"ARTWORK");cell.statusIcon:SetSize(18,18);cell.statusIcon:SetPoint("CENTER")end
+  local overtime=row.bestRun and row.bestRun.overTime
+  if overtime==false then cell.statusIcon:SetTexture("Interface\\RaidFrame\\ReadyCheck-Ready");cell.statusIcon:SetVertexColor(.2,1,.2,1);cell.statusIcon:Show();cell:SetDisplay("")
+  elseif overtime==true then cell.statusIcon:SetTexture("Interface\\RaidFrame\\ReadyCheck-NotReady");cell.statusIcon:SetVertexColor(1,.25,.25,1);cell.statusIcon:Show();cell:SetDisplay("")
+  else cell.statusIcon:Hide();cell:SetDisplay(HolyStorm.CharacterUI:FormatState(nil))end
+ end
+ local function dungeonCell(cell,_,row)
+  if not cell.icon then cell.icon=cell.frame:CreateTexture(nil,"ARTWORK");cell.icon:SetSize(20,20);cell.icon:SetPoint("LEFT",4,0)end
+  cell.text:ClearAllPoints();cell.text:SetPoint("LEFT",row.texture and 28 or 6,0);cell.text:SetPoint("RIGHT",-4,0)
+  if row.texture then cell.icon:SetTexture(row.texture);cell.icon:SetTexCoord(0,1,0,1);cell.icon:Show()else cell.icon:Hide()end
+  cell:SetDisplay(row.name)
+ end
  local function openJournal(row)if row.instanceId and not(InCombatLockdown and InCombatLockdown())and EncounterJournal_OpenJournal then EncounterJournal_OpenJournal(nil,tonumber(row.instanceId))end end
- local function refresh(view,context)local C=HolyStorm.CharacterUI;local snapshot=C:GetSnapshot(context.characterUUID,"mythicPlus");if not snapshot or next(snapshot)==nil then C:SetTableView(view,{}, {emptyText=L["NO_MYTHICPLUS"]});return end;local rows,needsRefresh={},false;for _,dungeon in pairs(type(snapshot.dungeons)=="table"and snapshot.dungeons or{})do if type(dungeon)=="table"then local affixDataReady,unusable=affixDataState(dungeon);needsRefresh=needsRefresh or unusable;rows[#rows+1]={name=dungeon.name or C:FormatState(nil),instanceId=dungeon.instanceId,texture=dungeon.texture,teleport=teleportState(dungeon),tyrannical=keyResult(affixEntry(dungeon,"TYRANNICAL"),affixDataReady,dungeon.timeLimit),fortified=keyResult(affixEntry(dungeon,"FORTIFIED"),affixDataReady,dungeon.timeLimit),rating=snapshot.scoreDataReady==false and C:FormatState(nil)or scoreText(dungeon.score)}end end;if needsRefresh and context.characterUUID==UnitGUID("player")and not view.affixRefreshRequested then view.affixRefreshRequested=true;HolyStorm:CallCapability("character.scan.mythicplus",true,"AFFIX_CATEGORY_REFRESH")elseif not needsRefresh then view.affixRefreshRequested=false end;table.sort(rows,function(a,b)return tostring(a.name)<tostring(b.name)end);C:SetTableView(view,rows,{summary=string.format(L["SEASON_SUMMARY"],C:FormatState(snapshot.seasonId or snapshot.seasonNumber),scoreText(snapshot.overallScore)),emptyText=L["NO_MYTHICPLUS"]})end
- local function build(parent)return HolyStorm.CharacterUI:CreateTableView(parent,{columns={{id="name",title=L["COLUMN_DUNGEON"],weight=1,minWidth=220,truncate=true,renderCell=dungeonCell,onClick=openJournal,tooltip=function(row,_,_,tooltip)tooltip:SetText(row.name);tooltip:AddLine(L["OPEN_JOURNAL"],1,1,1,true);return true end},{id="tyrannical",title=L["TYRANNICAL"],width=120,align="RIGHT"},{id="fortified",title=L["FORTIFIED"],width=120,align="RIGHT"},{id="rating",title=L["DUNGEON_SCORE"],width=110,align="RIGHT"}},rowHeight=28,headerHeight=26,columnGap=1,emptyText=L["NO_MYTHICPLUS"]})end
+ local function runHasData(run)return type(run)=="table"and(levelText(run.level)~=nil or tonumber(run.score)~=nil or durationText(run.durationSec)~=nil or type(run.overTime)=="boolean")end
+ local function appendRun(rows,label,run)
+  if not runHasData(run)then return end
+  local C=HolyStorm.CharacterUI;local unknown=C:FormatState(nil);local status=timedText(run.overTime);local colors
+  if run.overTime==false then colors={[5]={r=.2,g=1,b=.2}}elseif run.overTime==true then colors={[5]={r=1,g=.25,b=.25}}else colors={[5]={r=.55,g=.55,b=.55}}end
+  rows[#rows+1]={cells={label,levelText(run.level)or unknown,run.score~=nil and scoreText(run.score)or unknown,durationText(run.durationSec)or unknown,status},colors=colors}
+ end
+ local function bestRunTooltip(row,_,_,_,owner)
+  if type(row)~="table"then return false end
+  local C=HolyStorm.CharacterUI;local unknown=C:FormatState(nil);local rows={}
+  appendRun(rows,L["BEST_RUN"],row.bestRun)
+  local affixes={};for _,entry in pairs(type(row.affixScores)=="table"and row.affixScores or{})do if type(entry)=="table"and runHasData(entry)then affixes[#affixes+1]=entry end end
+  local rank={TYRANNICAL=1,FORTIFIED=2};table.sort(affixes,function(a,b)local ar,br=rank[a.category]or 3,rank[b.category]or 3;if ar~=br then return ar<br end;return tostring(a.name or a.category or"")<tostring(b.name or b.category or"")end)
+  for _,entry in ipairs(affixes)do local label=entry.category and L[entry.category]or entry.name;if type(label)=="string"and label~=""then appendRun(rows,label,entry)end end
+  local timer=durationText(row.timeLimit);if timer then rows[#rows+1]={cells={L["DUNGEON_TIMER"],unknown,unknown,timer,unknown},colors={[5]={r=.55,g=.55,b=.55}}}end
+  if #rows==0 then return false end
+  local tooltips=HolyStorm.Tooltips
+  return tooltips and tooltips:ShowTable("mythicplus-best-run",owner,{anchor={point="LEFT",relativePoint="RIGHT",x=8,y=0},columns={{align="LEFT"},{align="CENTER"},{align="RIGHT"},{align="RIGHT"},{align="CENTER"}},headers={{L["RUN"],L["COLUMN_BEST_LEVEL"],L["RUN_RATING"],L["COLUMN_TIME"],L["COLUMN_IN_TIME"]}},separator=true,rows=rows})or false
+ end
+ local function currentSeasonId()
+  local api=C_MythicPlus;if not api or type(api.GetCurrentSeason)~="function"then return nil end
+  local ok,value=pcall(api.GetCurrentSeason);return ok and tonumber(value)or nil
+ end
+ local function isCurrentSeason(snapshot)
+  local stored=type(snapshot)=="table"and tonumber(snapshot.seasonId);local current=currentSeasonId()
+  return stored~=nil and stored>0 and current~=nil and stored==current
+ end
+ local function refresh(view,context)
+  local C=HolyStorm.CharacterUI;local snapshot=C:GetSnapshot(context.characterUUID,"mythicPlus")
+  if not snapshot or next(snapshot)==nil or not isCurrentSeason(snapshot)then C:SetTableView(view,{}, {summary="",emptyText=L["NO_MYTHICPLUS"]});return end
+  local rows={}
+  for _,dungeon in pairs(type(snapshot.dungeons)=="table"and snapshot.dungeons or{})do if type(dungeon)=="table"then
+   local best=type(dungeon.bestRun)=="table"and dungeon.bestRun or nil
+   rows[#rows+1]={name=dungeon.name or C:FormatState(nil),instanceId=dungeon.instanceId,challengeMapId=dungeon.challengeMapId,texture=dungeon.texture,bestRun=best,affixScores=dungeon.affixScores,timeLimit=dungeon.timeLimit,bestLevel=best and levelText(best.level)or C:FormatState(nil),rating=snapshot.scoreDataReady==false and C:FormatState(nil)or scoreText(dungeon.score),time=best and durationText(best.durationSec)or C:FormatState(nil)}
+  end end
+  table.sort(rows,function(a,b)if a.name==b.name then return(tonumber(a.challengeMapId)or 0)<(tonumber(b.challengeMapId)or 0)end;return tostring(a.name)<tostring(b.name)end)
+  C:SetTableView(view,rows,{summary=string.format(L["SEASON_SUMMARY"],C:FormatState(snapshot.seasonId),scoreText(snapshot.overallScore)),emptyText=L["NO_MYTHICPLUS"]})
+ end
+ local function build(parent)return HolyStorm.CharacterUI:CreateTableView(parent,{columns={{id="name",title=L["COLUMN_DUNGEON"],weight=1,minWidth=180,compactWidth=140,truncate=true,renderCell=dungeonCell,onClick=openJournal,tooltip=function(row,_,_,tooltip)tooltip:SetText(row.name);tooltip:AddLine(L["OPEN_JOURNAL"],1,1,1,true);return true end},{id="bestLevel",title=L["COLUMN_BEST_LEVEL"],width=95,compactWidth=74,align="CENTER",tooltip=bestRunTooltip},{id="rating",title=L["COLUMN_DUNGEON_RATING"],width=112,compactWidth=85,align="RIGHT",tooltip=bestRunTooltip},{id="time",title=L["COLUMN_TIME"],width=86,compactWidth=70,align="RIGHT",tooltip=bestRunTooltip},{id="timed",title=L["COLUMN_IN_TIME"],width=72,compactWidth=56,align="CENTER",renderCell=timedCell,tooltip=bestRunTooltip}},rowHeight=28,headerHeight=26,columnGap=1,emptyText=L["NO_MYTHICPLUS"]})end
  HolyStorm:RegisterCharacterTab("characters",{id="mythicPlus",order=30,label=L["DISPLAY_NAME"],labelKey="MYTHICPLUS_DISPLAY_NAME",icon="Interface\\Icons\\Achievement_ChallengeMode_Gold",blocks={"mythicPlus"},events={"HS_MYTHICPLUS_UPDATED"},build=build,refresh=refresh})
- HolyStorm:RegisterCharacterSummarySection("characters",{id="mythicPlus",order=30,render=function(context)local snapshot=HolyStorm.CharacterUI:GetSnapshot(context.characterUUID,"mythicPlus");return{label=L["DISPLAY_NAME"],tabId="mythicPlus",value=snapshot and(L["OVERALL_RATING"]..": "..scoreText(snapshot.overallScore))or L["NO_MYTHICPLUS"]}end})
+ HolyStorm:RegisterCharacterSummarySection("characters",{id="mythicPlus",order=30,render=function(context)local snapshot=HolyStorm.CharacterUI:GetSnapshot(context.characterUUID,"mythicPlus");local current=snapshot and isCurrentSeason(snapshot);return{label=L["DISPLAY_NAME"],tabId="mythicPlus",value=current and(L["OVERALL_RATING"]..": "..scoreText(snapshot.overallScore))or L["NO_MYTHICPLUS"]}end})
 end
 
 do

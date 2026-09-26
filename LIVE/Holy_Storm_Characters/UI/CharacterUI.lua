@@ -77,6 +77,7 @@ function CharacterUI:ResolveContext(characterUUID)
 end
 function CharacterUI:SetContext(characterUUID,addHistory)
  if HolyStorm.Tooltips then HolyStorm.Tooltips:Release("raid-best")end
+ if HolyStorm.Tooltips then HolyStorm.Tooltips:Release("mythicplus-best-run")end
  local context=self:ResolveContext(characterUUID);if not context then return nil end
  if addHistory~=false and self.context and self.context.characterUUID~=characterUUID then self.history[#self.history+1]={characterUUID=self.context.characterUUID,tabId=self.activeTab};while#self.history>self.maxHistory do table.remove(self.history,1)end end
  self.contextToken=self.contextToken+1;context.token=self.contextToken;self.context=context;return context
