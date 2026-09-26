@@ -15,4 +15,4 @@ These sources are loaded by the `Holy_Storm` core addon. Library behavior is ups
 
 LibDataBroker has no license file or license declaration in its primary source repository; its CurseForge metadata says All Rights Reserved. Resolve these upstream license-record conflicts before publishing a release package that contains the affected sources.
 
-The embedded LibGuildRoster has its own internal roster and event hooks as part of the upstream library. Holy Storm does not read or use that roster, does not declare `LibGuildRosterDB`, and keeps `Persistence/GuildStore.lua` as its authoritative guild model. AceCommQueue is loaded but not embedded into an addon or used by the Sync Framework.
+The embedded LibGuildRoster has its own internal roster and event hooks as part of the upstream library. Holy Storm does not read or use that roster, does not declare `LibGuildRosterDB`, and keeps `Persistence/GuildStore.lua` as its authoritative guild model and Sync peer identity resolver. AceCommQueue is embedded by `SyncTransport` on the Comms object and receives outgoing HSC1 frames. Domain modules do not call it directly.

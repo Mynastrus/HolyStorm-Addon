@@ -58,6 +58,7 @@ Core\Permissions\PermissionSync.lua
 Core\Permissions\Policy.lua
 Core\Permissions\Permissions.lua
 Sync\Comms.lua
+Sync\SyncTransport.lua
 Sync\SyncManager.lua
 Core\Content\MapLinks.lua
 Core\Content\RichContent.lua

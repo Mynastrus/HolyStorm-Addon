@@ -4,6 +4,7 @@
 
 - Embedded LibQTip centrally in Holy Storm UI and migrated the Raid Best tooltip to the shared structured tooltip service.
 - Added centrally loaded LibDataBroker, LibDBIcon, LibSharedMedia, AceCommQueue, and LibGuildRoster infrastructure, including the persisted minimap launcher option. Existing Sync and guild-roster models remain unchanged.
+- Routed outgoing legacy HSC1 Sync frames through the central AceCommQueue transport adapter; retained GuildStore as the peer identity authority and left LibGuildRoster unused for peer resolution.
 
 ## 5.5.0 — 15.09.2026
 

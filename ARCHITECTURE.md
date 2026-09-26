@@ -16,7 +16,7 @@ Der produktive Addon-Baum liegt in `LIVE/Holy_Storm`. `Core` enthält gemeinsam 
 
 ## Infrastructure Libraries
 
-Core centrally loads LibDataBroker-1.1, LibDBIcon-1.0, LibSharedMedia-3.0, AceComm-3.0/ChatThrottleLib, AceCommQueue-1.0, and LibGuildRoster-1.0. `HolyStorm.Libraries` exposes loaded-library versions, shared-media access, and the one canonical Holy Storm launcher. LibDBIcon presents that launcher on the minimap and stores visibility/position in the existing profile database. LibQTip-1.0 remains owned by the UI addon for structured/multi-column tooltips. AceCommQueue is available for future communication work; current Sync behavior is unchanged. LibGuildRoster is loaded for future peer/roster evaluation and is not Holy Storm's authoritative guild model. DeltaSync is NOT integrated yet.
+Core centrally loads LibDataBroker-1.1, LibDBIcon-1.0, LibSharedMedia-3.0, AceComm-3.0/ChatThrottleLib, AceCommQueue-1.0, and LibGuildRoster-1.0. `HolyStorm.Libraries` exposes loaded-library versions, shared-media access, and the one canonical Holy Storm launcher. LibDBIcon presents that launcher on the minimap and stores visibility/position in the existing profile database. LibQTip-1.0 remains owned by the UI addon for structured/multi-column tooltips. `SyncTransport` embeds AceComm and then AceCommQueue on the Comms object; every outbound legacy HSC1 frame uses that shared throttled queue, while TaskManager continues to schedule domain Sync work and fragment cleanup. LibGuildRoster is loaded and version-reported, but is not used for peer resolution: its separate roster does not replace GuildStore's GUID keyed identity, online owner lookup, or sender-to-GUID mapping. GuildStore remains the sole Holy Storm guild model. DeltaSync is NOT integrated.
 
 ## Persistence und Datenzugriff
 
@@ -47,7 +47,9 @@ Fachliche persistente Zugriffe erfolgen derzeit weiterhin über Stores:
 
 ## Synchronisation und Provenance
 
-`Sync/Comms.lua` kapselt den AddonMessage-Transport. `SyncManager` registriert Domains mit Metadaten-, Export-, Validierungs-, Autorisierungs- und Importfunktionen. Discovery, Offer, Fetch, Payload und passive Heilung laufen über die zentrale Task-Queue.
+`Sync/Comms.lua` keeps the `HolyStormSync` prefix, existing HSC1 framing and receiver, 220-byte payload chunks, reassembly and expiry handling. `Sync/SyncTransport.lua` is the sole outbound adapter (`Send`, `SendGuild`, `SendWhisper`, `Cancel`, `GetDiagnostics`) and passes each short HSC1 frame through AceCommQueue. AceCommQueue supplies prioritized queueing, throttling and its refusal retries; it does not perform Sync response suppression or domain retries. The old Comms per-frame TaskManager queue and `.08s` delay are retired. `Cancel` reports unsupported because AceCommQueue has no per-message cancellation API; shutdown suppresses already queued sends. `SyncManager` registers domains with metadata, export, validation, authorization and import functions. Discovery, Offer, Fetch, Payload and passive healing remain TaskManager work.
+
+`GuildStore` remains the peer identity source for GUID resolution and online-owner preference. LibGuildRoster is not queried for Sync peer selection and is not an authority for account, character, alt, permission, or feature data.
 
 Normale owner-kontrollierte Objekte werden anhand ihrer Domain-Metadaten verglichen. Owner-Provenance bleibt vom Relais getrennt: `owner` bezeichnet den Datenbesitzer, `receivedFrom` die übertragende Gegenstelle, `direct` eine direkte Owner-Übertragung. Permission-State verwendet dagegen eine Revision Chain und niemals „höchste Version gewinnt“. Details stehen in `SYNC_ARCHITECTURE.md`.
 
