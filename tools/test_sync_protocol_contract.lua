@@ -28,7 +28,8 @@ assert(queue:find("item.originalSend, item.commObj", 1, true), "AceCommQueue del
 assert(queue:find("retryAttempts = 3", 1, true) and queue:find("retryDelay = 1", 1, true), "retry defaults are explicit in the embedded source")
 
 assert(comms:find('protocol="HSC1",chunkSize=220,maxQueue=300', 1, true), "current HSC1 limits remain explicit")
-assert(comms:find('fragmentTimeout=30', 1, true), "HSC1 fragments expire")
+assert(comms:find('maxFragments=300', 1, true) and comms:find('maxFragmentBytes=220', 1, true) and comms:find('maxPayloadBytes=math.min(HolyStorm.Serializer.limits.bytes,300*220)', 1, true), "HSC1 receive limits match the current sender")
+assert(comms:find('maxIncomplete=64,maxPerSender=16,timeout=30', 1, true), "HSC1 incomplete state is capped and expires")
 assert(comms:find('if #message>255 then', 1, true), "full HSC1 frame is checked before AceComm")
 assert(not comms:find("SendCommMessage", 1, true) and not comms:find("C_ChatInfo.SendAddonMessage(", 1, true), "Comms does not bypass SyncTransport")
 assert(transport:find('queue.Embed, queue, comms', 1, true), "adapter installs AceCommQueue after AceComm")
