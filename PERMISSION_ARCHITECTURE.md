@@ -107,7 +107,7 @@ WoW-Addons besitzen keine kryptografische Identität, keine geheimen Schlüssel 
 
 ## Administration und Logging
 
-Die Administration greift direkt auf Registry, Engine, GroupManager, FilterManager, Rules und PolicyState zu. Mutationen erfolgen ausschließlich über Manager-/State-APIs. Group-, Membership-, Permission-, Rule-/Filter-, Reset-, Revisions-, Catch-up-, Recovery- und Konfliktaktionen verwenden den zentralen Logger und die bestehenden Events. Die Gruppenansicht zeigt getrennte Membership-Quellen, Manager, Filter/Rules, effektive Mitglieder und Suchfilter. Die Registry-basierte Permission-Matrix zeigt Modul, Kategorie, Defaults, direkte Zuweisungen, effektive Grants und eine Detailansicht; unbekannte persistierte Permission-IDs bleiben erhalten, erscheinen aber erst nach Registrierung wieder als aktive Matrixzeile.
+Die Administration greift direkt auf Registry, Engine, GroupManager, FilterManager, Rules und PolicyState zu. Mutationen erfolgen ausschließlich über Manager-/State-APIs. Group-, Membership-, Permission-, Rule-/Filter-, Reset-, Revisions-, Catch-up-, Recovery- und Konfliktaktionen verwenden den zentralen Logger und die bestehenden Events. Die gemeinsame Table-/Layout-Darstellung zeigt getrennte Membership-Quellen, Manager, Filter/Rules, effektive Mitglieder und Suchfilter. Die Registry-basierte Permission-Matrix zeigt Modul, Kategorie, Defaults, direkte Zuweisungen, effektive Grants und eine Detailansicht; unbekannte persistierte Permission-IDs bleiben erhalten, erscheinen aber erst nach Registrierung wieder als aktive Matrixzeile. Leadership-Vollzugriff wird geschützt dargestellt und nicht als entfernbares Einzelrecht gerendert.
 
 ## Verbleibende Restschuld
 

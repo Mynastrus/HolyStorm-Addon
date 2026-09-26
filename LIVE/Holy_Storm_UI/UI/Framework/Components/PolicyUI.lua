@@ -2,6 +2,7 @@ local addonVersion="1.2.0"
 local HolyStorm=LibStub("AceAddon-3.0"):GetAddon("Holy_Storm")
 local L=LibStub("AceLocale-3.0"):GetLocale("Holy_Storm_Policy")
 local UI={version=addonVersion}
+local Components=HolyStorm.UIComponents
 
 local function copy(value)return HolyStorm.Utils.DeepCopy(value)end
 local function listText(value)
@@ -20,22 +21,15 @@ local function operatorNeedsValue(operator)
 end
 
 function UI:Label(parent,text,template)
-    local label=parent:CreateFontString(nil,"OVERLAY",template or"GameFontHighlightSmall")
-    label:SetText(text or"");label:SetJustifyH("LEFT")
-    return label
+    return Components:CreateText(parent,{text=text,font=template or"GameFontHighlightSmall",align="LEFT"}).text
 end
 
 function UI:Button(parent,text,width,callback)
-    local button=CreateFrame("Button",nil,parent,"UIPanelButtonTemplate")
-    button:SetSize(width or 100,23);button:SetText(text);button:SetScript("OnClick",callback)
-    return button
+    return Components:CreateButton(parent,{text=text,width=width or 100,height=23,onClick=callback}).button
 end
 
 function UI:Edit(parent,width,onChanged)
-    local edit=CreateFrame("EditBox",nil,parent,"InputBoxTemplate")
-    edit:SetSize(width or 180,22);edit:SetAutoFocus(false)
-    if onChanged then edit:SetScript("OnTextChanged",onChanged)end
-    return edit
+    return Components:CreateEditBox(parent,{width=width or 180,height=22,onChanged=onChanged}).edit
 end
 
 function UI:NewId(prefix)return string.format("%s-%08x-%04x",prefix,HolyStorm.Utils.Now()%0xffffffff,math.random(0,0xffff))end
@@ -85,32 +79,28 @@ function UI:FlattenTrace(trace)
 end
 
 function UI:CreateTextPanel(parent)
-    local scroll=CreateFrame("ScrollFrame",nil,parent,"UIPanelScrollFrameTemplate")
-    local content=CreateFrame("Frame",nil,scroll);content:SetSize(1,1);scroll:SetScrollChild(content)
+    local panel=Components:CreateScrollContainer(parent,{scrollbarInset=24});local scroll,content=panel.scroll,panel.content
     local text=self:Label(content,"","GameFontHighlightSmall");text:SetPoint("TOPLEFT",4,-4);text:SetPoint("RIGHT",-4,0);text:SetJustifyV("TOP");text:SetWordWrap(true)
     local output={fontString=text}
-    local function resize()content:SetWidth(math.max(1,scroll:GetWidth()));text:SetWidth(math.max(1,scroll:GetWidth()-8));content:SetHeight(math.max(scroll:GetHeight(),text:GetStringHeight()+8))end
+    local function resize()panel:Relayout();local width=math.max(1,content:GetWidth()or 1);text:SetWidth(math.max(1,width-8));content:SetHeight(math.max(scroll:GetHeight()or 1,text:GetStringHeight()+8))end
     function output:SetText(value)text:SetText(value or"");resize();scroll:SetVerticalScroll(0)end
     function output:GetText()return text:GetText()end
     function output:SetTextColor(...)return text:SetTextColor(...)end
-    scroll:HookScript("OnSizeChanged",resize)
-    return scroll,output,content
+    panel.frame:HookScript("OnSizeChanged",resize)
+    return panel.frame,output,content
 end
 
 function UI:CreateList(parent,onSelect)
-    local frame=CreateFrame("Frame",nil,parent);frame.rows={};frame.selected=nil;frame.offset=0;frame:EnableMouseWheel(true)
-    function frame:RefreshRows()
-        for _,row in ipairs(self.rows)do row:Hide()end
-        for slot=1,math.min(24,#(self.items or{}))do
-            local item=self.items[self.offset+slot];if not item then break end
-            local index=slot
-            local row=self.rows[index]or UI:Button(self,"",190,function()local selectedRow=self.rows[index];self.selected=selectedRow.item;onSelect(selectedRow.item)end)
-            self.rows[index]=row;row.item=item;row:SetWidth(math.max(120,self:GetWidth()));row:SetText(self.labeler and self.labeler(item)or tostring(item.name or item.id));row:SetScript("OnEnter",function(button)if button.item and button.item.tooltip and GameTooltip then GameTooltip:SetOwner(button,"ANCHOR_RIGHT");GameTooltip:SetText(button.item.name or button.item.id);GameTooltip:AddLine(button.item.tooltip,.9,.9,.9,true);GameTooltip:Show()end end);row:SetScript("OnLeave",function()if GameTooltip then GameTooltip:Hide()end end);row:ClearAllPoints();row:SetPoint("TOPLEFT",0,-((index-1)*25));row:Show()
-        end
+    local list
+    list=Components:CreateTable(parent,{headerHeight=0,rowHeight=25,columns={{id="label",weight=1,truncate=true}},emptyText=L["NO_SELECTION"],onRowClick=function(item)list.selected=item;list:SetSelection(item and(item.id or item.value));onSelect(item)end,rowTooltip=function(item)return item and item.tooltip end})
+    function list:SetItems(items,labeler)
+        self.items=items or{};self.labeler=labeler
+        for _,item in ipairs(self.items)do item.label=labeler and labeler(item)or tostring(item.name or item.id)end
+        self.selection=self.selected and(self.selected.id or self.selected.value);self:SetData(self.items)
     end
-    function frame:SetItems(items,labeler)self.items=items or{};self.labeler=labeler;self.offset=math.min(self.offset,math.max(0,#self.items-24));self:RefreshRows()end
-    frame:SetScript("OnMouseWheel",function(self,delta)self.offset=math.max(0,math.min(math.max(0,#(self.items or{})-24),self.offset-delta*3));self:RefreshRows()end)
-    return frame
+    function list:SetPoint(...)return self.frame:SetPoint(...)end;function list:SetSize(...)return self.frame:SetSize(...)end;function list:SetWidth(...)return self.frame:SetWidth(...)end;function list:SetHeight(...)return self.frame:SetHeight(...)end
+    function list:Show()return self.frame:Show()end;function list:Hide()return self.frame:Hide()end;function list:IsShown()return self.frame:IsShown()end
+    return list
 end
 
 function UI:CreateSelector(parent,width,getItems,onSelect)
@@ -147,13 +137,16 @@ function UI:CreateMultiSelector(parent,width,getItems,onChanged)
 end
 
 function UI:CreateCheckList(parent,getItems,onToggle)
-    local frame=CreateFrame("Frame",nil,parent);frame:SetSize(620,500);frame.rows={};frame.offset=0;frame:EnableMouseWheel(true)
-    function frame:Refresh()
-        self.items=getItems()or{};self.offset=math.min(self.offset,math.max(0,#self.items-20));for _,row in ipairs(self.rows)do row:Hide()end
-        for slot=1,20 do local item=self.items[self.offset+slot];if not item then break end;local index=slot;local row=self.rows[index]or CreateFrame("CheckButton",nil,self,"UICheckButtonTemplate");self.rows[index]=row;row.item=item;row.text:SetText(item.label or item.name or item.id);row:SetChecked(item.checked==true);row:SetEnabled(item.disabled~=true);row:SetScript("OnClick",function(check)onToggle(check.item.value,check:GetChecked()and true or false,check.item);frame:Refresh()end);row:ClearAllPoints();row:SetPoint("TOPLEFT",0,-((index-1)*25));row:Show()end
+    local checklist
+    checklist=Components:CreateTable(parent,{headerHeight=0,rowHeight=25,columns={{id="checked",width=30,align="CENTER",value=function(item)return item.checked and"|cff20ff20\226\156\147|r"or"\226\150\161"end},{id="label",weight=1,truncate=true,value=function(item)return item.label or item.name or item.id end}},emptyText=L["NO_SELECTION"],onRowClick=function(item)if not item.disabled then onToggle(item.value,item.checked~=true,item);checklist:Refresh()end end,isRowDisabled=function(item)return item.disabled==true end})
+    local refreshTable=checklist.Refresh
+    function checklist:Refresh()
+        if self.refreshingItems then return refreshTable(self)end
+        self.items=getItems()or{};self.refreshingItems=true;self:SetData(self.items);self.refreshingItems=false
     end
-    frame:SetScript("OnMouseWheel",function(self,delta)self.offset=math.max(0,math.min(math.max(0,#(self.items or{})-20),self.offset-delta*3));self:Refresh()end)
-    return frame
+    function checklist:SetPoint(...)return self.frame:SetPoint(...)end;function checklist:SetSize(...)return self.frame:SetSize(...)end;function checklist:SetWidth(...)return self.frame:SetWidth(...)end;function checklist:SetHeight(...)return self.frame:SetHeight(...)end
+    function checklist:Show()return self.frame:Show()end;function checklist:Hide()return self.frame:Hide()end
+    return checklist
 end
 
 function UI:CharacterItems()
@@ -199,26 +192,31 @@ function UI:DefaultCondition(fieldId)
 end
 
 function UI:CreateRuleBuilder(parent,onChanged)
-    local builder=CreateFrame("Frame",nil,parent);builder.root={logic="AND",children={self:DefaultCondition()}};builder.selectedPath={1};builder.rows={};builder.offset=0
-    local logic=self:CreateSelector(builder,76,function()return{{value="AND",label=L["LOGIC_AND"]},{value="OR",label=L["LOGIC_OR"]},{value="NOT",label=L["LOGIC_NOT"]}}end,function(value)local node=builder:GetSelected();if node and node.logic then node.logic=value;if value=="NOT"then while#node.children>1 do table.remove(node.children)end end;builder:Changed()end end);logic:SetPoint("TOPLEFT",-15,3)
-    local field=self:CreateSelector(builder,175,function()local out={};for id,definition in pairs(HolyStorm.Rules:GetFields())do if not definition.hidden then out[#out+1]={value=id,label=definition.name or(definition.nameKey and L[definition.nameKey])or id}end end;table.sort(out,function(a,b)return a.label<b.label end);return out end,function(value)local node=builder:GetSelected();if node and not node.logic then local replacement=UI:DefaultCondition(value);node.field,node.operator,node.value=replacement.field,replacement.operator,replacement.value;builder:Changed()end end);field:SetPoint("LEFT",logic,"RIGHT",-20,0)
-    local operator=self:CreateSelector(builder,105,function()local node=builder:GetSelected();local out={};for _,id in ipairs(HolyStorm.Rules:GetAllowedOperators(node and node.field))do out[#out+1]={value=id,label=L["OP_"..id:upper()]or id}end;return out end,function(value)local node=builder:GetSelected();if node and not node.logic then node.operator=value;if not operatorNeedsValue(value)then node.value=nil elseif node.value==nil then node.value=(HolyStorm.Rules:GetField(node.field)or{}).type=="number"and 0 or""end;builder:Changed()end end);operator:SetPoint("LEFT",field,"RIGHT",-20,0)
-    local value1=self:Edit(builder,130);value1:SetPoint("LEFT",operator,"RIGHT",-12,0)
-    local value2=self:Edit(builder,70);value2:SetPoint("LEFT",value1,"RIGHT",5,0)
-    local typedValue=self:CreateSelector(builder,145,function()local node=builder:GetSelected();return UI:FieldValueItems(HolyStorm.Rules:GetField(node and node.field)or{},node)end,function(value)local node=builder:GetSelected();if node and not node.logic then node.value=value;builder:Changed()end end);typedValue:SetPoint("LEFT",operator,"RIGHT",-28,0)
-    local multiValue=self:CreateMultiSelector(builder,145,function()local node=builder:GetSelected();return UI:FieldValueItems(HolyStorm.Rules:GetField(node and node.field)or{},node)end,function(values)local node=builder:GetSelected();if node and not node.logic then node.value=values;builder:Changed()end end);multiValue:SetPoint("LEFT",operator,"RIGHT",-28,0)
-    local apply=self:Button(builder,L["APPLY"],65,function()local node=builder:GetSelected();if not node or node.logic then return end;local definition=HolyStorm.Rules:GetField(node.field)or{};if node.operator=="between"or node.operator=="not_between"then node.value={tonumber(value1:GetText()),tonumber(value2:GetText())}elseif node.operator=="in"or node.operator=="not_in"then node.value=parseList(value1:GetText())else node.value=UI:Value(value1:GetText(),definition.type)end;builder:Changed()end);apply:SetPoint("LEFT",value2,"RIGHT",5,0)
-
-    local add=self:Button(builder,L["ADD_CONDITION"],112,function()builder:AddNode(UI:DefaultCondition())end);add:SetPoint("TOPLEFT",0,-30)
-    local addAnd=self:Button(builder,L["ADD_AND_GROUP"],100,function()builder:AddNode({logic="AND",children={UI:DefaultCondition()}})end);addAnd:SetPoint("LEFT",add,"RIGHT",4,0)
-    local addOr=self:Button(builder,L["ADD_OR_GROUP"],100,function()builder:AddNode({logic="OR",children={UI:DefaultCondition()}})end);addOr:SetPoint("LEFT",addAnd,"RIGHT",4,0)
-    local remove=self:Button(builder,L["REMOVE"],72,function()builder:RemoveSelected()end);remove:SetPoint("LEFT",addOr,"RIGHT",4,0)
-    local up=self:Button(builder,L["MOVE_UP"],40,function()builder:MoveSelected(-1)end);up:SetPoint("LEFT",remove,"RIGHT",4,0)
-    local down=self:Button(builder,L["MOVE_DOWN"],40,function()builder:MoveSelected(1)end);down:SetPoint("LEFT",up,"RIGHT",2,0)
-    local indent=self:Button(builder,L["INDENT"],42,function()builder:IndentSelected()end);indent:SetPoint("LEFT",down,"RIGHT",2,0)
-    local outdent=self:Button(builder,L["OUTDENT"],42,function()builder:OutdentSelected()end);outdent:SetPoint("LEFT",indent,"RIGHT",2,0)
-    builder.validation=UI:Label(builder,"");builder.validation:SetPoint("TOPLEFT",0,-58);builder.validation:SetPoint("RIGHT",-4,0)
-    builder.tree=CreateFrame("Frame",nil,builder);builder.tree:SetPoint("TOPLEFT",0,-78);builder.tree:SetPoint("BOTTOMRIGHT");builder.tree:EnableMouseWheel(true)
+    local builder=CreateFrame("Frame",nil,parent);builder.root={logic="AND",children={self:DefaultCondition()}};builder.selectedPath={1}
+    local layout=Components:CreateColumn(builder,{frame=builder,gap=4})
+    local selectorHost=CreateFrame("Frame",nil,builder);local condition=Components:CreateRow(selectorHost,{gap=4});condition.frame:SetAllPoints(selectorHost)
+    local logic=self:CreateSelector(selectorHost,180,function()return{{value="AND",label=L["LOGIC_AND"]},{value="OR",label=L["LOGIC_OR"]},{value="NOT",label=L["LOGIC_NOT"]}}end,function(value)local node=builder:GetSelected();if node and node.logic then node.logic=value;if value=="NOT"then while#node.children>1 do table.remove(node.children)end end;builder:Changed()end end);logic:SetPoint("TOPLEFT",-15,0)
+    local field=self:CreateSelector(condition.frame,190,function()local out={};for id,definition in pairs(HolyStorm.Rules:GetFields())do if not definition.hidden then out[#out+1]={value=id,label=definition.name or(definition.nameKey and L[definition.nameKey])or id}end end;table.sort(out,function(a,b)return a.label<b.label end);return out end,function(value)local node=builder:GetSelected();if node and not node.logic then local replacement=UI:DefaultCondition(value);node.field,node.operator,node.value=replacement.field,replacement.operator,replacement.value;builder:Changed()end end)
+    local operator=self:CreateSelector(condition.frame,125,function()local node=builder:GetSelected();local out={};for _,id in ipairs(HolyStorm.Rules:GetAllowedOperators(node and node.field))do out[#out+1]={value=id,label=L["OP_"..id:upper()]or id}end;return out end,function(value)local node=builder:GetSelected();if node and not node.logic then node.operator=value;if not operatorNeedsValue(value)then node.value=nil elseif node.value==nil then node.value=(HolyStorm.Rules:GetField(node.field)or{}).type=="number"and 0 or""end;builder:Changed()end end)
+    local value1=self:Edit(condition.frame,150);local value2=self:Edit(condition.frame,90)
+    local typedValue=self:CreateSelector(condition.frame,170,function()local node=builder:GetSelected();return UI:FieldValueItems(HolyStorm.Rules:GetField(node and node.field)or{},node)end,function(value)local node=builder:GetSelected();if node and not node.logic then node.value=value;builder:Changed()end end)
+    local multiValue=self:CreateMultiSelector(condition.frame,170,function()local node=builder:GetSelected();return UI:FieldValueItems(HolyStorm.Rules:GetField(node and node.field)or{},node)end,function(values)local node=builder:GetSelected();if node and not node.logic then node.value=values;builder:Changed()end end)
+    local apply=self:Button(condition.frame,L["APPLY"],70,function()local node=builder:GetSelected();if not node or node.logic then return end;local definition=HolyStorm.Rules:GetField(node.field)or{};if node.operator=="between"or node.operator=="not_between"then node.value={tonumber(value1:GetText()),tonumber(value2:GetText())}elseif node.operator=="in"or node.operator=="not_in"then node.value=parseList(value1:GetText())else node.value=UI:Value(value1:GetText(),definition.type)end;builder:Changed()end)
+    local actions=Components:CreateRow(builder,{gap=4})
+    local function action(text,callback)return UI:Button(actions.frame,text,80,callback)end
+    actions:Add(action(L["ADD_CONDITION"],function()builder:AddNode(UI:DefaultCondition())end),{weight=1,minWidth=80})
+    actions:Add(action(L["ADD_AND_GROUP"],function()builder:AddNode({logic="AND",children={UI:DefaultCondition()}})end),{weight=1,minWidth=70})
+    actions:Add(action(L["ADD_OR_GROUP"],function()builder:AddNode({logic="OR",children={UI:DefaultCondition()}})end),{weight=1,minWidth=70})
+    actions:Add(action(L["REMOVE"],function()builder:RemoveSelected()end),{weight=1,minWidth=55})
+    actions:Add(action(L["MOVE_UP"],function()builder:MoveSelected(-1)end),{weight=1,minWidth=45})
+    actions:Add(action(L["MOVE_DOWN"],function()builder:MoveSelected(1)end),{weight=1,minWidth=45})
+    actions:Add(action(L["INDENT"],function()builder:IndentSelected()end),{weight=1,minWidth=38})
+    actions:Add(action(L["OUTDENT"],function()builder:OutdentSelected()end),{weight=1,minWidth=38})
+    builder.validation=UI:Label(builder,"")
+    local tree
+    tree=Components:CreateTable(builder,{headerHeight=0,rowHeight=25,emptyText=L["NO_SELECTION"],columns={{id="label",weight=1,truncate=true,renderCell=function(_,value,row)return row.unavailable and("|cffff8040"..value.."|r")or value end}},onRowClick=function(row)builder.selectedPath=copy(row.path);builder:Render()end,isRowSelected=function(row)return row.key==builder.selectedKey end})
+    builder.tree=tree
+    layout:Add(selectorHost,{height=25});layout:Add(actions,{height=25});layout:Add(builder.validation,{height=20});layout:Add(tree,{weight=1,minHeight=120})
 
     function builder:GetNode(path)local node=self.root;for _,index in ipairs(path or self.selectedPath)do node=node and node.children and node.children[index]end;return node end
     function builder:GetSelected()return self:GetNode(self.selectedPath)end
@@ -234,27 +232,14 @@ function UI:CreateRuleBuilder(parent,onChanged)
     function builder:Validate()return HolyStorm.Rules:Validate(self.root)end
     function builder:Changed()if onChanged then onChanged()end;self:Render()end
     function builder:Render()
-        for _,row in ipairs(self.rows)do row:Hide()end
-        local flat={};local function walk(node,path,depth)flat[#flat+1]={node=node,path=path,depth=depth};for index,child in ipairs(node.children or{})do local childPath=copy(path);childPath[#childPath+1]=index;walk(child,childPath,depth+1)end end;walk(self.root,{},0);self.flat=flat;self.offset=math.min(self.offset,math.max(0,#flat-13))
-        for slot=1,13 do local entry=flat[self.offset+slot];if not entry then break end;local index=slot;local row=self.rows[index]or UI:Button(self.tree,"",590,function()local selected=builder.flat[builder.offset+index];if selected then builder.selectedPath=copy(selected.path);builder:Render()end end);self.rows[index]=row;local node=entry.node;local definition=node.field and HolyStorm.Rules:GetField(node.field);local name=definition and(definition.name or(definition.nameKey and L[definition.nameKey]))or node.field;local label=node.logic and("["..(L["LOGIC_"..node.logic]or node.logic).."]")or string.format("%s  %s  %s%s",name or"?",node.operator or"=",listText(node.value),definition and""or"  ["..L["UNAVAILABLE"].."]");row:SetText(string.rep("    ",entry.depth)..label);row:ClearAllPoints();row:SetPoint("TOPLEFT",0,-((index-1)*25));row:Show()end
-        local selected=self:GetSelected()or self.root
-        logic:SetShown(selected.logic~=nil);field:SetShown(selected.logic==nil);operator:SetShown(selected.logic==nil)
-        value1:Hide();value2:Hide();typedValue:Hide();multiValue:Hide();apply:Hide()
+        local flat={};local function walk(node,path,depth)local definition=node.field and HolyStorm.Rules:GetField(node.field);local name=definition and(definition.name or(definition.nameKey and L[definition.nameKey]))or node.field;local label=node.logic and("["..(L["LOGIC_"..node.logic]or node.logic).."]")or string.format("%s  %s  %s%s",name or"?",node.operator or"=",listText(node.value),definition and""or"  ["..L["UNAVAILABLE"].."]");flat[#flat+1]={key=table.concat(path,"."),path=copy(path),label=string.rep("    ",depth)..label,unavailable=node.field~=nil and definition==nil};for index,child in ipairs(node.children or{})do local childPath=copy(path);childPath[#childPath+1]=index;walk(child,childPath,depth+1)end end;walk(self.root,{},0);self.selectedKey=table.concat(self.selectedPath,".");tree:SetData(flat)
+        local selected=self:GetSelected()or self.root;condition:Clear();logic:SetShown(selected.logic~=nil);condition.frame:SetShown(selected.logic==nil)
         if selected.logic then logic:SetValue(selected.logic,L["LOGIC_"..selected.logic]or selected.logic)else
-            local definition=HolyStorm.Rules:GetField(selected.field)or{}
-            field:SetValue(selected.field,definition.name or(definition.nameKey and L[definition.nameKey])or selected.field)
-            operator:SetValue(selected.operator or"=",L["OP_"..tostring(selected.operator or"="):upper()]or selected.operator)
-            if operatorNeedsValue(selected.operator or"=")then
-                local listOperator=selected.operator=="in"or selected.operator=="not_in"
-                local structured=definition.type=="boolean"or definition.type=="enum"or definition.type=="character"or definition.type=="account"or definition.valueProvider~=nil or definition.enumProvider~=nil
-                if listOperator and structured then multiValue:SetValues(type(selected.value)=="table"and selected.value or{});multiValue:Show()
-                elseif structured and not listOperator then typedValue:SetValue(selected.value,tostring(selected.value or""));typedValue:Show()
-                else value1:SetText(listText(selected.value));value1:Show();apply:Show();if selected.operator=="between"or selected.operator=="not_between"then value1:SetText(tostring(type(selected.value)=="table"and selected.value[1]or""));value2:SetText(tostring(type(selected.value)=="table"and selected.value[2]or""));value2:Show()end end
-            end
+            local definition=HolyStorm.Rules:GetField(selected.field)or{};field:SetValue(selected.field,definition.name or(definition.nameKey and L[definition.nameKey])or selected.field);operator:SetValue(selected.operator or"=",L["OP_"..tostring(selected.operator or"="):upper()]or selected.operator);condition:Add(field,{weight=2,minWidth=130});condition:Add(operator,{weight=1.2,minWidth=95})
+            if operatorNeedsValue(selected.operator or"=")then local listOperator=selected.operator=="in"or selected.operator=="not_in";local structured=definition.type=="boolean"or definition.type=="enum"or definition.type=="character"or definition.type=="account"or definition.valueProvider~=nil or definition.enumProvider~=nil;if listOperator and structured then multiValue:SetValues(type(selected.value)=="table"and selected.value or{});condition:Add(multiValue,{weight=2,minWidth=120})elseif structured and not listOperator then typedValue:SetValue(selected.value,tostring(selected.value or""));condition:Add(typedValue,{weight=2,minWidth=120})else value1:SetText(listText(selected.value));condition:Add(value1,{weight=2,minWidth=90});if selected.operator=="between"or selected.operator=="not_between"then value1:SetText(tostring(type(selected.value)=="table"and selected.value[1]or""));value2:SetText(tostring(type(selected.value)=="table"and selected.value[2]or""));condition:Add(value2,{weight=1,minWidth=60})end;condition:Add(apply,{width=70})end end
         end
-        local valid,reason=self:Validate();self.validation:SetText(valid and L["VALID_EXPRESSION"]or string.format(L["INVALID_EXPRESSION"],UI:ErrorText(reason)))
+        local valid,reason=self:Validate();self.validation:SetText(valid and L["VALID_EXPRESSION"]or string.format(L["INVALID_EXPRESSION"],UI:ErrorText(reason)));layout:Relayout()
     end
-    builder.tree:SetScript("OnMouseWheel",function(_,delta)builder.offset=math.max(0,math.min(math.max(0,#(builder.flat or{})-13),builder.offset-delta*3));builder:Render()end)
     builder:Render();return builder
 end
 

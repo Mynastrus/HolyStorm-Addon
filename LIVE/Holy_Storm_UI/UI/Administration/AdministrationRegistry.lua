@@ -144,7 +144,7 @@ end
 Administration.CanAccess = Administration.IsSectionAvailable
 
 function Administration:GetContext(section, parent)
-    return { administration=self, section=section, parent=parent, ui=HolyStorm.UI, addon=HolyStorm }
+    return { administration=self, section=section, parent=parent, ui=HolyStorm.UI, addon=HolyStorm, components=HolyStorm.UI and HolyStorm.UI.Components, layout=HolyStorm.UILayout }
 end
 
 function Administration:GetSections(visibleOnly)
@@ -207,8 +207,9 @@ function Administration:EnsureSectionBuilt(section)
         page=result; section._builtByHost=true
     end
     if not page then return false,"MISSING_PAGE" end
-    section._widget=type(page)=="table" and page.frame and page or nil
-    section._frame=section._widget and section._widget.frame or page
+    section._controller=type(page)=="table" and page.frame and page or nil
+    section._widget=section._controller and page.type and page or nil
+    section._frame=section._controller and section._controller.frame or page
     if section._frame.SetParent and parent then section._frame:SetParent(parent) end
     if section._frame.ClearAllPoints then section._frame:ClearAllPoints() end
     if section._frame.SetAllPoints and parent then section._frame:SetAllPoints(parent) end
@@ -265,9 +266,11 @@ function Administration:EnsureHost()
     local driver=HolyStorm.UI and HolyStorm.UI.driver
     if not driver or not driver.content or not CreateFrame then return false end
     local host=CreateFrame("Frame",nil,driver.content); host:Hide()
+    local hostLayout=HolyStorm.UI.Components and HolyStorm.UI.Components:CreateColumn(host,{frame=host,padding={left=8,right=8,top=8,bottom=8}})or nil
     local tree=HolyStorm.UI.Components and HolyStorm.UI.Components:CreateTreeGroup(host)or nil
     if not tree then local aceGUI=LibStub("AceGUI-3.0",true);if not aceGUI then return false end;tree=aceGUI:Create("TreeGroup")end
-    tree:SetLayout("Fill"); tree:SetTreeWidth(210); tree.frame:SetParent(host); tree.frame:SetAllPoints(host)
+    tree:SetLayout("Fill"); tree:SetTreeWidth(210); tree.frame:SetParent(host)
+    if hostLayout then hostLayout:Add(tree,{weight=1})else tree.frame:SetAllPoints(host)end
     tree:EnableButtonTooltips(false)
     tree:SetCallback("OnGroupSelected",function(_,_,value)Administration:OnTreeSelected(value)end)
     tree:SetCallback("OnButtonEnter",function(_,_,value,button)
@@ -277,7 +280,7 @@ function Administration:EnsureHost()
     tree:SetCallback("OnButtonLeave",function()if GameTooltip then GameTooltip:Hide()end end)
     host:HookScript("OnShow",function()Administration:OnHostShown()end)
     host:HookScript("OnHide",function()Administration:HideSection(Administration.activeId)end)
-    self.host,self.tree=host,tree
+    self.host,self.tree,self.hostLayout=host,tree,hostLayout
     if HolyStorm.UI.RegisterView then
         local ok=HolyStorm.UI:RegisterView({id="administration",owner="ui.administration",title=L["ADMINISTRATION_TITLE"],page=host,refresh=function()Administration:OnHostShown()end})
         if not ok then return false end
@@ -331,8 +334,10 @@ function Administration:DestroySection(section)
     if section.destroy then HolyStorm.Utils.SafeCall("administration.destroy:"..section.id,section.destroy,section,self:GetContext(section,section._frame))
     elseif section._builtByHost and section._widget then
         local aceGUI=LibStub("AceGUI-3.0",true); if aceGUI then aceGUI:Release(section._widget) end
+    elseif section._builtByHost and section._controller and section._controller.Destroy then
+        HolyStorm.Utils.SafeCall("administration.controller.destroy:"..section.id,section._controller.Destroy,section._controller)
     end
-    section._frame,section._widget,section._builtByHost=nil,nil,nil
+    section._frame,section._widget,section._controller,section._builtByHost=nil,nil,nil,nil
 end
 
 function Administration:RegisterSection(definition)

@@ -42,6 +42,10 @@ end
 function TableMethods:GetData()return self.rows end
 function TableMethods:SetEmptyText(text)self.emptyText=text or L["TABLE_EMPTY"];self.empty:SetText(self.emptyText)end
 function TableMethods:SetEnabled(enabled)self.enabled=enabled~=false;self:Refresh()end
+function TableMethods:SetSelection(value)
+    if self.selection==value then return false end
+    self.selection=value;self:Refresh();return true
+end
 function TableMethods:UpdateRow(index,row)
     if row~=nil then self.rows[index]=row end
     local widget=self.rowFrames[index];if widget then self:RenderRow(widget,self.rows[index],index)end
@@ -124,7 +128,8 @@ function TableMethods:FitCell(cell,column)
     cell.text:SetText(cell.formatter and cell.formatter(result)or result)
 end
 function TableMethods:RenderRow(row,data,rowIndex)
-    row.frame.rowData=data;row.background:SetAlpha(rowIndex%2==0 and .8 or .35)
+    row.frame.rowData=data;local selected=call(self.options.isRowSelected,data,rowIndex,self)==true or(self.selection~=nil and type(data)=="table"and(data.id==self.selection or data.value==self.selection))
+    if selected then row.background:SetColorTexture(.08,.36,.72,.38);row.background:SetAlpha(1)else row.background:SetColorTexture(1,1,1,.035);row.background:SetAlpha(rowIndex%2==0 and .8 or .35)end
     local disabled=not self.enabled or data and data.disabled==true or call(self.options.isRowDisabled,data,rowIndex,self)==true
     row.frame:SetEnabled(not disabled);row.frame:SetAlpha(disabled and .55 or 1)
     for index,column in ipairs(self.columns)do

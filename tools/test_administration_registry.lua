@@ -44,6 +44,11 @@ assert(Admin:IsSectionAvailable("core"))
 assert(Admin:Open("core")and Admin.activeId=="core"and lifecycle.build==1 and lifecycle.show==1 and lifecycle.refresh==1)
 Admin:Open("core");assert(lifecycle.build==1,"a section is built once")
 
+local controllerDestroyed=0
+assert(Admin:RegisterSection({id="sharedController",category="general",title="Shared",order=30,build=function()return{frame=frame(),Destroy=function()controllerDestroyed=controllerDestroyed+1 end}end}))
+assert(Admin:Open("sharedController")and Admin.sections.sharedController._controller,"shared component controllers must be accepted")
+assert(Admin:UnregisterSection("sharedController")and controllerDestroyed==1,"shared component controllers must use their own destroy lifecycle")
+
 assert(Admin:RegisterSection({id="denied",category="general",title="Denied",order=10,permission="denied",page=frame()}))
 assert(not Admin:IsSectionAvailable("denied"))
 assert(Admin:RegisterSection({id="module",category="modules",title="Module",order=20,permission={"denied","featureAdmin"},requires={module="feature",capability="featureCapability"},page=frame()}))

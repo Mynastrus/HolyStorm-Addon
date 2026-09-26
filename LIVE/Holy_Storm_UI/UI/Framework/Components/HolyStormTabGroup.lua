@@ -1,4 +1,4 @@
-local Type,Version="HolyStormTabGroup",1
+local Type,Version="HolyStormTabGroup",2
 local AceGUI=LibStub and LibStub("AceGUI-3.0",true)
 if not AceGUI or(AceGUI:GetWidgetVersion(Type)or 0)>=Version then return end
 
@@ -14,10 +14,10 @@ end
 
 local methods={}
 function methods:OnAcquire()
- self.tabs={};self.tabButtons={};self.selected=nil;self:SetWidth(300);self:SetHeight(100)
+ self.tabs={};self.tabButtons={};self.selected=nil;self.wrapTabs=false;self.minTabWidth=nil;self:SetWidth(300);self:SetHeight(100)
 end
 function methods:OnRelease()
- self.selected=nil;self.tabs={};for _,button in pairs(self.tabButtons or{})do button:Hide()end
+ self.selected=nil;self.tabs={};self.wrapTabs=false;self.minTabWidth=nil;for _,button in pairs(self.tabButtons or{})do button:Hide()end
 end
 function methods:OnWidthSet(width)
  self.frame.width=width;self:LayoutTabs()
@@ -36,9 +36,11 @@ function methods:UpdateSelection()
 end
 function methods:LayoutTabs()
  local count=#(self.tabs or{});if count==0 then return end
- local width=math.max(560,(self.frame.GetWidth and self.frame:GetWidth()or self.frame.width or 850));local height=math.max(1,(self.frame.GetHeight and self.frame:GetHeight()or self.frame.height or 100));local gap=4;local buttonWidth=math.floor((width-gap*(count-1))/count)
- self.tabBar:SetHeight(tabHeight);self.content:SetWidth(width);self.content:SetHeight(math.max(1,height-tabHeight-contentGap));self.content:Show()
- for index,tab in ipairs(self.tabs)do local button=self.tabButtons[tab.value];if button then button:ClearAllPoints();button:SetPoint("TOPLEFT",self.tabBar,"TOPLEFT",(index-1)*(buttonWidth+gap),0);button:SetSize(buttonWidth,tabHeight)end end
+ local width=math.max(1,(self.frame.GetWidth and self.frame:GetWidth()or self.frame.width or 850));local height=math.max(1,(self.frame.GetHeight and self.frame:GetHeight()or self.frame.height or 100));local gap=4
+ local perRow=count;if self.wrapTabs then perRow=math.max(1,math.min(count,math.floor((width+gap)/((self.minTabWidth or 96)+gap))))end
+ local rows=math.ceil(count/perRow);local buttonWidth=math.floor((width-gap*(perRow-1))/perRow);local barHeight=rows*tabHeight+math.max(0,rows-1)*gap
+ self.tabBar:SetHeight(barHeight);self.content:SetWidth(width);self.content:SetHeight(math.max(1,height-barHeight-contentGap));self.content:Show()
+ for index,tab in ipairs(self.tabs)do local button=self.tabButtons[tab.value];if button then local column=(index-1)%perRow;local row=math.floor((index-1)/perRow);button:ClearAllPoints();button:SetPoint("TOPLEFT",self.tabBar,"TOPLEFT",column*(buttonWidth+gap),-row*(tabHeight+gap));button:SetSize(buttonWidth,tabHeight)end end
 end
 function methods:SetTabs(tabs)
  local seen={};self.tabs=tabs or{}

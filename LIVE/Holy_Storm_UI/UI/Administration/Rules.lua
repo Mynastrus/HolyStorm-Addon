@@ -14,6 +14,7 @@ end
 
 function Page:Select(rule)
     self.selectedId=rule and rule.id;self.isNew=rule and Filters:GetRules(self.scope)[rule.id]==nil or false;self.draft=rule and HolyStorm.Utils.DeepCopy(rule)or nil;if self.draft then self.draft._summary,self.draft.tooltip=nil,nil end;self.baseRevision=State:GetPermissionStateStatus().revisionID
+    if self.list then self.list.selected=rule;self.list:SetSelection(rule and rule.id)end
     if not self.draft then self.emptyDetail:SetText(L["NO_SELECTION"]);self.name:SetText("");self.description:SetText("");self.category:SetText("");self.builder:Hide();self.meta:SetText("");self.usage:SetText("");self.testText:SetText("");return end
     self.emptyDetail:SetText("");self.builder:Show();self.name:SetText(self.draft.name or"");self.description:SetText(self.draft.description or"");self.category:SetText(self.draft.category or"");self.builder:SetRule(self.draft.root or self.draft.rules);self:ShowDetails();self:Test()
 end
@@ -70,29 +71,29 @@ end
 function Page:SetScope(scope)self.scope=scope;self.selectedId=nil;self.draft=nil;self.localButton:SetEnabled(scope~="local");self.globalButton:SetEnabled(scope~="global");self:Select(nil);self:Render()end
 
 function Page:OnInitialize()
-    local UI=HolyStorm:GetModule("UI",true);local page=CreateFrame("Frame",nil,UI.content);self.page=page
-    local title=HolyStorm.PolicyUI:Label(page,L["RULES_TITLE"],"GameFontHighlightLarge");title:SetPoint("TOPLEFT",14,-12)
-    self.localButton=HolyStorm.PolicyUI:Button(page,L["LOCAL_RULES"],120,function()Page:SetScope("local")end);self.localButton:SetPoint("TOPLEFT",14,-40)
-    self.globalButton=HolyStorm.PolicyUI:Button(page,L["GLOBAL_RULES"],120,function()Page:SetScope("global")end);self.globalButton:SetPoint("LEFT",self.localButton,"RIGHT",4,0)
-    self.search=HolyStorm.PolicyUI:Edit(page,190,function()Page:Render()end);self.search:SetPoint("TOPLEFT",14,-72)
-    self.list=HolyStorm.PolicyUI:CreateList(page,function(rule)Page:Select(rule)end);self.list:SetPoint("TOPLEFT",14,-100);self.list:SetSize(200,420)
-    self.emptyList=HolyStorm.PolicyUI:Label(page,"");self.emptyList:SetPoint("TOPLEFT",14,-108);self.emptyList:SetWidth(190)
-    self.newButton=HolyStorm.PolicyUI:Button(page,L["NEW"],62,function()Page:Select({id=HolyStorm.PolicyUI:NewId("rule"),name=L["NEW"],description="",category="",root={logic="AND",children={HolyStorm.PolicyUI:DefaultCondition()}}})end);self.newButton:SetPoint("BOTTOMLEFT",14,18)
-    self.duplicateButton=HolyStorm.PolicyUI:Button(page,L["DUPLICATE"],90,function()Page:Duplicate()end);self.duplicateButton:SetPoint("LEFT",self.newButton,"RIGHT",4,0)
-    self.deleteButton=HolyStorm.PolicyUI:Button(page,L["DELETE"],70,function()Page:Delete()end);self.deleteButton:SetPoint("LEFT",self.duplicateButton,"RIGHT",4,0)
-    local nameLabel=HolyStorm.PolicyUI:Label(page,L["NAME"]);nameLabel:SetPoint("TOPLEFT",225,-42);self.name=HolyStorm.PolicyUI:Edit(page,220);self.name:SetPoint("TOPLEFT",225,-60)
-    local categoryLabel=HolyStorm.PolicyUI:Label(page,L["CATEGORY"]);categoryLabel:SetPoint("LEFT",self.name,"RIGHT",12,18);self.category=HolyStorm.PolicyUI:Edit(page,140);self.category:SetPoint("LEFT",self.name,"RIGHT",12,0)
-    local descriptionLabel=HolyStorm.PolicyUI:Label(page,L["DESCRIPTION"]);descriptionLabel:SetPoint("LEFT",self.category,"RIGHT",12,18);self.description=HolyStorm.PolicyUI:Edit(page,250);self.description:SetPoint("LEFT",self.category,"RIGHT",12,0)
-    self.builder=HolyStorm.PolicyUI:CreateRuleBuilder(page);self.builder:SetPoint("TOPLEFT",225,-92);self.builder:SetPoint("BOTTOMRIGHT",-14,330)
-    self.emptyDetail=HolyStorm.PolicyUI:Label(page,L["NO_SELECTION"]);self.emptyDetail:SetPoint("TOPLEFT",225,-104)
-    self.meta=HolyStorm.PolicyUI:Label(page,"");self.meta:SetPoint("BOTTOMLEFT",225,292);self.meta:SetPoint("RIGHT",-14,0)
-    self.usageScroll,self.usage=HolyStorm.PolicyUI:CreateTextPanel(page);self.usageScroll:SetPoint("BOTTOMLEFT",225,240);self.usageScroll:SetPoint("RIGHT",-14,0);self.usageScroll:SetHeight(42)
-    self.fieldsScroll,self.fields=HolyStorm.PolicyUI:CreateTextPanel(page);self.fieldsScroll:SetPoint("BOTTOMLEFT",225,150);self.fieldsScroll:SetPoint("RIGHT",-14,0);self.fieldsScroll:SetHeight(82)
-    self.testCharacter=HolyStorm.PolicyUI:CreateSelector(page,200,function()return HolyStorm.PolicyUI:CharacterItems()end,function()Page:Test()end);self.testCharacter:SetPoint("BOTTOMLEFT",430,112)
-    self.testScroll,self.testText=HolyStorm.PolicyUI:CreateTextPanel(page);self.testScroll:SetPoint("BOTTOMLEFT",225,48);self.testScroll:SetPoint("RIGHT",-14,0);self.testScroll:SetHeight(58)
-    self.saveButton=HolyStorm.PolicyUI:Button(page,L["SAVE"],90,function()Page:Save()end);self.saveButton:SetPoint("BOTTOMLEFT",225,18)
-    local discard=HolyStorm.PolicyUI:Button(page,L["DISCARD"],90,function()Page:Select(Page.selectedId and Filters:GetRules(Page.scope)[Page.selectedId]);status(L["DISCARDED"])end);discard:SetPoint("LEFT",self.saveButton,"RIGHT",5,0)
-    local test=HolyStorm.PolicyUI:Button(page,L["TEST"],90,function()Page:Test()end);test:SetPoint("LEFT",discard,"RIGHT",5,0)
-    self.scope="local";self.localButton:SetEnabled(false);self:Select(nil)
-    HolyStorm.Administration:RegisterSection({id="rules",category="rules",displayName=L["RULES_TITLE"],displayNameKey="RULES_TITLE",description=L["RULES_DESC"],descriptionKey="RULES_DESC",order=10,requiredPermission="rules-manage",owner="Core",page=page,refresh=function()Page:Render()end,events={"HS_RULE_UPDATED","HS_RULE_DELETED","HS_FILTER_REFERENCE_PROVIDER_CHANGED","HS_GROUP_UPDATED","HS_GROUP_DELETED","HS_RULE_FIELD_REGISTERED","HS_RULE_FIELD_UNREGISTERED","HS_RULE_OPERATOR_REGISTERED","HS_MODULE_AVAILABILITY_CHANGED","HS_CHARACTER_UPDATED","HS_ROSTER_UPDATED","HS_PERMISSIONS_STATE_UPDATED"},icon="Interface\\Icons\\INV_Inscription_Tradeskill01"})
+    HolyStorm.Administration:RegisterSection({id="rules",category="rules",displayName=L["RULES_TITLE"],displayNameKey="RULES_TITLE",description=L["RULES_DESC"],descriptionKey="RULES_DESC",order=10,requiredPermission="rules-manage",owner="Core",build=function(parent)return Page:Build(parent)end,refresh=function()Page:Render()end,events={"HS_RULE_UPDATED","HS_RULE_DELETED","HS_FILTER_REFERENCE_PROVIDER_CHANGED","HS_GROUP_UPDATED","HS_GROUP_DELETED","HS_RULE_FIELD_REGISTERED","HS_RULE_FIELD_UNREGISTERED","HS_RULE_OPERATOR_REGISTERED","HS_MODULE_AVAILABILITY_CHANGED","HS_CHARACTER_UPDATED","HS_ROSTER_UPDATED","HS_PERMISSIONS_STATE_UPDATED"},icon="Interface\\Icons\\INV_Inscription_Tradeskill01"})
+end
+
+function Page:Build(parent)
+    local C=HolyStorm.UI.Components;local page=CreateFrame("Frame",nil,parent);self.page=page
+    local root=C:CreateColumn(page,{frame=page,gap=8,padding={left=12,right=12,top=8,bottom=10}})
+    root:Add(C:CreateText(page,{text=L["RULES_TITLE"],font="GameFontHighlightLarge"}),{height=26})
+    local scopeRow=C:CreateRow(page,{gap=6});self.localButton=HolyStorm.PolicyUI:Button(scopeRow.frame,L["LOCAL_RULES"],120,function()Page:SetScope("local")end);self.globalButton=HolyStorm.PolicyUI:Button(scopeRow.frame,L["GLOBAL_RULES"],120,function()Page:SetScope("global")end);scopeRow:Add(self.localButton,{width=120});scopeRow:Add(self.globalButton,{width=120});root:Add(scopeRow,{height=24})
+    local body=C:CreateRow(page,{gap=12});root:Add(body,{weight=1,minHeight=460})
+    local sidebar=C:CreateColumn(body.frame,{gap=6});body:Add(sidebar,{width=220,minWidth=190})
+    self.search=HolyStorm.PolicyUI:Edit(sidebar.frame,190,function()Page:Render()end);sidebar:Add(self.search,{height=24})
+    self.emptyList=HolyStorm.PolicyUI:Label(sidebar.frame,"");sidebar:Add(self.emptyList,{height=18})
+    self.list=HolyStorm.PolicyUI:CreateList(sidebar.frame,function(rule)Page:Select(rule)end);sidebar:Add(self.list,{weight=1,minHeight=260})
+    local listActions=C:CreateRow(sidebar.frame,{gap=4});self.newButton=HolyStorm.PolicyUI:Button(listActions.frame,L["NEW"],62,function()Page:Select({id=HolyStorm.PolicyUI:NewId("rule"),name=L["NEW"],description="",category="",root={logic="AND",children={HolyStorm.PolicyUI:DefaultCondition()}}})end);self.duplicateButton=HolyStorm.PolicyUI:Button(listActions.frame,L["DUPLICATE"],90,function()Page:Duplicate()end);self.deleteButton=HolyStorm.PolicyUI:Button(listActions.frame,L["DELETE"],70,function()Page:Delete()end);listActions:Add(self.newButton,{weight=1,minWidth=52});listActions:Add(self.duplicateButton,{weight=1,minWidth=70});listActions:Add(self.deleteButton,{weight=1,minWidth=58});sidebar:Add(listActions,{height=24})
+    local detail=C:CreateColumn(body.frame,{gap=5});body:Add(detail,{weight=1,minWidth=420})
+    local form=C:CreateRow(detail.frame,{gap=8});local function field(label,width,weight)local column=C:CreateColumn(form.frame,{gap=2});column:Add(C:CreateText(column.frame,{text=label,font="GameFontNormalSmall"}),{height=16});local edit=HolyStorm.PolicyUI:Edit(column.frame,width);column:Add(edit,{height=22});form:Add(column,{weight=weight or 1,minWidth=90});return edit end;self.name=field(L["NAME"],220,2);self.category=field(L["CATEGORY"],140,1);self.description=field(L["DESCRIPTION"],250,2);detail:Add(form,{height=42})
+    self.emptyDetail=HolyStorm.PolicyUI:Label(detail.frame,L["NO_SELECTION"]);detail:Add(self.emptyDetail,{height=18})
+    self.builder=HolyStorm.PolicyUI:CreateRuleBuilder(detail.frame);detail:Add(self.builder,{weight=1,minHeight=150})
+    self.meta=HolyStorm.PolicyUI:Label(detail.frame,"");self.meta:SetWordWrap(true);detail:Add(self.meta,{height=34})
+    self.usageScroll,self.usage=HolyStorm.PolicyUI:CreateTextPanel(detail.frame);detail:Add(self.usageScroll,{height=50})
+    self.fieldsScroll,self.fields=HolyStorm.PolicyUI:CreateTextPanel(detail.frame);detail:Add(self.fieldsScroll,{height=76})
+    local preview=C:CreateRow(detail.frame,{gap=6});preview:Add(C:CreateText(preview.frame,{text=L["CHARACTER"],font="GameFontNormalSmall"}),{width=90});self.testCharacter=HolyStorm.PolicyUI:CreateSelector(preview.frame,200,function()return HolyStorm.PolicyUI:CharacterItems()end,function()Page:Test()end);preview:Add(self.testCharacter,{weight=1,minWidth=160});detail:Add(preview,{height=24})
+    self.testScroll,self.testText=HolyStorm.PolicyUI:CreateTextPanel(detail.frame);detail:Add(self.testScroll,{height=58})
+    local actions=C:CreateRow(detail.frame,{gap=6});self.saveButton=HolyStorm.PolicyUI:Button(actions.frame,L["SAVE"],90,function()Page:Save()end);local discard=HolyStorm.PolicyUI:Button(actions.frame,L["DISCARD"],90,function()Page:Select(Page.selectedId and Filters:GetRules(Page.scope)[Page.selectedId]);status(L["DISCARDED"])end);local test=HolyStorm.PolicyUI:Button(actions.frame,L["TEST"],90,function()Page:Test()end);actions:Add(self.saveButton,{width=90});actions:Add(discard,{width=90});actions:Add(test,{width=90});detail:Add(actions,{height=24})
+    self.scope="local";self.localButton:SetEnabled(false);self:Select(nil);root:Relayout();return page
 end

@@ -57,6 +57,26 @@ Die eingebauten Kategorien definieren nur Bezeichnungen und Reihenfolge; sie erz
 
 Sortiert wird nach Kategorie-Reihenfolge, Section-Reihenfolge, lokalisiertem Titel und abschließend technischer ID. Kategorien ohne verfügbare Section erscheinen nicht.
 
+## Gemeinsame UI-Implementierung
+
+Der Host selbst liegt in einem `UILayout`-Container; der Section-Kontext stellt
+`components` und `layout` für interne und externe Erweiterungen bereit. Die
+eingebauten Sections `permissions`, `rules`, `filters` und `policyInspector`
+registrieren ausschließlich einen lazy `build`-Callback. Damit werden weder die
+komplexen Editoren noch ihre Diagnoseansichten beim Login konstruiert.
+
+Alle eingebauten Seiten verwenden `UIComponents`-Rows/-Columns, die gemeinsame
+`HolyStormTabGroup`, `CreateScrollContainer` und die generische Table. Die Table
+besitzt wiederverwendete Rows/Cells und einen allgemeinen Selection-State.
+`PolicyUI` adaptiert darauf die wiederverwendbaren Listen, Checklisten und den
+Rule-Tree. Nur native WoW-Dropdowns und EditBoxen bleiben als elementare Controls;
+sie bilden keine parallele Layout-, Scroll- oder Tabellenimplementierung.
+
+Die Gruppen-/Permission-Seite bewahrt Section, Gruppe, Unterreiter, Auswahl und
+Table-Scrollposition im Controller, solange die Section gebaut bleibt. Rule- und
+Filter-Seiten bewahren entsprechend Scope, ausgewähltes Objekt, Entwurf und
+Scrollzustand. Frames oder andere transiente UI-Objekte werden nicht persistiert.
+
 ## Refresh und Events
 
 Section-spezifische `events` markieren nicht eine zweite UI als zuständig, sondern rufen gezielt deren `refresh` auf. Der Host aktualisiert Gating und Navigation insbesondere bei Permission-/State-/Gruppenänderungen, Modul-Lifecycle, Capability-Registrierung, Roster- und Guild-Updates. Relevante Host-Events sind:
@@ -76,13 +96,19 @@ Systemgruppen sind gesperrt und lokalisiert. Automatische System-/Gildenrangquel
 
 Holy Storm besitzt eigenständige wiederverwendbare Rule-Objekte und Filter-Objekte. Beide Seiten verwenden denselben `PolicyUI`-Rule-Tree-Editor und dieselbe `RuleEngine`; die UI implementiert weder Evaluator noch Operatorsemantik. Der Editor unterstützt Conditions, verschachtelte AND-/OR-/NOT-Gruppen, Hinzufügen, Entfernen, Hoch/Runter sowie Ein-/Ausrücken. Field-, Operator- und Value-Auswahl entstehen aus den aktiven Registries. Boolean-, Enum-, Character-, Account- und Mehrfachwerte verwenden strukturierte Auswahl, Number-/String- und Range-Werte typbezogene Eingaben.
 
-Die Listen zeigen Name, ID, Objektversion beziehungsweise Referenzanzahl und Availability. Suche umfasst Name, ID, Kategorie und beteiligte Provider. Details zeigen Auditmetadaten, Baum, Referenzen, Preview und CRUD-Aktionen. Leere Listen, fehlende Fields, fehlende Preview-Entities, unbekannte Felder und referenzgeschützte Löschungen besitzen lokalisierte Zustände. Globale Create/Edit/Delete-Aktionen werden mit den vorhandenen granularen Filter-Permissions beziehungsweise `rules-manage` gegated und im Core erneut autorisiert.
+Die Table-basierten Listen zeigen Name, ID, Objektversion beziehungsweise Referenzanzahl und Availability. Suche umfasst Name, ID, Kategorie und beteiligte Provider. Details zeigen Auditmetadaten, Baum, Referenzen, Preview und CRUD-Aktionen. Leere Listen, fehlende Fields, fehlende Preview-Entities, unbekannte Felder und referenzgeschützte Löschungen besitzen lokalisierte Zustände. Globale Create/Edit/Delete-Aktionen werden mit den vorhandenen granularen Filter-Permissions beziehungsweise `rules-manage` gegated und im Core erneut autorisiert.
 
 Preview verwendet `FilterManager:Preview` und zeigt den von `RuleEngine` erzeugten Diagnose-Trace mit Actual/Expected Value, Provider und UNKNOWN-Grund. Sie persistiert nichts und ändert insbesondere keine Gruppenmitgliedschaft. Field-Provider-Diagnose liest `RuleEngine:GetFieldDiagnostics`. Registry-, Modul-, Character-, Roster-, Gruppen-, Referenz- und State-Events aktualisieren die Seiten ohne Polling.
 
 ## Abhängigkeiten und Lokalisierung
 
-Der Host verwendet `UIManager`, `MainWindow`, `AceGUI-3.0`, `EventBus`, `PermissionEngine`, `PolicyState` und die ModuleRegistry. Die Host-Texte und Core-Kategorien liegen in `Holy_Storm_Policy` für `enUS` und `deDE`. Externe Sections können bereits lokalisierte Texte, eine `locale`-Tabelle, `localeName` oder eine `localize`-Funktion liefern.
+Der Host verwendet `UIManager`, `MainWindow`, `UILayout`, `UIComponents`, die generische Table, `AceGUI-3.0`, `EventBus`, `PermissionEngine`, `PolicyState` und die ModuleRegistry. Die Host-Texte und Core-Kategorien liegen in `Holy_Storm_Policy` für `enUS` und `deDE`. Externe Sections können bereits lokalisierte Texte, eine `locale`-Tabelle, `localeName` oder eine `localize`-Funktion liefern.
+
+Der Compatibility-Vertrag `page` bleibt absichtlich bestehen, weil externe
+Sections bereits aufgebaute Frames liefern dürfen. Er ist kein zweiter aktiver
+Administration-Host. Ebenso bleiben `render` als Alias für `refresh` und
+AceGUI-Widget-Rückgaben erhalten. Die ausgelieferten Core-Sections verwenden
+diese Compatibility-Pfade nicht mehr.
 
 ## Beispiel einer Modul-Section
 
@@ -98,9 +124,12 @@ metadata.administration = {
         permission = "example-manage",
         requires = { capability = "example.configure" },
         build = function(parent, context)
-            local frame = CreateFrame("Frame", nil, parent)
-            -- Vollständige Modul-UI aufbauen.
-            return frame
+            local page = context.components:CreateColumn(parent, {
+                gap = 8,
+                padding = 12,
+            })
+            -- Gemeinsame Components/Table verwenden.
+            return page
         end,
         refresh = function(section, context)
             -- Daten der bereits gebauten UI aktualisieren.

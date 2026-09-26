@@ -65,9 +65,19 @@ assert(not dataTable.empty.shown and dataTable.rowFrames[1].cells[3].text.textVa
 local reused=dataTable.rowFrames[1]
 dataTable:SetData({{name="Beta",status="Ready"}});assert(dataTable.rowFrames[1]==reused,"rows are reused")
 dataTable:SetData({{name="Zulu"},{name="alpha"}});assert(dataTable:SetSort("name","asc")and dataTable.rows[1].name=="alpha","optional sorting")
+dataTable:SetSelection("alpha");assert(dataTable.selection=="alpha","table selection state")
 local oldFlexible=dataTable.columnWidths[2];dataTable.frame.width=800;dataTable.scroll.width=800;dataTable:Relayout();assert(dataTable.columnWidths[2]>oldFlexible,"table relayout on resize")
 dataTable.frame.width=150;dataTable.scroll.width=150;dataTable:Relayout();local compactTotal=2;for _,width in ipairs(dataTable.columnWidths)do compactTotal=compactTotal+width end;assert(compactTotal<=126.01,"over-constrained tables compact centrally without overlapping the viewport")
 local truncationTable=HolyStorm.UIComponents:CreateTable(parent,{columns={{id="name",weight=1,truncate=true}},cellPadding=2});truncationTable.frame.width=90;truncationTable.frame.height=100;truncationTable.scroll.width=90;truncationTable:SetData({{name="Übermäßig langer Name"}});truncationTable:Relayout();assert(truncationTable.rowFrames[1].cells[1].text.textValue:find("...",1,true),"UTF-8 labels truncate through the central table")
+
+assert(loadfile(root.."UI/Framework/Components/PolicyUI.lua"))()
+local selectedItem
+local policyList=HolyStorm.PolicyUI:CreateList(parent,function(item)selectedItem=item end)
+policyList:SetItems({{id="one",name="One"},{id="two",name="Two"}},function(item)return item.name end)
+policyList.rowFrames[1].frame:OnClick("LeftButton");assert(selectedItem.id=="one"and policyList.selection=="one","policy lists delegate selection to the shared table")
+local checked=false
+local policyChecklist=HolyStorm.PolicyUI:CreateCheckList(parent,function()return{{value="one",label="One",checked=checked}}end,function(_,value)checked=value end)
+policyChecklist:Refresh();policyChecklist.rowFrames[1].frame:OnClick("LeftButton");assert(checked==true,"policy checklists delegate toggles through the shared table")
 
 assert(loadfile(root.."UI/Framework/UIManager.lua"))()
 local UI=HolyStorm.UI

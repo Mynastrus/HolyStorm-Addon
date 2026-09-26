@@ -91,6 +91,22 @@ function Components:CreateButton(parent,options)
     return{frame=button,button=button,SetText=function(_,value)button:SetText(value or"")end,SetEnabled=function(_,value)button:SetEnabled(value~=false)end}
 end
 
+function Components:CreateEditBox(parent,options)
+    options=options or{};local edit=CreateFrame("EditBox",nil,parent,options.template or"InputBoxTemplate")
+    edit:SetSize(options.width or 180,options.height or 22);edit:SetAutoFocus(options.autoFocus==true)
+    if options.text~=nil then edit:SetText(tostring(options.text))end
+    if options.onChanged then edit:SetScript("OnTextChanged",options.onChanged)end
+    if options.onEnterPressed then edit:SetScript("OnEnterPressed",options.onEnterPressed)end
+    return{frame=edit,edit=edit,SetText=function(_,value)edit:SetText(value or"")end,GetText=function()return edit:GetText()end,SetEnabled=function(_,value)edit:SetEnabled(value~=false)end}
+end
+
+function Components:CreateEmptyState(parent,options)
+    options=options or{};local frame=CreateFrame("Frame",nil,parent)
+    local text=frame:CreateFontString(nil,"OVERLAY",options.font or"GameFontDisableLarge")
+    text:SetPoint("CENTER");text:SetWidth(options.width or 420);text:SetJustifyH("CENTER");text:SetJustifyV("MIDDLE");text:SetWordWrap(true);text:SetText(options.text or"")
+    return{frame=frame,text=text,SetText=function(_,value)text:SetText(value or"")end}
+end
+
 function Components:CreateScrollContainer(parent,options)
     options=options or{};local frame=CreateFrame("Frame",nil,parent);local scroll=CreateFrame("ScrollFrame",nil,frame,options.template or"UIPanelScrollFrameTemplate");scroll:SetAllPoints(frame)
     local content=CreateFrame("Frame",nil,scroll);content:SetSize(1,1);scroll:SetScrollChild(content)
@@ -108,7 +124,11 @@ function Components:CreateAceContainer(kind,parent,options)
     if options.width and widget.SetWidth then widget:SetWidth(options.width)end;if options.height and widget.SetHeight then widget:SetHeight(options.height)end
     return widget
 end
-function Components:CreateTabGroup(parent,options)return self:CreateAceContainer((options and options.widgetType)or"HolyStormTabGroup",parent,options)end
+function Components:CreateTabGroup(parent,options)
+    local widget,reason=self:CreateAceContainer((options and options.widgetType)or"HolyStormTabGroup",parent,options)
+    if widget and options then widget.wrapTabs=options.wrapTabs==true;widget.minTabWidth=options.minTabWidth;if widget.LayoutTabs then widget:LayoutTabs()end end
+    return widget,reason
+end
 function Components:CreateTreeGroup(parent,options)return self:CreateAceContainer("TreeGroup",parent,options)end
 
 function Components:Build(parent,description,context)
@@ -117,6 +137,8 @@ function Components:Build(parent,description,context)
     if kind=="text"then component=self:CreateText(parent,description)
     elseif kind=="icon"then component=self:CreateIcon(parent,description)
     elseif kind=="button"then component=self:CreateButton(parent,description)
+    elseif kind=="edit"or kind=="input"then component=self:CreateEditBox(parent,description)
+    elseif kind=="empty"then component=self:CreateEmptyState(parent,description)
     elseif kind=="row"then component=self:CreateRow(parent,description)
     elseif kind=="column"or kind=="container"or kind=="group"then component=self:CreateColumn(parent,description)
     elseif kind=="scroll"then component=self:CreateScrollContainer(parent,description)

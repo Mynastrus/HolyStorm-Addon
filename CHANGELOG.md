@@ -11,6 +11,13 @@ oder anderen Dateien außerhalb von `LIVE` gehören nicht in dieses Changelog.
 
 ## Noch nicht veröffentlicht
 
+### 26. September 2026
+
+- Die vollständige Administration verwendet nun denselben deklarativen `UILayout`-/`UIComponents`-Pfad wie Character Overview. Gruppen/Berechtigungen, Rules, Filter und Policy-Diagnose werden lazy gebaut und verwenden gemeinsame Tabs, Scroll-Container, Empty States, Controls und die generische Table mit Row-/Cell-Reuse und Selection-State.
+- Gruppenlisten, Membership-Quellen, effektive Mitglieder, Permission-Zuweisungen, Registry-basierte Permission-Matrix, Rule-/Filter-Listen, Checklisten und der verschachtelte Condition-Tree besitzen keine Administration-eigenen Zeilen-, Scroll- oder Breitenrenderer mehr. Leadership-Vollzugriff, additive Grants, unbekannte Felder und getrennte Character-/Account-/Rang-/System-/Filter-/Rule-Quellen bleiben unverändert sichtbar.
+- Factory Reset, Gruppen-, Permission-, Rule- und Filteränderungen sowie Diagnose bleiben an die vorhandenen Domain-APIs und Revision Chain gebunden. Der externe `page`-/`render`-Section-Vertrag bleibt als Compatibility erhalten; die eingebauten Sections verwenden ausschließlich den lazy `build`-Lifecycle.
+- Neue Regressionstests decken die gemeinsame Administration-UI, lazy Section-Lifecycle, Table-basierte Auswahl und Checklisten, Domain-Delegation, Membership-Quellen, geschützte Systemgruppen, Bestätigungsweg, Lokalisierung und Character-Overview-Isolation ab.
+
 ### 23. September 2026
 
 - Ein zentraler, feature-blinder `CharacterScanManager` entdeckt Character-Datenblöcke deklarativ aus den Addon-TOCs, erfasst beim Login ausschließlich fehlende Blöcke und serialisiert alle Snapshot-Workflows über die gemeinsame Ressource `CHARACTER_SCAN`. Fachliche Events markieren ihren Block gezielt als dirty; Zonenwechsel startet keinen pauschalen Neuscan.

@@ -267,8 +267,21 @@ Character Overview besitzt weiterhin keine eigene Zugriffs-Permission. Nur
 einzelne Daten-Tabs prüfen ihre bereits vorhandenen fachlichen Permissions.
 
 Der Administration-Host registriert sich als zentrale View und erzeugt seine
-Navigation über `CreateTreeGroup`. Die komplexen vorhandenen Editoren wurden
-bewusst nicht visuell redesignnt.
+Navigation über `CreateTreeGroup`. Host und Sections verwenden denselben
+`UILayout`-/`UIComponents`-Pfad wie Character Overview. Die eingebauten
+Sections werden erst bei der ersten Anzeige über `build` erzeugt. Gruppen,
+Permissions, Rules, Filter und Policy-Diagnose verwenden gemeinsame Row-/Column-
+Container, Scroll-Container, TabGroup und Table; Listen, Checklisten,
+Permission-Matrix und Rule-Tree besitzen keinen eigenen Zeilen- oder
+Breitenrenderer mehr. Auswahl- und Scrollzustand bleiben an den wiederverwendeten
+Controllern erhalten, solange die Section gebaut ist.
+
+`PolicyUI` ist der gemeinsame fachneutrale Adapter für Rule-/Filter-Controls.
+Seine Rule-Tree-, Auswahl- und Checklistendarstellung delegiert an die zentrale
+Table. Dropdowns und WoW-Eingabefelder bleiben kleine native Controls, werden
+aber durch `UILayout` positioniert. Die `page`-Variante des Administration-
+Section-Vertrags bleibt für externe Compatibility-Verbraucher erhalten; die
+eingebauten Administration-Seiten verwenden nur noch den lazy `build`-Lifecycle.
 
 Für neue Module gelten folgende Regeln:
 
