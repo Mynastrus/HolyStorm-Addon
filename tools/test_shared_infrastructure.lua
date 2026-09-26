@@ -19,6 +19,7 @@ local names = {
     ["LibGuildRoster-1.0"] = "Libs/LibGuildRoster-1.0/LibGuildRoster-1.0.lua",
 }
 local toc = read(core .. "Holy_Storm.toc")
+assert(read(core .. names["LibSharedMedia-3.0"]):find('"LibSharedMedia-3.0", 12000002', 1, true), "current LibSharedMedia release is embedded")
 for name, path in pairs(names) do
     local source = read(core .. path)
     assert(source:find(name, 1, true), name .. " source is embedded")
