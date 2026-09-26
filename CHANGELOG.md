@@ -13,6 +13,7 @@ oder anderen Dateien außerhalb von `LIVE` gehören nicht in dieses Changelog.
 
 ### 26. September 2026
 
+- Die Hauptansicht zeigt statt News-Kacheln, Modul- und Befehlslisten nur noch den aktuellen Charakter mit Spezialisierung/Klasse sowie Gegenstandsstufe, Mythisch+-Wertung und dem besten verlässlichen Schlachtzugsfortschritt der aktuellen Erweiterung. Die Werte stammen aus den vorhandenen Character-, Equipment-, Mythic+- und Raid-Snapshots und werden über deren bestehende Ereignisse ohne zusätzliche Scans oder Polling aktualisiert.
 - Guild Activity ist als drittes lazy Guild-Management-Child implementiert. Provider erfassen eventgetrieben Online-Sitzungen, inhaltsfreie Gildenchat-Zähler, Raidbegegnungen und abgeschlossene gildenrelevante Mythisch+-Läufe; Calendar-Attendance bleibt mangels verlässlicher Beobachtung als nicht verfügbarer Erweiterungspunkt bestehen.
 - Das versionierte `guild-activity`-DataManager-Schema speichert accountorientierte Shards mit Character-Provenance, UTC-Tages-/Wochenaggregaten, begrenzten Details, deterministischer Deduplizierung, unsicher markierter Session-Recovery und langfristiger Verdichtung. Die zentrale `guildActivity`-Sync-Domain überträgt autoritative kompakte Shards gezielt unter `guild-activity-view`, nicht einzelne Chat-Nachrichten oder Hot Events.
 - Activity besitzt factual Rule-Felder, Account-Übersicht/Detail/Filter im gemeinsamen UI-Framework und eine wiederverwendbare `View Activity`-CharacterAction. Es gibt keine Punkte, Wertung, Empfehlungen, automatische Rangänderungen oder Chat-Inhaltsspeicherung.

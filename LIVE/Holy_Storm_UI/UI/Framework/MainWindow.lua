@@ -10,13 +10,38 @@ HolyStorm:ApplyModuleMetadata(UI, {
     dependencies = { "core" }, enabledByDefault = true,
 })
 
-local function addTooltip(button, text)
-    button:SetScript("OnEnter", function(self)
-        GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-        GameTooltip:SetText(text)
-        GameTooltip:Show()
-    end)
-    button:SetScript("OnLeave", function() GameTooltip:Hide() end)
+local UNKNOWN = "|cff888888\226\128\147|r"
+local SPEC_FALLBACK_ICON = "Interface\\Icons\\INV_Misc_QuestionMark"
+local RAID_SHORT = { MYTHIC="M", HEROIC="H", NORMAL="N", LFR="LFR" }
+
+local function numberText(value)
+    value=tonumber(value);if value==nil then return UNKNOWN end
+    return value%1==0 and tostring(value)or string.format("%.1f",value)
+end
+
+function UI:BuildDashboardModel()
+    local characterUI=HolyStorm.CharacterUI;local guid=UnitGUID and UnitGUID("player")
+    local summary=characterUI and characterUI.GetDashboardSummary and characterUI:GetDashboardSummary(guid)or nil
+    local best=summary and summary.bestRaid;local raidText=UNKNOWN
+    if best and RAID_SHORT[best.difficulty]and tonumber(best.killed)and tonumber(best.total)then raidText=string.format("%s %d/%d",RAID_SHORT[best.difficulty],best.killed,best.total)end
+    local specText=UNKNOWN
+    if summary then specText=(summary.specName or UNKNOWN).." \226\128\147 "..(summary.className or UNKNOWN)end
+    return{name=summary and summary.coloredName or UNKNOWN,specialization=specText,specIcon=summary and summary.specIcon or SPEC_FALLBACK_ICON,itemLevel=numberText(summary and summary.itemLevel),mythicPlusRating=numberText(summary and summary.mythicPlusRating),bestRaid=raidText}
+end
+
+function UI:RefreshDashboard()
+    if not self.dashboardWidgets then return false end
+    local model=self:BuildDashboardModel();local widgets=self.dashboardWidgets
+    widgets.icon:SetImage(model.specIcon);widgets.name:SetText(model.name);widgets.specialization:SetText(model.specialization)
+    widgets.itemLevel:SetText(model.itemLevel);widgets.mythicPlusRating:SetText(model.mythicPlusRating);widgets.bestRaid:SetText(model.bestRaid)
+    if self.scroll then self.scroll:DoLayout()end
+    return true
+end
+
+function UI:RegisterDashboardEvents()
+    for _,event in ipairs({"HS_CHARACTER_UPDATED","HS_STATS_UPDATED","HS_EQUIPMENT_UPDATED","HS_MYTHICPLUS_UPDATED","HS_RAIDLOCKS_UPDATED"})do
+        HolyStorm.Events:Register(event,"ui-dashboard",function(_,guid)if not guid or guid==UnitGUID("player")then UI:RefreshDashboard()end end)
+    end
 end
 
 function UI:OnInitialize()
@@ -72,136 +97,49 @@ function UI:OnInitialize()
     page:SetFullWidth(true)
     page:SetLayout("List")
     scroll:AddChild(page)
-    local root = page.content
     local dashboard = {}
-    local function remember(object) table.insert(dashboard, object); return object end
     local dashboardGroup = aceGUI:Create("SimpleGroup")
     dashboardGroup:SetFullWidth(true)
-    dashboardGroup:SetLayout("Flow")
+    dashboardGroup:SetLayout("List")
     page:AddChild(dashboardGroup)
-    remember(dashboardGroup.frame)
+    table.insert(dashboard, dashboardGroup.frame)
 
-    local description = aceGUI:Create("Label")
-    description:SetText(L["WINDOW_DESCRIPTION"])
-    description:SetFontObject(GameFontHighlightLarge)
-    description:SetFullWidth(true)
-    description:SetJustifyH("CENTER")
-    description:SetHeight(46)
-    dashboardGroup:AddChild(description)
-    local heading = aceGUI:Create("Heading")
-    heading:SetText(L["NEWS_PORTAL_TITLE"])
-    heading:SetFullWidth(true)
-    dashboardGroup:AddChild(heading)
-    local liveContent = aceGUI:Create("SimpleGroup")
-    liveContent:SetFullWidth(true); liveContent:SetLayout("List"); dashboardGroup:AddChild(liveContent); remember(liveContent.frame)
+    local identity = aceGUI:Create("SimpleGroup")
+    identity:SetFullWidth(true); identity:SetLayout("Flow"); identity:SetHeight(84); identity.noAutoHeight = true
+    dashboardGroup:AddChild(identity)
+    local specIcon = aceGUI:Create("Icon")
+    specIcon:SetImage(SPEC_FALLBACK_ICON); specIcon:SetImageSize(64, 64); specIcon:SetWidth(78); specIcon:SetHeight(74)
+    specIcon.frame:EnableMouse(false)
+    identity:AddChild(specIcon)
+    local identityText = aceGUI:Create("SimpleGroup")
+    identityText:SetLayout("List"); identityText:SetRelativeWidth(0.82); identityText:SetHeight(70); identityText.noAutoHeight = true
+    identity:AddChild(identityText)
+    local characterName = aceGUI:Create("Label")
+    characterName:SetText(UNKNOWN); characterName:SetFontObject(GameFontHighlightLarge); characterName:SetFullWidth(true); characterName:SetHeight(30)
+    identityText:AddChild(characterName)
+    local specialization = aceGUI:Create("Label")
+    specialization:SetText(UNKNOWN); specialization:SetFontObject(GameFontHighlight); specialization:SetFullWidth(true); specialization:SetHeight(24)
+    identityText:AddChild(specialization)
 
-    local articleFrame = CreateFrame("Frame", nil, root)
-    articleFrame:SetAllPoints(root); articleFrame:Hide()
-    local articleTitle = articleFrame:CreateFontString(nil, "OVERLAY", "GameFontHighlightLarge")
-    articleTitle:SetPoint("TOPLEFT", articleFrame, "TOPLEFT", 28, -72); articleTitle:SetTextColor(0.25, 0.78, 0.92)
-    local articleText = articleFrame:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
-    articleText:SetPoint("TOPLEFT", articleTitle, "BOTTOMLEFT", 0, -24); articleText:SetPoint("RIGHT", articleFrame, "RIGHT", -56, 0)
-    articleText:SetJustifyH("LEFT"); articleText:SetJustifyV("TOP")
-    local back = CreateFrame("Button", nil, articleFrame)
-    back:SetSize(24, 24); back:SetPoint("BOTTOMLEFT", articleFrame, "BOTTOMLEFT", 28, 30)
-    back:SetNormalTexture("Interface\\Buttons\\UI-SpellbookIcon-PrevPage-Up")
-    back:SetPushedTexture("Interface\\Buttons\\UI-SpellbookIcon-PrevPage-Down")
-    back:SetScript("OnClick", function() UI:ShowNewsPortal() end)
-    addTooltip(back, L["NEWS_BACK_TOOLTIP"])
-
-    local entries = {
-        { icon = "Interface\\Icons\\INV_Misc_Note_05", title = L["NEWS_WELCOME_TITLE"], summary = L["NEWS_WELCOME_SUMMARY"], detail = L["NEWS_WELCOME_DETAIL"] },
-        { icon = "Interface\\Icons\\INV_Misc_GroupLooking", title = L["NEWS_MODULES_TITLE"], summary = L["NEWS_MODULES_SUMMARY"], detail = L["NEWS_MODULES_DETAIL"] },
-        { icon = "Interface\\Icons\\INV_Misc_Gear_01", title = L["NEWS_PROFILES_TITLE"], summary = L["NEWS_PROFILES_SUMMARY"], detail = L["NEWS_PROFILES_DETAIL"] },
-    }
-    for _, entry in ipairs(entries) do
-        local card = aceGUI:Create("InlineGroup")
-        card:SetTitle("")
-        card:SetLayout("Flow")
-        card:SetRelativeWidth(0.32)
-        card:SetHeight(133)
-        card.frame:EnableMouse(true)
-        local highlight = CreateFrame("Frame", nil, card.frame, "BackdropTemplate")
-        highlight:SetPoint("TOPLEFT", card.content, "TOPLEFT", -10, 10)
-        highlight:SetPoint("BOTTOMRIGHT", card.content, "BOTTOMRIGHT", 10, -10)
-        highlight:SetBackdrop({ edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border", edgeSize = 12 })
-        highlight:SetBackdropBorderColor(1, 0.82, 0, 0.9)
-        highlight:SetFrameLevel(card.frame:GetFrameLevel() + 2)
-        highlight:Hide()
-        card.frame:SetScript("OnEnter", function() highlight:Show() end)
-        card.frame:SetScript("OnLeave", function() highlight:Hide() end)
-        card.frame:SetScript("OnMouseUp", function(_, button)
-            if button == "LeftButton" then UI:ShowNewsArticle(entry) end
-        end)
-        dashboardGroup:AddChild(card)
-
-        local icon = aceGUI:Create("Icon")
-        icon:SetImage(entry.icon)
-        icon:SetImageSize(58, 58)
-        icon:SetWidth(58)
-        icon:SetHeight(74)
-        icon.image:ClearAllPoints()
-        icon.image:SetPoint("TOPLEFT", icon.frame, "TOPLEFT", 0, 0)
-        icon.frame:EnableMouse(false)
-        for _, region in ipairs({ icon.frame:GetRegions() }) do
-            if region:GetDrawLayer() == "HIGHLIGHT" then region:Hide() end
-        end
-        card:AddChild(icon)
-        local spacer = aceGUI:Create("Label")
-        spacer:SetWidth(8)
-        spacer:SetHeight(74)
-        card:AddChild(spacer)
-
-        local textColumn = aceGUI:Create("SimpleGroup")
-        textColumn:SetLayout("List")
-        textColumn:SetRelativeWidth(0.63)
-        textColumn:SetHeight(74)
-        textColumn.noAutoHeight = true
-        card:AddChild(textColumn)
-
-        local cardTitle = aceGUI:Create("Label")
-        cardTitle:SetText(entry.title)
-        cardTitle:SetFontObject(GameFontNormal)
-        cardTitle:SetFullWidth(true)
-        cardTitle:SetHeight(18)
-        cardTitle:SetJustifyV("TOP")
-        cardTitle.label:SetTextColor(1, 0.82, 0)
-        textColumn:AddChild(cardTitle)
-        local titleSpacer = aceGUI:Create("SimpleGroup")
-        titleSpacer:SetFullWidth(true)
-        titleSpacer:SetHeight(10)
-        titleSpacer.noAutoHeight = true
-        textColumn:AddChild(titleSpacer)
-        local text = aceGUI:Create("Label")
-        text:SetText(entry.summary)
-        text:SetFullWidth(true)
-        text:SetJustifyV("TOP")
-        textColumn:AddChild(text)
-    end
-
-    local modulesTitle = aceGUI:Create("Heading")
-    modulesTitle:SetText(L["MODULE_LIST_TITLE"])
-    modulesTitle:SetFullWidth(true)
-    dashboardGroup:AddChild(modulesTitle)
-    for _, metadata in ipairs(HolyStorm:GetModuleEntries()) do
-        local line = aceGUI:Create("Label")
-        line:SetText(string.format(L["MODULE_LIST_ENTRY"], metadata.displayName, metadata.version))
-        line:SetFullWidth(true)
-        dashboardGroup:AddChild(line)
-    end
-    local commandsTitle = aceGUI:Create("Heading")
-    commandsTitle:SetText(L["COMMAND_LIST_TITLE"])
-    commandsTitle:SetFullWidth(true)
-    dashboardGroup:AddChild(commandsTitle)
-    local commands = {
-        { label = L["COMMAND_OPEN_LABEL"], action = function() UI:Open() end },
-        { label = L["COMMAND_OPTIONS_LABEL"], action = function() HolyStorm:GetModule("Options", true):Open() end },
-        { label = L["COMMAND_HELP_LABEL"], action = function() SlashCmdList.HOLYSTORM("?") end },
-        { label = L["RELOAD_UI_LABEL"], action = ReloadUI },
-    }
-    for index, command in ipairs(commands) do
-        local button = aceGUI:Create("Button")
-        button:SetText(command.label); button:SetFullWidth(true); button:SetCallback("OnClick", command.action); dashboardGroup:AddChild(button)
+    local statistics = aceGUI:Create("SimpleGroup")
+    statistics:SetFullWidth(true); statistics:SetLayout("Flow"); statistics:SetHeight(86); statistics.noAutoHeight = true
+    dashboardGroup:AddChild(statistics)
+    local values = {}
+    for _, definition in ipairs({
+        { "itemLevel", "DASHBOARD_ITEM_LEVEL" },
+        { "mythicPlusRating", "DASHBOARD_MYTHICPLUS_RATING" },
+        { "bestRaid", "DASHBOARD_BEST_RAID" },
+    }) do
+        local column = aceGUI:Create("SimpleGroup")
+        column:SetLayout("List"); column:SetRelativeWidth(0.333); column:SetHeight(76); column.noAutoHeight = true
+        statistics:AddChild(column)
+        local label = aceGUI:Create("Label")
+        label:SetText(L[definition[2]]); label:SetFontObject(GameFontNormal); label:SetFullWidth(true); label:SetJustifyH("CENTER"); label:SetHeight(24)
+        column:AddChild(label)
+        local value = aceGUI:Create("Label")
+        value:SetText(UNKNOWN); value:SetFontObject(GameFontHighlightLarge); value:SetFullWidth(true); value:SetJustifyH("CENTER"); value:SetHeight(34)
+        column:AddChild(value)
+        values[definition[1]] = value
     end
 
     local status = frame:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
@@ -220,9 +158,10 @@ function UI:OnInitialize()
     resize:SetScript("OnMouseUp", function() frame:StopMovingOrSizing(); UI:SaveWindowSize() end)
 
     self.frame, self.content, self.scroll, self.page, self.pages = frame, content, scroll, page, {}
-    self.dashboardElements, self.dashboardContent, self.newsArticleFrame, self.newsArticleTitle, self.newsArticleText, self.windowTitle, self.status = dashboard, liveContent, articleFrame, articleTitle, articleText, title, status
+    self.dashboardElements, self.dashboardWidgets, self.windowTitle, self.status = dashboard, { icon=specIcon, name=characterName, specialization=specialization, itemLevel=values.itemLevel, mythicPlusRating=values.mythicPlusRating, bestRaid=values.bestRaid }, title, status
     self:LoadWindowState()
     self:CreateRightDock()
+    self:RegisterDashboardEvents()
     frame:HookScript("OnShow", function() UI:SetRightDockVisible(true) end)
     frame:HookScript("OnHide", function() UI:SetRightDockVisible(false) end)
     self:SetRightDockVisible(false)
@@ -348,12 +287,9 @@ function UI:ResetWindowSize() HolyStorm.Database:Set("window.size", nil, "profil
 function UI:Open() if self.frame then if not self.frame:IsShown() then self:LoadWindowState() end; self.frame:Show(); self:ShowModules() end end
 function UI:ShowModules() if self.optionsContainer then self.optionsContainer.frame:Hide() end; self:HideRegisteredPages(); self.scroll.frame:Show(); self.page.frame:Show(); self.windowTitle:SetText(L["WINDOW_TITLE"]); self:SetReadyStatus(); self:SetRightDockSelected("home"); self:ShowNewsPortal() end
 function UI:RegisterDashboardProvider(id,provider) if type(id)~="string" or type(provider)~="function" then return false end; self.dashboardProviders[id]=provider; return true end
-function UI:RefreshDashboardProviders()
-    if not self.dashboardContent then return end; self.dashboardContent:ReleaseChildren(); local ids={};for id in pairs(self.dashboardProviders)do ids[#ids+1]=id end;table.sort(ids)
-    for _,id in ipairs(ids)do local ok,entries,unavailable=HolyStorm.Utils.SafeCall("dashboard:"..id,self.dashboardProviders[id]);if ok then if unavailable then local note=LibStub("AceGUI-3.0"):Create("Label");note:SetText(unavailable);note:SetFullWidth(true);self.dashboardContent:AddChild(note)end;for _,entry in ipairs(entries or{})do local item=LibStub("AceGUI-3.0"):Create("Button");item:SetText((entry.title or"")..(entry.summary and("  |cffb8b8b8"..entry.summary.."|r")or""));item:SetFullWidth(true);item:SetCallback("OnClick",entry.onClick);self.dashboardContent:AddChild(item)end end end
-end
-function UI:ShowNewsPortal() self.newsArticleFrame:Hide(); for _, element in ipairs(self.dashboardElements) do element:Show() end; self:RefreshDashboardProviders() end
-function UI:ShowNewsArticle(entry) for _, element in ipairs(self.dashboardElements) do element:Hide() end; self.newsArticleTitle:SetText(entry.title); self.newsArticleText:SetText(entry.detail); self.newsArticleFrame:Show(); self.scroll:SetScroll(0) end
+function UI:RefreshDashboardProviders() return self:RefreshDashboard() end
+function UI:ShowNewsPortal() for _,element in ipairs(self.dashboardElements or{})do element:Show()end;return self:RefreshDashboard()end
+function UI:ShowNewsArticle() return self:ShowNewsPortal() end
 function UI:ShowOptions(appName)
     if not self.optionsContainer then
         self.optionsContainer = LibStub("AceGUI-3.0"):Create("SimpleGroup")

@@ -67,6 +67,19 @@ assert(C:GetBestProgress(identityRaid,{instanceId=300,name="Raid Three"})==nil,"
 assert(C:GetDifficultyById(7).id=="LFR"and C:GetDifficultyById(14).id=="NORMAL"and C:GetDifficultyById(15).id=="HEROIC"and C:GetDifficultyById(16).id=="MYTHIC"and C:GetDifficultyById(33).id=="TIMEWALKING")
 assert(C:GetDifficultyColor("LFR").r==1 and C:GetDifficultyColor("NORMAL").g==1 and C:GetDifficultyColor("HEROIC").b==1 and C:GetDifficultyColor("MYTHIC").r==.70)
 
+records.A.mythicPlus={seasonId=18,overallScore=2500,scoreDataReady=true}
+records.A.raid={catalogReady=true,raids={{id=100,name="Current One",order=1,bosses={{},{}}},{id=200,name="Current Two",order=2,bosses={{},{},{}}}},lifetime={bosses={
+ currentOne={id=1,name="Current Boss One",raidInstanceId=100,raidName="Current One",difficulties={NORMAL={kills=2,source="blizzard-statistic",statisticId=21}}},
+ currentTwo={id=2,name="Current Boss Two",raidInstanceId=200,raidName="Current Two",difficulties={HEROIC={kills=1,source="blizzard-statistic",statisticId=22}}},
+ oldRaid={id=3,name="Old Boss",raidInstanceId=999,raidName="Old Expansion",difficulties={MYTHIC={kills=10,source="blizzard-statistic",statisticId=23}}},
+}}}
+local dashboard=C:GetDashboardSummary("A")
+assert(dashboard.name=="Alpha"and dashboard.coloredName=="|cffff80ccAlpha|r"and dashboard.specName=="Retribution"and dashboard.specIcon==98765,"dashboard identity uses resolved short name, safe class color and stored specialization")
+assert(dashboard.itemLevel==710 and dashboard.mythicPlusRating==2500,"dashboard query reuses Equipment and Mythic+ snapshots")
+assert(dashboard.bestRaid.difficulty=="HEROIC"and dashboard.bestRaid.killed==1 and dashboard.bestRaid.total==3 and dashboard.bestRaid.raidName=="Current Two","dashboard best raid uses established priority across only current-expansion catalog raids")
+records.C.equipment={itemLevel=0,slots={}};local missingDashboard=C:GetDashboardSummary("C");assert(missingDashboard.itemLevel==nil and missingDashboard.mythicPlusRating==nil and missingDashboard.bestRaid==nil,"dashboard query leaves unavailable producer data unknown")
+records.A.raid=nil
+
 HolyStorm.Tasks.registry["Character.Refresh"]={};assert(C:RequestRefresh("A",{"equipment"},"TEST"));assert(C:RequestRefresh("A",{"raid"},"TEST_MERGE"));local queued=HolyStorm.Tasks.queued[1];assert(queued.options.mergeKey=="A"and queued.options.metadata.characterUUID=="A");assert(C:ConsumeRefresh("A"));assert(refreshes[#refreshes].guid=="A"and refreshes[#refreshes].blocks[1]=="equipment"and refreshes[#refreshes].blocks[2]=="raid","refresh block coalescing")
 local queueCount=#HolyStorm.Tasks.queued;assert(C:RequestRefresh("C",{"stats"},"CHARACTER_OPEN"));assert(#HolyStorm.Tasks.queued==queueCount,"current blocks are not refreshed on open")
 HolyStorm.Tasks.registry["Character.Refresh"]=nil;assert(C:RequestRefresh("B",{"raid"},"TEST"));assert(refreshes[#refreshes].guid=="B"and refreshes[#refreshes].blocks[1]=="raid")

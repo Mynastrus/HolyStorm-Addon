@@ -19,8 +19,8 @@ local function className(classFile)return(LOCALIZED_CLASS_NAMES_MALE and LOCALIZ
 local function getClassColor(classFile)return(C_ClassColor and C_ClassColor.GetClassColor and C_ClassColor.GetClassColor(classFile))or(RAID_CLASS_COLORS and RAID_CLASS_COLORS[classFile])end
 local classIconTexture="Interface\\GLUES\\CHARACTERCREATE\\UI-CHARACTERCREATE-CLASSES"
 local classIconFallback="Interface\\Icons\\INV_Misc_QuestionMark"
-local function classColoredName(context)
- local text=tostring(context and(context.fullName or context.name)or"");local classFile=context and context.classFile;local color=getClassColor(classFile);if not color then return text end
+local function classColoredName(context,value)
+ local text=tostring(value or(context and(context.fullName or context.name))or"");local classFile=context and context.classFile;local color=getClassColor(classFile);if not color then return text end
  if color.WrapTextInColorCode then return color:WrapTextInColorCode(text)end;local hex=color.GenerateHexColor and color:GenerateHexColor();if type(hex)=="string"and(#hex==6 or#hex==8)then return"|c"..(#hex==6 and"ff"or"")..hex..text.."|r"end;return string.format("|cff%02x%02x%02x%s|r",math.floor((color.r or 1)*255+.5),math.floor((color.g or 1)*255+.5),math.floor((color.b or 1)*255+.5),text)
 end
 local function shortName(value)return tostring(value or""):match("^([^%-]+)")or tostring(value or"")end
@@ -134,6 +134,24 @@ function CharacterUI:GetBestProgress(snapshot,raidIdentity)
  local best;for _,key in ipairs({"LFR","NORMAL","HEROIC","MYTHIC"})do if totals[key]and totals[key]>0 then best={difficulty=key,killed=totals[key],total=totals[key]}end end
  local total=0;for _,raid in ipairs(type(snapshot)=="table"and snapshot.raids or{})do if self:RaidIdentityMatches(raid,raidIdentity)then total=math.max(total,#(raid.bosses or{}))end end;if best then best.total=total>0 and total or best.killed end
  return best
+end
+function CharacterUI:GetBestCurrentRaidProgress(snapshot)
+ local best
+ for index,raid in ipairs(type(snapshot)=="table"and type(snapshot.raids)=="table"and snapshot.raids or{})do
+  local progress=self:GetBestProgress(snapshot,raid);local definition=progress and self.raidDifficulties[progress.difficulty]
+  if progress and definition then
+   local candidate={difficulty=progress.difficulty,killed=progress.killed,total=progress.total,raidName=raid.name,raidInstanceId=raid.id,raidOrder=raid.order or index,difficultyOrder=definition.order}
+   if not best or candidate.difficultyOrder>best.difficultyOrder or(candidate.difficultyOrder==best.difficultyOrder and candidate.killed>best.killed)then best=candidate end
+  end
+ end
+ return best
+end
+function CharacterUI:GetDashboardSummary(characterUUID)
+ characterUUID=characterUUID or(UnitGUID and UnitGUID("player"));local context=characterUUID and self:ResolveContext(characterUUID)
+ if not context then return nil end
+ local equipment=self:GetSnapshot(characterUUID,"equipment");local mythicPlus=self:GetSnapshot(characterUUID,"mythicPlus");local raid=self:GetSnapshot(characterUUID,"raid")
+ local itemLevel=type(equipment)=="table"and tonumber(equipment.itemLevel)or nil;if itemLevel and itemLevel<=0 then itemLevel=nil end
+ return{characterUUID=characterUUID,name=context.name,coloredName=classColoredName(context,context.name),classFile=context.classFile,className=context.className,specName=context.spec and context.spec.name,specIcon=context.spec and context.spec.icon,itemLevel=itemLevel,mythicPlusRating=type(mythicPlus)=="table"and tonumber(mythicPlus.overallScore)or nil,bestRaid=self:GetBestCurrentRaidProgress(raid)}
 end
 function CharacterUI:CanUseTab(definition)
  if definition.permission and HolyStorm.Policy and not HolyStorm.Policy:Can(definition.permission)then return false,"PERMISSION"end
