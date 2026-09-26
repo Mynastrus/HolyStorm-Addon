@@ -17,6 +17,7 @@ local function summaryRows(context)
   {label=L["LEVEL"],value=display(context.level)},
   {label=L["COLUMN_CLASS"],value=display(context.className)},
   {label=L["SPECIALIZATION"],value=display(context.spec and context.spec.name)},
+  {label=L["RACE"],value=display(record.race)},
   {label=L["FACTION"],value=display(faction and L["FACTION_"..faction:upper()])},
  }
  for _,section in ipairs(C:GetSummarySections())do
@@ -43,7 +44,7 @@ local function statTotal(value)
  if type(value)~="table"then return display(nil)end
  local rating=tonumber(value.rating);local percent=tonumber(value.percent)
  if rating==nil and percent==nil then return display(nil)end
- if percent~=nil then return string.format("%s  (%.1f%%)",display(rating or 0),percent)end
+ if percent~=nil then return string.format("%s  (%.1f%%)",display(rating),percent)end
  return display(rating)
 end
 local function buildStats(parent)
@@ -124,6 +125,7 @@ function C:RefreshTab(id)
 end
 function C:SelectTab(id)
  if HolyStorm.Tooltips then HolyStorm.Tooltips:Release("raid-best")end
+ if HolyStorm.Tooltips then HolyStorm.Tooltips:Release("raid-weekly")end
  if HolyStorm.Tooltips then HolyStorm.Tooltips:Release("mythicplus-best-run")end
  local definition=self.tabs[id]or self.tabs.summary;if not definition then return false end;id=definition.id;self.activeTab=id
  for tabId,view in pairs(Page.views)do view.frame:SetShown(tabId==id)end;Page:UpdateTabVisuals();if not Page.views[id]then self:RefreshTab(id)end;self:LayoutTabView(Page.views[id]);Page.views[id].frame:Show();if Page.dirty[id]then self:RefreshTab(id)end;self:RefreshHeader();return true

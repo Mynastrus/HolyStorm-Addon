@@ -251,17 +251,43 @@ Die sieben regulären Tabs Summary, Equipment, Mythic+, Raid, Delves, Stats und
 Twinks gehören deshalb fest zum Characters-Addon und bleiben in dieser
 Reihenfolge registriert. Optionale Feature-Addons sind ausschließlich Producer:
 Sie erfassen und validieren Snapshots und übergeben sie an Core/Character
-Storage. Die Overview ist der Consumer und rendert vorhandene historische oder
+Storage. Die Overview ist der Consumer und rendert lokal vorhandene oder
 synchronisierte Blöcke auch dann, wenn der jeweilige Producer nicht installiert,
-geladen oder aktiviert ist. Empfangs- und Sync-Regeln bestimmen bereits, welche
-Daten lokal vorliegen dürfen; diese sieben Read-Tabs führen keine zweite
+geladen oder aktiviert ist. Mythic+ zeigt im Haupttab nur die aktuelle Saison.
+Empfangs- und Sync-Regeln bestimmen bereits, welche Daten lokal vorliegen dürfen;
+diese sieben Read-Tabs führen keine zweite
 Display-Permission- oder Modulverfügbarkeitsprüfung aus.
 
-Summary bleibt eine kompakte Tabelle aus Identity, Level, Klasse,
+Summary bleibt eine kompakte Tabelle aus Identity, Level, Klasse, Race,
 Spezialisierung, Fraktion und registrierten High-Level-Abschnitten. Equipment,
 Stats, Mythic+, Raid, Delves, Twinks und Gildenerfolge verwenden dieselbe
 zentrale Table. Feature-Adapter dürfen Cell-Renderer für fachliche Darstellung
 besitzen, aber keine eigenen Row-, Grid-, Scroll-, Tab- oder Width-Engines.
+
+Delves zeigt nur Felder aus dem validierten Producer-Snapshot v2: Season,
+abgeschlossene Weekly-Reward-Aktivitäten, verfügbare Wochenbelohnung und die
+pro Aktivität gespeicherten Progress-, Threshold-, Level- und Reward-Level-Werte.
+Bountiful/Nemesis, Companion-Details, Treasure Map, Flute, Crest-Progress und
+Limited-Rewards erscheinen als unbekannt, solange der Snapshot diese Werte
+ausdrücklich als nicht verfügbar markiert. Schlüssel-Fragmente, abgeschlossene
+Schlüssel und andere nicht gespeicherte Werte werden nicht angezeigt.
+
+Stats rendert das aktuelle Producer-Schema vollständig: Strength, Agility,
+Stamina, Intellect, Armor sowie Critical Strike, Haste, Mastery und Versatility.
+Primärwerte verwenden gespeicherte Base-/Effective-Werte; Additional ist deren
+Delta. Sekundärwerte besitzen nur Rating/Percent und bleiben deshalb bei Base
+und Additional unbekannt. Ein vorhandener Percent-Wert wandelt einen fehlenden
+Rating-Wert nicht in null um.
+
+Das optionale Achievements-Feature registriert seine Character-Tabelle nur,
+wenn das Feature geladen ist. Ein Tab-weites `achievement-view`-Gate entfällt;
+die Sichtbarkeitsprüfung im Achievement-Service bleibt bestehen. Raid-Bosslisten
+pro Wochen-Lockout und Mythic+-Details verwenden die zentrale LibQTip-Table mit
+Owner-Lifecycle. Equipment-Items behalten den nativen WoW-Tooltip.
+
+Raid-Zusammenfassung und zeilenweise Bestwerte verwenden dieselbe stabile
+Raid-Identität wie der Best-Tooltip. Lebenszeit-Kills verschiedener Raids werden
+nicht zu einem künstlichen Fortschritt zusammengezählt.
 
 Equipment bewahrt immer den vollständigen gespeicherten Item-Link. Für
 Truncation wird ausschließlich das Label mit `ReplaceHyperlinkLabel` ersetzt;
@@ -284,8 +310,9 @@ stabil, während Namen den verfügbaren Rest erhalten und gegebenenfalls
 gekürzt werden. Ein fehlerhafter Feature-Adapter wird tabweise isoliert und
 durch einen lokalisierten Empty/Error-State ersetzt.
 
-Character Overview besitzt weiterhin keine eigene Zugriffs-Permission. Nur
-einzelne Daten-Tabs prüfen ihre bereits vorhandenen fachlichen Permissions.
+Character Overview besitzt weiterhin keine eigene Zugriffs-Permission. Die
+regulären Stored-Data-Tabs fügen keine fachliche Permission-Prüfung hinzu;
+Achievement-Service-Sichtbarkeit bleibt im Achievements-Datenbereich verankert.
 
 Der Administration-Host registriert sich als zentrale View und erzeugt seine
 Navigation über `CreateTreeGroup`. Host und Sections verwenden denselben

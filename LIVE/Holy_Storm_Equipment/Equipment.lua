@@ -76,12 +76,6 @@ HolyStorm:RegisterModule(metadata,function(Module)
   local workflowId,state=HolyStorm.Workflows:Request(WORKFLOW,{triggerSource=triggerSource or"MANUAL",debounce=debounce or 1,context={sync=sync==true}})
   HolyStorm.Tasks:RecordEvent(triggerSource or"MANUAL","Equipment",{workflowId=workflowId,triggeredTask="Equipment.Scan"});return workflowId,state
  end
- function Module:RefreshPage()
-  if not self.page or not self.page:IsShown()then return end;local r=HolyStorm.Data.CharacterStore:Get(UnitGUID("player"));local lines={};local _,active=HolyStorm.Workflows:IsRunning(WORKFLOW);local workflowStatus=active and active.status
-  if not workflowStatus then for _,workflow in ipairs(HolyStorm.Workflows:GetHistory())do if workflow.workflowType==WORKFLOW then workflowStatus=workflow.status;break end end end
-  if workflowStatus then lines[#lines+1]=string.format(L["WORKFLOW_STATUS"],L["STATUS_"..workflowStatus]or workflowStatus)end
-  for _,slot in ipairs(SLOTS)do local item=r and r.equipment and r.equipment.slots[slot];lines[#lines+1]=string.format("%d: %s",slot,item and item.link or L["EMPTY_SLOT"])end;self.content:SetText(table.concat(lines,"\n"))
- end
  function Module:OnInitialize()
   self:RegisterWorkflow()
   HolyStorm.CharacterScans:RegisterProvider("Equipment",{block="equipment",capability="character.scan.equipment",addonId="equipment",order=10,request=function(sync,reason)return Module:Request(sync,reason or"CHARACTER_SCAN",1)end})
