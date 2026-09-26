@@ -13,6 +13,7 @@ HolyStorm.Data, HolyStorm.Modules = {}, {}
 
 function HolyStorm:OnInitialize()
     self.Database:Initialize()
+    self.Libraries:Initialize()
     self.Logger:Initialize(self.Database:Get("debug", "profile") == true)
     self.Events:Initialize(); self.AddonLoader:Initialize(); self.State:Initialize(); self.Tasks:Initialize(); self.Tasks:BeginStartup("INITIALIZE"); self.Workflows:Initialize(); self.Actions:Initialize()
     self.PlayerData:Initialize(); self.Data.PlayerStore:Initialize(); self.Data.CharacterStore:Initialize(); self.Data.GuildStore:Initialize(); self.CharacterScans:Initialize()

@@ -14,6 +14,10 @@ Der produktive Addon-Baum liegt in `LIVE/Holy_Storm`. `Core` enthält gemeinsam 
 
 `Logger` ist die zentrale strukturierte Logging-Infrastruktur. Einträge enthalten Level, Modul, Kategorie, Nachricht und begrenzte Diagnosemetadaten. UI, Sync, Task- und Permission-Code erzeugen keine zweite Log-Datenbank. Technische Logeinträge werden nicht in den Spielerchat gespiegelt; absichtliche Benutzerhinweise verwenden die zentrale Command-Ausgabe.
 
+## Infrastructure Libraries
+
+Core centrally loads LibDataBroker-1.1, LibDBIcon-1.0, LibSharedMedia-3.0, AceComm-3.0/ChatThrottleLib, AceCommQueue-1.0, and LibGuildRoster-1.0. `HolyStorm.Libraries` exposes loaded-library versions, shared-media access, and the one canonical Holy Storm launcher. LibDBIcon presents that launcher on the minimap and stores visibility/position in the existing profile database. LibQTip-1.0 remains owned by the UI addon for structured/multi-column tooltips. AceCommQueue is available for future communication work; current Sync behavior is unchanged. LibGuildRoster is loaded for future peer/roster evaluation and is not Holy Storm's authoritative guild model. DeltaSync is NOT integrated yet.
+
 ## Persistence und Datenzugriff
 
 `Persistence/Schema.lua`, `Migrations.lua` und `Database.lua` definieren und initialisieren AceDB-Daten. `Database` bleibt während der schrittweisen Migration das Low-Level-Backend für AceDB und die drei vorhandenen SavedVariables. Der in `Database.lua` vorhandene `HolyStorm.DataManager` ist seit Contract-Version 1 die technische Zielgrenze für neue Persistence-Integrationen; es gibt keine zweite DataManager-Datei oder parallele Datenbankinstanz. `ConfigManager` und noch nicht migrierte Stores verwenden weiterhin die bestehende Database-/SavedVariable-Infrastruktur.

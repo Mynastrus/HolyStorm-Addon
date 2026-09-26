@@ -30,10 +30,17 @@ function Options:OnInitialize()
                 name = L["GENERAL_SETTINGS"],
                 order = 1,
                 args = {
+                    showMinimapIcon = {
+                        type = "toggle",
+                        name = L["SHOW_MINIMAP_ICON"],
+                        order = 1,
+                        get = function() return HolyStorm.Libraries:GetMinimapVisible() end,
+                        set = function(_, value) HolyStorm.Libraries:SetMinimapVisible(value) end,
+                    },
                     savePosition = {
                         type = "toggle",
                         name = L["SAVE_WINDOW_POSITION"],
-                        order = 1,
+                        order = 2,
                         get = function()
                             return HolyStorm.Database:Get("window.savePosition", "profile")
                         end,
@@ -53,7 +60,7 @@ function Options:OnInitialize()
                     saveSize = {
                         type = "toggle",
                         name = L["SAVE_WINDOW_SIZE"],
-                        order = 2,
+                        order = 3,
                         get = function()
                             return HolyStorm.Database:Get("window.saveSize", "profile")
                         end,
@@ -73,7 +80,7 @@ function Options:OnInitialize()
                     resetPosition = {
                         type = "execute",
                         name = L["RESET_WINDOW_POSITION"],
-                        order = 3,
+                        order = 4,
                         func = function()
                             local uiModule = HolyStorm:GetModule("UI", true)
                             if uiModule then
@@ -84,7 +91,7 @@ function Options:OnInitialize()
                     resetSize = {
                         type = "execute",
                         name = L["RESET_WINDOW_SIZE"],
-                        order = 4,
+                        order = 5,
                         func = function()
                             local uiModule = HolyStorm:GetModule("UI", true)
                             if uiModule then

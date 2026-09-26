@@ -7,6 +7,7 @@ HolyStorm.Data.Schema = {
         profile = {
             enabled = true, debug = false,
             optionalModules = {},
+            minimap = { showIcon = true, minimapPos = 220 },
             window = { savePosition = false, saveSize = false },
             logs = { autoScroll = true, level = "ALL", module = "ALL", category = "ALL", direction = "ALL", event = "ALL", search = "", maxEntries = 2000, columns = {} },
             taskManager = { historyLimit = 250, workflowHistoryLimit = 100, eventHistoryLimit = 300, triggerHistoryLimit = 20, columns = {}, filters = {} },
