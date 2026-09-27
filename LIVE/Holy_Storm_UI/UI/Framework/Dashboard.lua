@@ -173,8 +173,8 @@ end
 
 local function createWidget(parent)
  local frame=panel(parent);frame.entries={}
- frame.title=frame:CreateFontString(nil,"OVERLAY","GameFontNormal");frame.title:SetPoint("TOPLEFT",frame,"TOPLEFT",12,-9);frame.title:SetTextColor(1,.78,.18)
- frame.icon=frame:CreateTexture(nil,"ARTWORK");frame.icon:SetSize(20,20);frame.icon:SetPoint("RIGHT",frame.title,"LEFT",-5,0)
+ frame.title=frame:CreateFontString(nil,"OVERLAY","GameFontNormal");frame.title:SetPoint("TOPLEFT",frame,"TOPLEFT",38,-9);frame.title:SetTextColor(1,.78,.18,1)
+ frame.icon=frame:CreateTexture(nil,"ARTWORK");frame.icon:SetSize(20,20);frame.icon:SetPoint("TOPLEFT",frame,"TOPLEFT",12,-7)
  frame.more=CreateFrame("Button",nil,frame);frame.more:SetSize(84,20);frame.more:SetPoint("TOPRIGHT",frame,"TOPRIGHT",-10,-7)
  frame.more.text=frame.more:CreateFontString(nil,"OVERLAY","GameFontHighlightSmall");frame.more.text:SetPoint("RIGHT");frame.more.text:SetTextColor(.25,.78,.92);frame.more.text:SetText(L["DASHBOARD_VIEW_ALL"])
  frame.more:SetScript("OnEnter",function(owner)owner.text:SetTextColor(1,.82,.25)end);frame.more:SetScript("OnLeave",function(owner)owner.text:SetTextColor(.25,.78,.92)end)
@@ -284,13 +284,13 @@ function UI:LayoutDashboard()
 end
 
 function UI:UpdateProfilePanel(model)
- local frame=self.profilePanel;frame.title:SetText(L["DASHBOARD_PROFILE_TITLE"]);frame.title:ClearAllPoints();frame.title:SetPoint("TOPLEFT",frame,"TOPLEFT",12,-8)
+ local frame=self.profilePanel;frame:SetAlpha(1);frame.title:SetText(L["DASHBOARD_PROFILE_TITLE"]);frame.title:SetTextColor(1,.78,.18,1);frame.title:SetAlpha(1);frame.title:ClearAllPoints();frame.title:SetPoint("TOPLEFT",frame,"TOPLEFT",12,-8)
  for _,row in ipairs(frame.rows)do row.icon:Hide();row.text:Hide()end
  local rows=model.profileRows or{}
  for index,value in ipairs(rows)do
   local row=frame.rows[index]
   if not row then row={icon=frame:CreateTexture(nil,"ARTWORK"),text=frame:CreateFontString(nil,"OVERLAY","GameFontHighlightSmall")};row.icon:SetSize(17,17);frame.rows[index]=row end
-  row.icon:ClearAllPoints();row.icon:SetPoint("LEFT",frame,"LEFT",12,-(25+(index-1)*17));row.text:ClearAllPoints();row.text:SetPoint("LEFT",row.icon,"RIGHT",6,0);row.text:SetPoint("RIGHT",frame,"RIGHT",-10,0);row.text:SetJustifyH("LEFT");row.text:SetWordWrap(false);row.text:SetText(value.text);row.text:SetTextColor(.72,.84,.96)
+  row.icon:ClearAllPoints();row.icon:SetPoint("LEFT",frame,"LEFT",12,-(25+(index-1)*17));row.text:ClearAllPoints();row.text:SetPoint("LEFT",row.icon,"RIGHT",6,0);row.text:SetPoint("RIGHT",frame,"RIGHT",-10,0);row.text:SetJustifyH("LEFT");row.text:SetWordWrap(false);row.text:SetText(value.text);row.text:SetTextColor(.92,.95,1,1);row.text:SetAlpha(1)
   if value.role then row.icon:SetTexture("Interface\\LFGFrame\\UI-LFG-ICON-ROLES");row.icon:SetTexCoord(unpack(value.role))elseif value.kind=="birthday"then row.icon:SetTexture("Interface\\Calendar\\UI-Calendar-Event-PVP");row.icon:SetTexCoord(0,1,0,1)elseif value.kind=="name"then row.icon:SetTexture("Interface\\FriendsFrame\\UI-Toast-FriendOnlineIcon");row.icon:SetTexCoord(0,1,0,1)else row.icon:SetTexture("Interface\\Icons\\INV_Misc_QuestionMark");row.icon:SetTexCoord(0,1,0,1)end
   row.icon:Show();row.text:Show()
  end
@@ -318,7 +318,7 @@ end
 
 function UI:LayoutProviderWidget(frame,provider,height)
  frame.title:SetText(provider.definition.title or provider.id);frame.icon:SetTexture(provider.definition.icon or"Interface\\Icons\\INV_Misc_Note_05");frame.more.text:SetText(provider.definition.moreLabel or L["DASHBOARD_VIEW_ALL"]);frame.more:SetShown(type(provider.definition.moreAction)=="function");frame.more:SetScript("OnClick",function()provider.definition.moreAction()end)
- frame.title:SetPoint("RIGHT",frame.more,"LEFT",-5,0)
+ frame.title:ClearAllPoints();frame.title:SetPoint("TOPLEFT",frame,"TOPLEFT",38,-9);frame.title:SetPoint("RIGHT",frame.more,"LEFT",-5,0);frame.title:SetTextColor(1,.78,.18,1);frame.title:SetAlpha(1)
  local rows=math.min(4,#provider.items);local rowHeight=math.max(26,math.min(31,(height-32)/math.max(1,rows)))
  for index=1,rows do
   local item=provider.items[index];local row=frame.entries[index]
@@ -386,7 +386,7 @@ function UI:RefreshDashboard()
  if not self.dashboardCanvas then return false end
  local model=self:BuildDashboardModel();self.dashboardModel=model;local widgets=self.dashboardWidgets
  widgets.name:SetText(model.name);widgets.specialization:SetText(model.specification);widgets.specIcon:SetImage(model.specIcon or"Interface\\Icons\\INV_Misc_QuestionMark")
- local details={};if model.level then details[#details+1]=string.format(L["DASHBOARD_LEVEL"],model.level)end;if text(model.realm)then details[#details+1]=model.realm end;if text(model.guildRank)then details[#details+1]=string.format(L["DASHBOARD_GUILD_RANK"],model.guildRank)end
+ local details={};if model.level then details[#details+1]=string.format(L["DASHBOARD_LEVEL"],model.level)end;if text(model.realm)then details[#details+1]=model.realm end;if text(model.guildRank)then details[#details+1]=string.format(L["DASHBOARD_GUILD_RANK_SHORT"],model.guildRank)end
  widgets.details:SetText(table.concat(details,"  •  "))
  if model.guid and UnitGUID and model.guid==UnitGUID("player")and SetPortraitTexture then
   local ok=pcall(SetPortraitTexture,widgets.classIcon.image,"player");if not ok then widgets.classIcon:SetImage(CLASS_FALLBACK)end
