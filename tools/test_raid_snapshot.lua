@@ -93,14 +93,13 @@ local expired=module:Collect();assert(#expired.lockouts==0,"a fresh raid snapsho
 assert(expired.lifetime.bosses.historic.difficulties.MYTHIC.kills==7 and expired.lifetime.seen.historic,"historical raid best data survives while weekly lockouts are rebuilt")
 
 local statistics={
- {id=7001,name="Boss A kills (Normal Raid One)",assetId=9501,value="27"},
- {id=7002,name="Boss A kills (Heroic Raid One)",assetId=9501,value="1"},
- {id=7003,name="Boss A kills (Mythic Raid One)",assetId=9501,value="--"},
- {id=7004,name="Boss B kills (Normal Raid One)",assetId=9502,value="4"},
- {id=7005,name="Boss B kills (Normal Raid One)",assetId=9502,value="5"},
- {id=7006,name="Boss A kills (Raid Finder Other Raid)",assetId=9501,value="99"},
+ {id=7001,name="Boss A (Normal: Raid One)",value="27"},
+ {id=7002,name="Boss A (Heroic: Raid One)",value="1"},
+ {id=7003,name="Boss A (Mythic: Raid One)",value="--"},
+ {id=7004,name="Boss B (Normal: Raid One)",value="4"},
+ {id=7005,name="Boss B (Normal: Raid One)",value="5"},
+ {id=7006,name="Boss A (Raid Finder: Other Raid)",value="99"},
 }
-function EJ_GetCreatureInfo(index,encounterId)if index~=1 then return nil end;if encounterId==501 then return 9501 elseif encounterId==502 then return 9502 end end
 function GetStatisticsCategoryList()return{900}end
 function GetCategoryNumAchievements(categoryId)assert(categoryId==900);return#statistics end
 function GetStatistic(categoryOrId,index)
@@ -108,8 +107,7 @@ function GetStatistic(categoryOrId,index)
  for _,statistic in ipairs(statistics)do if statistic.id==categoryOrId then return statistic.value end end
 end
 function GetAchievementInfo(statisticId)for _,statistic in ipairs(statistics)do if statistic.id==statisticId then return statistic.id,statistic.name end end end
-function GetAchievementNumCriteria(statisticId)return GetAchievementInfo(statisticId)and 1 or 0 end
-function GetAchievementCriteriaInfo(statisticId)for _,statistic in ipairs(statistics)do if statistic.id==statisticId then return statistic.name,0,false,0,0,nil,0,statistic.assetId end end end
+GetAchievementNumCriteria=nil;GetAchievementCriteriaInfo=nil
 function GetDifficultyInfo(difficultyId)return({[17]="Raid Finder",[14]="Normal",[15]="Heroic",[16]="Mythic"})[difficultyId]end
 
 oldSnapshot=nil;instances={};module.lifetimeStatisticCandidates=nil;logs={}

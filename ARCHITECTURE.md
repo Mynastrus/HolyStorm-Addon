@@ -115,6 +115,8 @@ Feature-Pakete wie Equipment, MythicPlus, Raids, Delves und POI werden als separ
 
 The Raid character snapshot keeps lifetime boss kills from Blizzard's Statistics API separate from the weekly lockout returned by the Encounter Journal. Lifetime values are collected for LFR, Normal, Heroic, and Mythic and travel in the existing generic character Sync block; weekly lockout data remains a separate field. A boss's Best result is the highest difficulty with a verified positive lifetime count, and its displayed count belongs to that difficulty. Unavailable Statistics data stays unknown; it is not inferred from weekly lockouts. For remote characters the UI uses only the synchronized snapshot and does not substitute the local client's Statistics.
 
+`RAID_STATISTICS.md` documents the current Statistics row-to-EJ mapping, its diagnostic limits, provenance, and future raid maintenance.
+
 Locale keys are stable ASCII identifiers and must never be derived from translated labels. Any key prefix supplied by a feature locale proxy is applied exactly once; Raid tooltip headers reuse the canonical Boss/Best/Kills keys. The offline localization contract test checks enUS/deDE parity, statically discoverable requests, duplicate conflicts, and known mojibake patterns. Runtime-computed keys remain outside its static guarantee and need explicit contract tests.
 
 ## Persistence schema and cleanup contract

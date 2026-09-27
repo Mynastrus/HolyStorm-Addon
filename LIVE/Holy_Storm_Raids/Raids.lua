@@ -7,7 +7,11 @@ HolyStorm:RegisterModule(metadata,function(Module)
  HolyStorm:ApplyModuleMetadata(Module,metadata)
  local difficultyKeys={[7]="LFR",[17]="LFR",[14]="NORMAL",[15]="HEROIC",[16]="MYTHIC",[33]="TIMEWALKING"};local difficultyOrder={LFR=1,NORMAL=2,HEROIC=3,MYTHIC=4,TIMEWALKING=5}
  local lifetimeDifficultyIds={LFR=17,NORMAL=14,HEROIC=15,MYTHIC=16};local lifetimeDifficultyOrder={"LFR","NORMAL","HEROIC","MYTHIC"}
- local function raidKey(name)return type(name)=="string"and name:lower():gsub("[%s%p%c]+","")or nil end
+ local function raidKey(name)
+  if type(name)~="string"then return nil end
+  local normalized=(name:gsub("\194\160"," "):gsub("’", "'")):lower():gsub("[%s%p%c]+","")
+  return normalized
+ end
  local requiredJournalAPIs={{"EJ_GetNumTiers","tier enumeration"},{"EJ_SelectTier","tier selection"},{"EJ_GetInstanceByIndex","instance enumeration"},{"EJ_SelectInstance","instance selection"},{"EJ_GetEncounterInfoByIndex","encounter enumeration"},{"EJ_GetInstanceInfo","instance metadata"}}
  local function readJournalAPIs()
   local api={};for _,definition in ipairs(requiredJournalAPIs)do local name,label=definition[1],definition[2];local fn=_G[name];if type(fn)~="function"then return nil,"Raid catalog unavailable: missing EJ "..label.." API",name end;api[name]=fn end
@@ -40,7 +44,17 @@ HolyStorm:RegisterModule(metadata,function(Module)
  end
  local function statisticValue(raw)
   if type(raw)=="number"then return raw>=0 and raw or nil end;if type(raw)~="string"or raw==""or raw=="--"then return nil end
+  if not raw:match("^[%d%s,%.]+$")then return nil end
   local digits=raw:gsub("[^%d]","");local value=digits~=""and tonumber(digits)or nil;return value and value>=0 and value or nil
+ end
+ local function parseStatisticLabel(name)
+  -- Blizzard's Statistics UI names the row with GetAchievementInfo(statisticId).
+  -- Criteria metadata is not part of that display/value contract.
+  if type(name)~="string"then return nil,"MISSING_STATISTIC_NAME"end
+  local boss,difficulty,raid=name:match("^%s*(.-)%s*%(%s*(.-)%s*:%s*(.-)%s*%)%s*$")
+  local bossToken,difficultyToken,raidToken=raidKey(boss),raidKey(difficulty),raidKey(raid)
+  if not bossToken or bossToken==""or not difficultyToken or difficultyToken==""or not raidToken or raidToken==""then return nil,"UNKNOWN_STATISTIC_FORMAT"end
+  return{bossToken=bossToken,difficultyToken=difficultyToken,raidToken=raidToken}
  end
  local function safeStatisticValue(raw)
   local ok,value=pcall(statisticValue,raw);return ok and value or nil
@@ -82,8 +96,8 @@ HolyStorm:RegisterModule(metadata,function(Module)
    local cached=HolyStorm.Utils.DeepCopy(self.lifetimeStatisticAudit);cached.cached=true;return self.lifetimeStatisticCandidates,nil,cached
   end
   if manual then self.lifetimeStatisticCandidates,self.lifetimeStatisticAudit,self.lifetimeStatisticKey=nil,nil,nil end
-  local audit={categories=0,entries=0,statisticIds=0,candidates=0,relevantCategories=0,relevantEntries=0,discoveryRejected=0,apiFailures=0}
-  if type(GetStatisticsCategoryList)~="function"or type(GetCategoryNumAchievements)~="function"or type(GetStatistic)~="function"or type(GetAchievementInfo)~="function"or type(GetAchievementNumCriteria)~="function"or type(GetAchievementCriteriaInfo)~="function"then return nil,"STATISTIC_API_UNAVAILABLE",audit end
+  local audit={mapping="CURRENT_CLIENT_STATISTIC_LABEL",categories=0,entries=0,statisticIds=0,candidates=0,relevantCategories=0,relevantEntries=0,discoveryRejected=0,apiFailures=0}
+  if type(GetStatisticsCategoryList)~="function"or type(GetCategoryNumAchievements)~="function"or type(GetStatistic)~="function"or type(GetAchievementInfo)~="function"then return nil,"STATISTIC_API_UNAVAILABLE",audit end
   local listOk,categories=pcall(GetStatisticsCategoryList);if not listOk or type(categories)~="table"then return nil,"STATISTIC_CATEGORIES_UNAVAILABLE",audit end
   audit.categories=#categories
   if #categories==0 then return nil,"STATISTIC_CATEGORIES_EMPTY",audit end
@@ -126,17 +140,10 @@ HolyStorm:RegisterModule(metadata,function(Module)
      name=infoOk and safeText(name)or nil
      local isRelevant=name and relevant(name)
      if isRelevant then audit.relevantEntries=audit.relevantEntries+1;relevantCount=relevantCount+1 end
-     local criteriaOk,criteriaCount=pcall(GetAchievementNumCriteria,statisticId)
-     local reason
-     if not criteriaOk then audit.apiFailures=audit.apiFailures+1;reason="CRITERIA_API_FAILED"
-     elseif safeNumber(criteriaCount)~=1 then reason="CRITERIA_COUNT_"..tostring(safeNumber(criteriaCount)or"UNAVAILABLE")
-     else
-      local ok,_,criteriaType,_,_,_,_,_,assetId=pcall(GetAchievementCriteriaInfo,statisticId,1)
-      if not ok then audit.apiFailures=audit.apiFailures+1;reason="CRITERIA_API_FAILED"
-      elseif safeNumber(criteriaType)~=0 then reason="CRITERIA_TYPE_"..tostring(safeNumber(criteriaType)or"UNAVAILABLE")
-      elseif not safeNumber(assetId)then reason="MISSING_CREATURE_ASSET"
-      elseif type(name)~="string"then reason="MISSING_STATISTIC_NAME"
-      else result[#result+1]={statisticId=statisticId,name=name,assetId=safeNumber(assetId),categoryId=categoryId};audit.candidates=audit.candidates+1;candidateCount=candidateCount+1 end
+     local parsed,reason=parseStatisticLabel(name)
+     if parsed then
+      result[#result+1]={statisticId=statisticId,name=name,categoryId=categoryId,bossToken=parsed.bossToken,raidToken=parsed.raidToken,difficultyToken=parsed.difficultyToken}
+      audit.candidates=audit.candidates+1;candidateCount=candidateCount+1
      end
      if reason and isRelevant then
       audit.discoveryRejected=audit.discoveryRejected+1
@@ -162,22 +169,19 @@ HolyStorm:RegisterModule(metadata,function(Module)
   local mappedIds,mappedBossIds,detailCount={},{},0
   for _,raid in ipairs(raids or{})do
    for _,boss in ipairs(raid.bosses or{})do
-    local creatures={};for _,id in ipairs(boss.creatureIds or{})do creatures[tonumber(id)]=true end
     for _,difficulty in ipairs(lifetimeDifficultyOrder)do
      audit.slots=audit.slots+1
      local matches={};local difficultyName=difficultyNames[difficulty]
-     if candidates and difficultyName and next(creatures)then
+     if candidates and difficultyName then
       local bossToken,raidToken,difficultyToken=raidKey(boss.name),raidKey(raid.name),raidKey(difficultyName)
       for _,candidate in ipairs(candidates)do
-       local nameToken=raidKey(candidate.name)
-       if creatures[candidate.assetId]and nameToken and bossToken and raidToken and difficultyToken and nameToken:find(bossToken,1,true)and nameToken:find(raidToken,1,true)and nameToken:find(difficultyToken,1,true)then matches[#matches+1]=candidate end
+       if candidate.bossToken==bossToken and candidate.raidToken==raidToken and candidate.difficultyToken==difficultyToken then matches[#matches+1]=candidate end
       end
      end
      audit.recognized=audit.recognized+#matches
      local candidate=#matches==1 and matches[1]or nil;local raw,kills,accepted,why
      if not candidates then why=candidateReason
      elseif not difficultyName then why="DIFFICULTY_NAME_UNAVAILABLE"
-     elseif not next(creatures)then why="CREATURE_MAPPING_UNAVAILABLE"
      elseif#matches==0 then why="NO_EXACT_STATISTIC";audit.missingMappings=audit.missingMappings+1
      elseif#matches>1 then why="AMBIGUOUS_STATISTIC";audit.missingMappings=audit.missingMappings+1
      else
@@ -208,20 +212,20 @@ HolyStorm:RegisterModule(metadata,function(Module)
   local logged=0
   for _,candidate in ipairs(candidates or{})do
    if not mappedIds[candidate.statisticId]then
-    local candidateToken=raidKey(candidate.name);local raidMatch,bossMatch,assetMatch=false,false,false
+    local raidMatch,bossMatch,difficultyMatch=false,false,false
     for _,raid in ipairs(raids or{})do
      local raidToken=raidKey(raid.name)
-     if candidateToken and raidToken and candidateToken:find(raidToken,1,true)then raidMatch=true end
+     if candidate.raidToken==raidToken then raidMatch=true end
      for _,boss in ipairs(raid.bosses or{})do
       local bossToken=raidKey(boss.name)
-      if candidateToken and bossToken and candidateToken:find(bossToken,1,true)then bossMatch=true end
-      for _,id in ipairs(boss.creatureIds or{})do if tonumber(id)==candidate.assetId then assetMatch=true end end
+      if candidate.bossToken==bossToken then bossMatch=true end
      end
     end
-    if raidMatch or bossMatch or assetMatch then
+    for _,name in pairs(difficultyNames)do if candidate.difficultyToken==raidKey(name)then difficultyMatch=true end end
+    if raidMatch or bossMatch then
      audit.unmapped=audit.unmapped+1
-     local reason=not raidMatch and"RAID_NAME_NOT_FOUND"or not assetMatch and"CREATURE_ASSET_NOT_FOUND"or not bossMatch and"BOSS_NAME_NOT_FOUND"or"DIFFICULTY_OR_AMBIGUOUS_NAME"
-     if manual and logged<24 then logged=logged+1;HolyStorm.Logger:Write("DEBUG","Raids","lifetime","RAID_LIFETIME_UNMAPPED",{categoryId=candidate.categoryId,statisticId=candidate.statisticId,name=candidate.name,assetId=candidate.assetId,reason=reason})end
+     local reason=not raidMatch and"RAID_NAME_NOT_FOUND"or not bossMatch and"BOSS_NAME_NOT_FOUND"or not difficultyMatch and"DIFFICULTY_NAME_NOT_FOUND"or"AMBIGUOUS_STATISTIC"
+     if manual and logged<24 then logged=logged+1;HolyStorm.Logger:Write("DEBUG","Raids","lifetime","RAID_LIFETIME_UNMAPPED",{categoryId=candidate.categoryId,statisticId=candidate.statisticId,name=candidate.name,reason=reason})end
     end
    end
   end
