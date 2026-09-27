@@ -86,11 +86,32 @@ HolyStorm.CharacterUI.GetDashboardSummary=function()return latestSnapshot end
 local layout450=UI:CalculateDashboardLayout(860,450);assert(layout450.navButtonWidth>89 and layout450.widgetHeight>100 and layout450.primaryHeight==94,"standard-size page keeps labeled tabs, primary cards and a useful dynamic area")
 assert(layout450.headerHeight>=75 and layout450.headerHeight<=90,"identity header remains compact at the standard window size")
 assert(UI:CalculateDashboardProfileHeight(0)==34 and UI:CalculateDashboardProfileHeight(1)==51 and UI:CalculateDashboardProfileHeight(3)==85,"profile panel height grows only with actual profile rows")
+assert(UI:CalculateDashboardProfileWidth(900)==288 and UI:CalculateDashboardProfileWidth(650)==280,"profile width remains bounded in the requested range at standard and narrow window sizes")
 local dashboardSource=read(uiRoot.."UI/Framework/Dashboard.lua")
 assert(dashboardSource:find('profile:SetHeight(self:CalculateDashboardProfileHeight(#self.dashboardModel.profileRows))',1,true)and dashboardSource:find('row.icon:SetPoint("LEFT",frame,"LEFT",12,-(25+(index-1)*17))',1,true),"profile fields are anchored to the content-sized card rather than the tab region")
-assert(dashboardSource:find('frame:SetAlpha(1)',1,true)and dashboardSource:find('row.text:SetTextColor(.92,.95,1,1)',1,true)and dashboardSource:find('row.text:SetAlpha(1)',1,true),"profile text explicitly restores full alpha and high-contrast colors")
+assert(dashboardSource:find('profile:SetPoint("TOPRIGHT",headerContent,"TOPRIGHT"',1,true)and not dashboardSource:find('profile:SetPoint("TOP",headerContent,"TOP"',1,true),"profile uses one top-right anchor rather than conflicting horizontal constraints")
+assert(dashboardSource:find('local function styleDashboardHeading(region)',1,true)and dashboardSource:find('local function styleDashboardBody(region)',1,true)and dashboardSource:find('styleDashboardHeading(frame.title)',1,true)and dashboardSource:find('styleDashboardBody(row.text)',1,true),"profile heading and body use shared canonical dashboard styles")
 assert(dashboardSource:find('frame.icon:SetPoint("TOPLEFT",frame,"TOPLEFT",12,-7)',1,true)and dashboardSource:find('frame.title:SetPoint("TOPLEFT",frame,"TOPLEFT",38,-9)',1,true),"provider header icons and labels are anchored inside their owning card")
 assert(dashboardSource:find('DASHBOARD_GUILD_RANK_SHORT',1,true),"character identity shows the localized rank value without a redundant label")
+GameFontNormal={name="GameFontNormal"};GameFontHighlightSmall={name="GameFontHighlightSmall"}
+local dimColor={.2,.2,.2,0}
+local function mockRegion()
+ local region={state={}}
+ function region:SetFontObject(value)self.state.font=value;self.state.color=dimColor;self.state.alpha=0 end
+ function region:SetTextColor(r,g,b,a)self.state.color={r,g,b,a}end
+ function region:SetAlpha(value)self.state.alpha=value end
+ function region:SetText(value)self.state.text=value end
+ function region:ClearAllPoints()end;function region:SetPoint()end;function region:SetJustifyH()end;function region:SetWordWrap()end
+ function region:SetSize()end;function region:SetTexture(value)self.state.texture=value end;function region:SetTexCoord()end;function region:Show()self.state.shown=true end;function region:Hide()self.state.shown=false end
+ return region
+end
+local profileMock={title=mockRegion(),rows={}}
+function profileMock:SetAlpha(value)self.alpha=value end
+function profileMock:CreateTexture()return mockRegion()end
+function profileMock:CreateFontString()return mockRegion()end
+UI.profilePanel=profileMock;UI:UpdateProfilePanel(model)
+assert(profileMock.alpha==1 and profileMock.title.state.font==GameFontNormal and profileMock.title.state.color[1]==1 and profileMock.title.state.alpha==1,"profile heading reapplies its canonical gold style after font-object assignment")
+assert(profileMock.rows[1].text.state.font==GameFontHighlightSmall and profileMock.rows[1].text.state.color[1]==.92 and profileMock.rows[1].text.state.alpha==1 and profileMock.rows[1].icon.state.alpha==1,"profile rows and icons finish refresh in the canonical visible state")
 local compactLayout=UI:CalculateDashboardLayout(600,380);assert(compactLayout.navButtonWidth<89,"narrow layouts have a clear icon-only tab threshold")
 local none,zeroColumns=UI:CalculateDashboardProviderLayout(0,800);local one,oneColumn=UI:CalculateDashboardProviderLayout(1,800);local two,twoColumns=UI:CalculateDashboardProviderLayout(2,800);local three,threeColumns=UI:CalculateDashboardProviderLayout(3,800)
 assert(#none==0 and zeroColumns==0 and oneColumn==1 and one[1].width==800,"no providers leave no placeholder; one widget uses the full row")

@@ -2,20 +2,17 @@
 
 ## Unreleased
 
-- Improved profile text contrast and contained dynamic provider header icons within their cards; character identity now shows the guild rank without a redundant prefix.
-- Profiltextkontrast und Icons in den Überschriften dynamischer Karten wurden verbessert; die Charakterübersicht zeigt den Gildenrang ohne überflüssige Bezeichnung.
-
 ### English
 
 - Refined Character Overview spacing, compact profile sizing, and dynamic widget height; Mythic+ cards now use a neutral current-season label instead of exposing Blizzard's internal season ID.
 - Dynamic providers now form a two-column content-sized grid. Event weekdays and compact card descriptions use localized labels, and an empty achievement catalog has a clear zero state.
-- Improved profile text contrast and contained dynamic provider header icons within their cards; character identity now shows the guild rank without a redundant prefix.
+- Corrected profile card anchoring and applied the shared dashboard text styles to keep profile content readable.
 
 ### Deutsch
 
 - Abstände, kompakte Profilgröße und Höhe dynamischer Widgets in der Charakterübersicht wurden verbessert. Mythic+-Karten zeigen nun eine neutrale Bezeichnung für die aktuelle Saison statt Blizzards interner Saison-ID.
 - Dynamische Anbieter verwenden nun ein zweispaltiges, inhaltsabhängiges Raster. Wochentage und kompakte Kartenbeschreibungen sind lokalisiert; ein leerer Erfolgskatalog zeigt einen eindeutigen Nullwert.
-- Profiltextkontrast und Icons in den Überschriften dynamischer Karten wurden verbessert; die Charakterübersicht zeigt den Gildenrang ohne überflüssige Bezeichnung.
+- Die Profilkarte wurde korrekt verankert und verwendet nun die gemeinsamen Dashboard-Textstile für besser lesbare Profilinhalte.
 
 ## 5.9.0 — 27.09.2026
 
