@@ -6,6 +6,7 @@ local function copy(v)return HolyStorm.Utils.DeepCopy(v)end
 local function now()return HolyStorm.Utils.Now()end
 local function validId(v)return type(v)=="string"and#v>0 and#v<=160 end
 local function validDomain(v)return type(v)=="string"and#v>0 and#v<=64 and v:match("^[%w_%-]+$")~=nil end
+local function validPresenceVersion(value)return value=="DEV"or type(value)=="string"and HolyStorm.Utils.CompareSemanticVersions(value,value)~=nil end
 local function key(domain,objectId)return domain.."\030"..tostring(objectId or"*")end
 local function log(level,category,message,context,correlationId)HolyStorm.Logger:Write(level,"Sync",category,message,context,correlationId)end
 local function playerName()return GetUnitName and GetUnitName("player",true)or UnitName and UnitName("player")or"Player"end
@@ -143,7 +144,7 @@ function Sync:RunCatchUp()
  -- Each domain is a distinct logical scope. Discover() merges repeated catch-up requests per domain/scope.
  if not IsInGuild()then return false end;for domainId,domain in pairs(self.domains)do if domain.catchUp~=false then self:Discover(domainId,nil,{reason="LOGIN_CATCHUP",priority=98,watermark=HolyStorm.PlayerData:GetForeignWatermark(domainId)})end end;log("DEBUG","catchup","Delayed login catch-up started",{watermark=HolyStorm.PlayerData:GetForeignWatermark(),domains=HolyStorm.Utils.TableCount(self.domains)});return true
 end
-function Sync:GetKnownVersion(guid)local entry=type(guid)=="string"and self.knownVersions[guid];if not entry then return nil end;if now()-(tonumber(entry.receivedAt)or 0)>self.presenceTimeout then self.knownVersions[guid]=nil;return nil end;return entry.version end
+function Sync:GetKnownVersion(guid)local entry=type(guid)=="string"and self.knownVersions[guid];if not entry then return nil end;if not validPresenceVersion(entry.version)or now()-(tonumber(entry.receivedAt)or 0)>self.presenceTimeout then self.knownVersions[guid]=nil;return nil end;return entry.version end
 function Sync:BeginLoginSession()
  self.loginSessionId="LOGIN-"..self:NewRequestId();self.presencePublished=false;self.peerVersionReceived=false;self.outdatedNotified=false;self.knownVersions={}
  return HolyStorm.Tasks:Queue("Sync.LoginPresence",{delay=1.5,startupPhase=4,priority=98,triggerSource="PLAYER_LOGIN",metadata={sessionId=self.loginSessionId}})
@@ -159,7 +160,7 @@ function Sync:EvaluateOutdatedVersion()
 end
 function Sync:OnPresence(data,sender,resolved)
  if not resolved then return false end;self.knownOnline[resolved]=now();self:ScheduleCleanup()
- if type(data.version)=="string"and HolyStorm.Utils.CompareSemanticVersions(data.version,data.version)~=nil then self.knownVersions[resolved]={guid=resolved,sender=sender,version=data.version,receivedAt=now()};self.peerVersionReceived=true;HolyStorm.Events:Emit("HS_SYNC_VERSION_UPDATED",resolved,data.version,sender);HolyStorm.Tasks:Queue("Sync.VersionNotice",{delay=2,priority=99,triggerSource="PEER_VERSION_RECEIVED"})end
+ if validPresenceVersion(data.version)then self.knownVersions[resolved]={guid=resolved,sender=sender,version=data.version,receivedAt=now()};self.peerVersionReceived=true;HolyStorm.Events:Emit("HS_SYNC_VERSION_UPDATED",resolved,data.version,sender);HolyStorm.Tasks:Queue("Sync.VersionNotice",{delay=2,priority=99,triggerSource="PEER_VERSION_RECEIVED"})end
  if data.replyRequested==true and not data.responseTo then self:QueueEnvelope("PRESENCE",nil,{version=HolyStorm.version,responseTo=data.sessionId,reason="PRESENCE_RESPONSE"},"WHISPER",sender,90,.2+math.random()*.6)end
  return true
 end

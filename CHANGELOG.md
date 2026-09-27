@@ -2,7 +2,8 @@
 
 ## Unreleased
 
-- Corrected Raid lifetime Statistics mapping to use Blizzard's displayed statistic IDs and exact current-client boss, difficulty, and raid labels without requiring achievement criteria or Encounter Journal creature assets. The end-to-end eight-boss fixture now reaches lifetime Best through persistence and Character UI; final Retail acceptance remains pending.
+- Fixed unresolved development version placeholders appearing in Holy Storm UI and Presence data; packaged release versions remain sourced from addon metadata.
+- Corrected Raid lifetime Statistics mapping to use Blizzard's displayed statistic IDs and exact current-client boss, difficulty, and raid labels without requiring achievement criteria or Encounter Journal creature assets. The end-to-end eight-boss fixture now reaches lifetime Best through persistence and Character UI; final Retail acceptance has been confirmed.
 - Added structured Raid lifetime discovery, mapping, snapshot and commit diagnostics for manual scans, plus `/hs scan raid status` for the stored snapshot. Manual scans refresh Blizzard statistic discovery, and empty results are no longer cached.
 - Fixed the Retail Activity Points Administration crash by using the shared PolicyUI selector for rule events and decay mode. Administration now logs a failed section build once, hides its partial UI, and keeps other sections usable.
 - Fixed Raid Best tooltip headers to resolve through the Raid locale proxy once, and calculate compact lifetime progression from each boss's highest verified difficulty within the selected raid.
@@ -16,7 +17,8 @@
 
 ### Deutsche Änderungen
 
-- Die Zuordnung der Raid-Lebenszeitstatistiken verwendet nun Blizzards angezeigte Statistik-IDs und die passenden Boss-, Schwierigkeits- und Raid-Namen des aktuellen Clients, ohne Achievement-Kriterien oder Kreaturen-IDs aus dem Encounter Journal vorauszusetzen. Der End-to-End-Test mit acht Bossen erreicht den Bestwert über Speicherung und Charakteransicht; die abschließende Retail-Prüfung steht noch aus.
+- Nicht aufgelöste Entwicklungs-Versionsplatzhalter erscheinen nicht mehr in der Holy-Storm-Oberfläche oder in Presence-Daten; Paketversionen stammen weiterhin aus den Addon-Metadaten.
+- Die Zuordnung der Raid-Lebenszeitstatistiken verwendet nun Blizzards angezeigte Statistik-IDs und die passenden Boss-, Schwierigkeits- und Raid-Namen des aktuellen Clients, ohne Achievement-Kriterien oder Kreaturen-IDs aus dem Encounter Journal vorauszusetzen. Der End-to-End-Test mit acht Bossen erreicht den Bestwert über Speicherung und Charakteransicht; die abschließende Retail-Prüfung wurde in Retail erfolgreich bestätigt.
 - Manuelle Raid-Scans protokollieren nun die Erkennung, Zuordnung, Snapshot-Erstellung und Speicherung von Lebenszeit-Statistiken. `/hs scan raid status` zeigt den gespeicherten Snapshot; manuelle Scans lesen die Blizzard-Statistikkategorien neu und leere Ergebnisse werden nicht mehr zwischengespeichert.
 - Der Retail-Absturz der Activity-Points-Administration wurde behoben: Ereignis und Verfallsart verwenden nun die gemeinsamen PolicyUI-Dropdowns. Fehlgeschlagene Administrationsseiten werden einmal protokolliert, ihre unvollständige Oberfläche wird ausgeblendet und andere Seiten bleiben nutzbar.
 - Raid-Best-Tooltips verwenden die vorhandenen Raid-Locale-Schlüssel ohne doppeltes Präfix. Der kompakte Raid-Fortschritt wählt pro Boss den höchsten bestätigten Lebenszeit-Schwierigkeitsgrad innerhalb des ausgewählten Raids.

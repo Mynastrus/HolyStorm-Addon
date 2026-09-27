@@ -23,6 +23,17 @@ Fenster, Administration und Optionsseiten liegen in `Holy_Storm_UI`.
 Character- und Guild-Collections werden von ihren Features angefordert, nicht
 vom Core-Bootstrap.
 
+## Runtime-Versionvertrag
+
+Die Laufzeitversion gehört dem Core: Er löst `## Version` aus den
+Addon-Metadaten einmal auf und stellt sie als `HolyStorm.version` sowie über
+`HolyStorm:GetVersion()` bereit. Der Quell-TOC darf für BigWigsMods/packager
+`@project-version@` enthalten; verpackte Releases erhalten daraus ihre
+Paketversion, während leere oder nicht aufgelöste Metadaten im Checkout zu
+`DEV` werden. UI, Guild-Roster, Launcher, Diagnoseausgaben und Sync-Presence
+verwenden diesen kanonischen Wert. Presence akzeptiert `DEV` als bekannte
+Entwicklungsversion, vergleicht sie aber nicht als Semantic Version.
+
 ## TOC-Discovery und Load-on-Demand
 
 Jedes Addon deklariert `X-HolyStorm-ID`. Optional sind

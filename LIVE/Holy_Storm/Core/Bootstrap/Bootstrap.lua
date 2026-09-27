@@ -1,12 +1,26 @@
 local addonName = ...
-local addonVersion = "5.3.0"
+local developmentVersion = "DEV"
 local L = LibStub("AceLocale-3.0"):GetLocale(addonName)
 
 local HolyStorm = LibStub("AceAddon-3.0"):NewAddon(addonName, "AceEvent-3.0", "AceTimer-3.0")
-HolyStorm.version = C_AddOns and C_AddOns.GetAddOnMetadata and C_AddOns.GetAddOnMetadata(addonName, "Version") or addonVersion
+local function isUnresolvedPlaceholder(value)
+    return value:find("@", 1, true) ~= nil or value:match("%$%b{}") ~= nil
+        or value:match("{{.-}}") ~= nil or value:match("^%%[^%%]+%%$") ~= nil or value:match("^<[^>]+>$") ~= nil
+end
+
+local function resolveVersion(rawVersion)
+    if type(rawVersion) ~= "string" then return developmentVersion end
+    rawVersion = rawVersion:match("^%s*(.-)%s*$")
+    if rawVersion == "" or isUnresolvedPlaceholder(rawVersion) then return developmentVersion end
+    return rawVersion
+end
+
+local rawVersion = C_AddOns and C_AddOns.GetAddOnMetadata and C_AddOns.GetAddOnMetadata(addonName, "Version")
+HolyStorm.version = resolveVersion(rawVersion)
+function HolyStorm:GetVersion() return self.version end
 HolyStorm.metadata = {
     displayName = L["CORE_DISPLAY_NAME"], internalName = "core", author = "Mynastrus - Norgannon - EU",
-    version = HolyStorm.version, category = "core", description = L["CORE_DESCRIPTION"],
+    version = HolyStorm:GetVersion(), category = "core", description = L["CORE_DESCRIPTION"],
     permissions = { "core-settings-read", "core-settings-write" }, dependencies = {}, enabledByDefault = true,
 }
 HolyStorm.Data, HolyStorm.Modules = {}, {}

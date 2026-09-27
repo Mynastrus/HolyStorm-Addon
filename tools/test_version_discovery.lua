@@ -26,4 +26,20 @@ Sync.knownVersions.peer.receivedAt=1000-Sync.presenceTimeout-1
 assert(Sync:GetKnownVersion("peer")==nil and Sync.knownVersions.peer==nil,"stale presence no longer supplies a roster version")
 local rosterSource=assert(io.open(root.."../Holy_Storm_Guild/Guild.lua","rb")):read("*a")
 assert(rosterSource:find("stored.guid==localGuid and HolyStorm.version",1,true),"the local roster character reads the loaded core addon version directly")
+
+local originalCatchUp=Sync.RunCatchUp;Sync.RunCatchUp=function()return true end;IsInGuild=function()return true end
+HolyStorm.version="DEV";local beforePresence=#queued
+assert(Sync:RunLoginPresence({metadata={sessionId="LOGIN-dev"}}),"development login presence is queued")
+local presence=queued[beforePresence+1].options.metadata.envelope
+assert(presence.kind=="PRESENCE"and presence.data.version=="DEV","development Presence advertises the canonical DEV value")
+assert(HolyStorm.Utils.CompareSemanticVersions("DEV","5.9.0")==nil,"DEV remains explicitly incomparable with release versions")
+Sync.knownVersions={};Sync.presencePublished=true;Sync.outdatedNotified=false
+assert(Sync:OnPresence({version="DEV",responseTo="LOGIN-dev"},"Peer-Realm","Player-Peer"),"peer DEV Presence is accepted")
+assert(Sync:GetKnownVersion("Player-Peer")=="DEV","recent remote development Presence is available to the Guild Roster")
+local noticeCount=#notices;assert(not Sync:EvaluateOutdatedVersion()and#notices==noticeCount,"DEV never triggers a false semantic-version update notice")
+Sync.knownVersions={};assert(Sync:OnPresence({version="@project-version@"},"Peer-Realm","Player-Peer"),"invalid placeholder Presence is safely ignored")
+assert(Sync:GetKnownVersion("Player-Peer")==nil,"unresolved remote placeholders remain unknown")
+Sync.knownVersions["Player-Peer"]={version="@project-version@",receivedAt=1000}
+assert(Sync:GetKnownVersion("Player-Peer")==nil and Sync.knownVersions["Player-Peer"]==nil,"stale cached placeholders are discarded at read time")
+Sync.RunCatchUp=originalCatchUp
 print("Semantic version discovery and once-per-login update notice tests passed")
