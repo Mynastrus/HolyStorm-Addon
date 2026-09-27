@@ -5,10 +5,12 @@
 ### English
 
 - Refined Character Overview spacing, compact profile sizing, and dynamic widget height; Mythic+ cards now use a neutral current-season label instead of exposing Blizzard's internal season ID.
+- Dynamic providers now form a two-column content-sized grid. Event weekdays and compact card descriptions use localized labels, and an empty achievement catalog has a clear zero state.
 
 ### Deutsch
 
 - Abstände, kompakte Profilgröße und Höhe dynamischer Widgets in der Charakterübersicht wurden verbessert. Mythic+-Karten zeigen nun eine neutrale Bezeichnung für die aktuelle Saison statt Blizzards interner Saison-ID.
+- Dynamische Anbieter verwenden nun ein zweispaltiges, inhaltsabhängiges Raster. Wochentage und kompakte Kartenbeschreibungen sind lokalisiert; ein leerer Erfolgskatalog zeigt einen eindeutigen Nullwert.
 
 ## 5.9.0 — 27.09.2026
 

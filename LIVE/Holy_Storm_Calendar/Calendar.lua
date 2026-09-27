@@ -547,6 +547,12 @@ HolyStorm:RegisterModule(metadata, function(Events)
         end, { priority=3, debounce=1, combat="defer" })
     end
 
+    function Events:FormatDashboardDate(timestamp)
+        local parts=date("*t",timestamp);local weekdays={"SUNDAY","MONDAY","TUESDAY","WEDNESDAY","THURSDAY","FRIDAY","SATURDAY"}
+        local day=parts and weekdays[tonumber(parts.wday) or 0];local weekday=day and L["DASHBOARD_WEEKDAY_"..day] or ""
+        local dateText=date(L["DASHBOARD_EVENT_DATE_FORMAT"],timestamp)
+        return weekday~="" and (weekday.." "..dateText) or dateText
+    end
     function Events:RegisterDashboardProvider()
         if not HolyStorm.UI.RegisterDashboardProvider then return false end
         return HolyStorm.UI:RegisterDashboardProvider("calendar-events", {
@@ -557,7 +563,7 @@ HolyStorm:RegisterModule(metadata, function(Events)
                 for _,event in ipairs(Events.events or{})do
                     local timestamp=GetEventTimestamp(event)
                     if timestamp>current and type(event.title)=="string"and event.title~=""and#entries<4 then
-                        local selected=event;local day=date(L["DASHBOARD_EVENT_DATE_FORMAT"],timestamp);local hour=tonumber(SafeCalendarScalar(event.hour));local minute=tonumber(SafeCalendarScalar(event.minute));local timeText=hour and minute and string.format("%02d:%02d",hour,minute)or L["STATUS_UNKNOWN"]
+                        local selected=event;local day=self:FormatDashboardDate(timestamp);local hour=tonumber(SafeCalendarScalar(event.hour));local minute=tonumber(SafeCalendarScalar(event.minute));local timeText=hour and minute and string.format("%02d:%02d",hour,minute)or L["STATUS_UNKNOWN"]
                         entries[#entries+1]={title=SafeCalendarText(event.title,L["UNTITLED"]),summary=string.format(L["DASHBOARD_EVENT_META"],day,timeText),icon=SafeCalendarScalar(event.texture),tooltip=SafeCalendarText(event.description,L["NO_DESCRIPTION"]),onClick=function()HolyStorm.UI:ShowPage("guildEvents");Events:ShowDetails(selected)end}
                     end
                 end

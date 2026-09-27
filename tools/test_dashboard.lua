@@ -72,6 +72,8 @@ assert(model.profileAvailable and#model.profileRows==3 and model.profileRows[1].
 assert(not model.achievementsAvailable,"optional Achievements tab stays hidden while its feature module is disabled")
 
 providersEnabled.AchievementsUI=true;local withAchievement=UI:BuildDashboardModel();assert(withAchievement.achievementsAvailable and withAchievement.achievementValue=="1 / 2","Achievements card appears only with the existing enabled feature and reports actual earned definitions")
+HolyStorm.Achievements.GetDefinitions=function()return{}end;local emptyAchievements=UI:BuildDashboardModel();assert(emptyAchievements.achievementValue=="0"and emptyAchievements.achievementSubtitle==locale.DASHBOARD_ACHIEVEMENTS_NONE,"confirmed empty achievement catalogs display zero instead of an ambiguous 0 / 0")
+HolyStorm.Achievements.GetDefinitions=function()return{{achievementID="one"},{achievementID="two"}}end
 context.record.profile={};HolyStorm.Data.PlayerStore.Get=function()return{metadata={}}end;local noProfile=UI:BuildDashboardModel();assert(not noProfile.profileAvailable and#noProfile.profileRows==0,"an empty profile collapses the personal panel")
 context.record.profile={preferredRole="HEALER"};HolyStorm.Data.PlayerStore.Get=function()return{metadata={displayName="Richard",birthdate="14 March"}}end
 
@@ -84,10 +86,12 @@ HolyStorm.CharacterUI.GetDashboardSummary=function()return latestSnapshot end
 local layout450=UI:CalculateDashboardLayout(860,450);assert(layout450.navButtonWidth>89 and layout450.widgetHeight>100 and layout450.primaryHeight==94,"standard-size page keeps labeled tabs, primary cards and a useful dynamic area")
 assert(layout450.headerHeight>=75 and layout450.headerHeight<=90,"identity header remains compact at the standard window size")
 assert(UI:CalculateDashboardProfileHeight(0)==34 and UI:CalculateDashboardProfileHeight(1)==51 and UI:CalculateDashboardProfileHeight(3)==85,"profile panel height grows only with actual profile rows")
+local dashboardSource=read(uiRoot.."UI/Framework/Dashboard.lua")
+assert(dashboardSource:find('profile:SetHeight(self:CalculateDashboardProfileHeight(#self.dashboardModel.profileRows))',1,true)and dashboardSource:find('row.icon:SetPoint("LEFT",frame,"LEFT",12,-(25+(index-1)*17))',1,true),"profile fields are anchored to the content-sized card rather than the tab region")
 local compactLayout=UI:CalculateDashboardLayout(600,380);assert(compactLayout.navButtonWidth<89,"narrow layouts have a clear icon-only tab threshold")
 local none,zeroColumns=UI:CalculateDashboardProviderLayout(0,800);local one,oneColumn=UI:CalculateDashboardProviderLayout(1,800);local two,twoColumns=UI:CalculateDashboardProviderLayout(2,800);local three,threeColumns=UI:CalculateDashboardProviderLayout(3,800)
 assert(#none==0 and zeroColumns==0 and oneColumn==1 and one[1].width==800,"no providers leave no placeholder; one widget uses the full row")
-assert(twoColumns==2 and two[2].x>two[1].x and threeColumns==3 and three[3].x>three[2].x,"dynamic widgets reflow into two or three balanced columns")
+assert(twoColumns==2 and two[2].x>two[1].x and threeColumns==2 and three[3].y>three[1].y,"multiple providers use two balanced columns and continue on a second row")
 
 local skippedCalls=0
 assert(UI:RegisterDashboardProvider("calendar-test",{owner="Calendar",moduleName="Calendar",optional=true,getItems=function()skippedCalls=skippedCalls+1;return{{title="Should stay hidden"}}end}))

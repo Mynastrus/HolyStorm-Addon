@@ -100,7 +100,7 @@ function UI:BuildDashboardModel()
  if achievementAvailable then
   local definitions=achievementService:GetDefinitions(false,guid);local earned=0
   for _,definition in ipairs(definitions or{})do if achievementService:IsEarned(definition.achievementID,guid)then earned=earned+1 end end
-  achievementValue=string.format(L["DASHBOARD_ACHIEVEMENTS_COUNT"],earned,#(definitions or{}));achievementSubtitle=L["DASHBOARD_ACHIEVEMENTS_EARNED"]
+  achievementValue=#(definitions or{})==0 and "0" or string.format(L["DASHBOARD_ACHIEVEMENTS_COUNT"],earned,#(definitions or{}));achievementSubtitle=#(definitions or{})==0 and L["DASHBOARD_ACHIEVEMENTS_NONE"] or L["DASHBOARD_ACHIEVEMENTS_EARNED"]
  end
  local stats=summary and summary.stats;local statsCount=0
  if type(stats)=="table"then
@@ -122,23 +122,29 @@ function UI:BuildDashboardModel()
  }
 end
 
-function UI:CalculateDashboardProviderLayout(count,width)
- count=math.max(0,tonumber(count)or 0);width=math.max(0,tonumber(width)or 0);if count==0 then return{},0 end
- local columns=count==1 and 1 or count==2 and 2 or 3;local gap=8;local cardWidth=math.max(1,(width-gap*(columns-1))/columns);local layout={}
- for index=1,math.min(count,3)do layout[index]={x=(index-1)*(cardWidth+gap),width=cardWidth,column=index,columns=columns}end
- return layout,columns
+function UI:CalculateDashboardProviderLayout(count,width,providers)
+ count=math.max(0,tonumber(count)or 0);width=math.max(0,tonumber(width)or 0);if count==0 then return{},0,0 end
+ local columns=count==1 and 1 or 2;local gap=8;local cardWidth=math.max(1,(width-gap*(columns-1))/columns);local layout={};local rowHeights={}
+ for index=1,math.min(count,3)do
+  local row=math.floor((index-1)/columns)+1;local height=self:CalculateDashboardWidgetHeight({(providers or{})[index]},184)
+  rowHeights[row]=math.max(rowHeights[row]or 0,height)
+  layout[index]={x=((index-1)%columns)*(cardWidth+gap),width=cardWidth,column=((index-1)%columns)+1,row=row}
+ end
+ local y=0;for row=1,#rowHeights do for index=1,math.min(count,3)do if layout[index].row==row then layout[index].y=y;layout[index].height=rowHeights[row]end end;y=y+rowHeights[row]+gap end
+ return layout,columns,math.max(0,y-gap)
 end
 function UI:CalculateDashboardProfileHeight(rowCount)
  return 34+math.max(0,tonumber(rowCount)or 0)*17
 end
 function UI:CalculateDashboardWidgetHeight(providers,availableHeight)
- local required=0
- for _,provider in ipairs(providers or{})do
-  local height=36
-  for index=1,math.min(4,#(provider.items or{}))do height=height+(text(provider.items[index].summary)and 34 or 26)end
-  required=math.max(required,height)
+ local count=math.min(3,#(providers or{}));if count==0 then return 0 end
+ local columns=count==1 and 1 or 2;local rows={}
+ for index=1,count do local height=36;local provider=providers[index]
+  for itemIndex=1,math.min(4,#(provider.items or{}))do height=height+(text(provider.items[itemIndex].summary)and 34 or 26)end
+  local row=math.floor((index-1)/columns)+1;rows[row]=math.max(rows[row]or 0,height)
  end
- return math.min(math.max(0,tonumber(availableHeight)or 0),required)
+ local required=math.max(0,#rows-1)*8;for _,height in ipairs(rows)do required=required+height end
+ return math.min(math.max(0,tonumber(availableHeight)or 1000000),required)
 end
 function UI:CalculateDashboardLayout(width,height)
  width=math.max(1,tonumber(width)or 1);height=math.max(380,tonumber(height)or 440)
@@ -267,11 +273,10 @@ function UI:LayoutDashboard()
   card.value:ClearAllPoints();card.value:SetFontObject(GameFontHighlight);card.value:SetPoint("TOPLEFT",card.title,"BOTTOMLEFT",0,-1);card.value:SetPoint("RIGHT",card,"RIGHT",-10,0)
   card.subtitle:ClearAllPoints();card.subtitle:SetPoint("BOTTOMLEFT",card,"BOTTOMLEFT",52,5);card.subtitle:SetPoint("RIGHT",card,"RIGHT",-10,0)
  end
- local widgetTop=layout.widgetTop;local widgetHeight=self:CalculateDashboardWidgetHeight(self.visibleDashboardProviders,layout.widgetHeight)
- local providerLayouts,providerColumns=self:CalculateDashboardProviderLayout(#(self.visibleDashboardProviders or{}),width-2*margin)
+ local widgetTop=layout.widgetTop;local providerLayouts,providerColumns,widgetHeight=self:CalculateDashboardProviderLayout(#(self.visibleDashboardProviders or{}),width-2*margin,self.visibleDashboardProviders)
  for index,provider in ipairs(self.visibleDashboardProviders or{})do
   local frame=self.widgetFrames[index];local slot=providerLayouts[index]
-  if frame and slot and index<=3 then frame:ClearAllPoints();frame:SetPoint("TOPLEFT",canvas,"TOPLEFT",margin+slot.x,-widgetTop);frame:SetSize(slot.width,widgetHeight);frame:Show();self:LayoutProviderWidget(frame,provider,widgetHeight)
+  if frame and slot and index<=3 then frame:ClearAllPoints();frame:SetPoint("TOPLEFT",canvas,"TOPLEFT",margin+slot.x,-(widgetTop+slot.y));frame:SetSize(slot.width,slot.height);frame:Show();self:LayoutProviderWidget(frame,provider,slot.height)
   elseif frame then frame:Hide()end
  end
  for index=#(self.visibleDashboardProviders or{})+1,#self.widgetFrames do self.widgetFrames[index]:Hide()end

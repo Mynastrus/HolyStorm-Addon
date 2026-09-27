@@ -24,6 +24,15 @@ end
 Enum={CalendarStatus={Invited=0,Available=1,Declined=2,Confirmed=3,Out=4,Standby=5,Signedup=6,NotSignedup=7,Tentative=8}}
 assert(loadfile(featureRoot.."Calendar.lua"))()
 
+local originalDate=date
+date=function(formatValue,timestamp)
+ if formatValue=="*t"then return{wday=7}end
+ return "03.10."
+end
+locale.DASHBOARD_WEEKDAY_SATURDAY="Sa";locale.DASHBOARD_EVENT_DATE_FORMAT="%d.%m."
+assert(Calendar:FormatDashboardDate(1790985600)=="Sa 03.10.","dashboard event weekday uses localized labels rather than the process locale")
+date=originalDate
+
 -- Legacy clients without Secret Value predicates retain the old numeric/string behavior.
 issecretvalue,canaccessvalue=nil,nil
 assert(Calendar:NormalizeCalendarStatus(Enum.CalendarStatus.Confirmed)=="CONFIRMED","numeric CalendarStatus normalizes")
