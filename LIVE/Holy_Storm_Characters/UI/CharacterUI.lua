@@ -115,14 +115,41 @@ end
 function CharacterUI:GetDifficultyColor(key)local d=self.raidDifficulties[key];return d and d.color end
 function CharacterUI:ColorDifficulty(key,text)local c=self:GetDifficultyColor(key);return c and string.format("|cff%02x%02x%02x%s|r",math.floor(c.r*255+.5),math.floor(c.g*255+.5),math.floor(c.b*255+.5),tostring(text))or tostring(text)end
 
-function CharacterUI:BuildRaidBestRows(snapshot)
- local result={};local lifetime=type(snapshot)=="table"and snapshot.lifetime
- for bossKey,boss in pairs(type(lifetime)=="table"and type(lifetime.bosses)=="table"and lifetime.bosses or{})do
-  local best
-  for _,key in ipairs({"LFR","NORMAL","HEROIC","MYTHIC"})do local entry=type(boss.difficulties)=="table"and boss.difficulties[key];local definition=self.raidDifficulties[key];local trusted=type(entry)=="table"and entry.source=="blizzard-statistic"and tonumber(entry.statisticId);local kills=trusted and tonumber(entry.kills)or nil;if definition and kills and kills>0 then best={difficulty=key,order=definition.order,kills=kills}end end
-  if best then result[#result+1]={bossId=boss.id or bossKey,bossIdStable=boss.id~=nil,bossName=boss.name or tostring(bossKey),raidInstanceId=boss.raidInstanceId or boss.journalInstanceId,raidName=boss.raidName,difficulty=best.difficulty,kills=best.kills,order=best.order}end
+local lifetimeDifficulties={"LFR","NORMAL","HEROIC","MYTHIC"}
+local function bestLifetimeKill(boss)
+ local best
+ for _,key in ipairs(lifetimeDifficulties)do
+  local entry=type(boss)=="table"and type(boss.difficulties)=="table"and boss.difficulties[key]
+  local kills=type(entry)=="table"and entry.source=="blizzard-statistic"and tonumber(entry.statisticId)and tonumber(entry.kills)
+  if kills and kills>0 then best={difficulty=key,kills=kills}end
  end
- table.sort(result,function(a,b)return tostring(a.bossName)<tostring(b.bossName)end);return result
+ return best
+end
+function CharacterUI:BuildRaidBestRows(snapshot,raidIdentity)
+ local result={};local lifetime=type(snapshot)=="table"and snapshot.lifetime
+ local lifetimeBosses=type(lifetime)=="table"and type(lifetime.bosses)=="table"and lifetime.bosses or{}
+ for _,raid in ipairs(type(snapshot)=="table"and type(snapshot.raids)=="table"and snapshot.raids or{})do
+  if self:RaidIdentityMatches(raid,raidIdentity)then
+   local byId,byName={},{}
+   for bossKey,boss in pairs(lifetimeBosses)do
+    if type(boss)=="table"and self:RaidIdentityMatches(boss,raid)then
+     local id=boss.id or(type(bossKey)=="number"and bossKey)
+     if id then byId[tostring(id)]=boss end
+     if boss.name then byName[boss.name]=boss end
+    end
+   end
+   local ordered={}
+   for index,boss in ipairs(type(raid.bosses)=="table"and raid.bosses or{})do ordered[#ordered+1]={boss=boss,index=index}end
+   table.sort(ordered,function(a,b)local x,y=tonumber(a.boss.order)or a.index,tonumber(b.boss.order)or b.index;if x==y then return a.index<b.index end;return x<y end)
+   for _,item in ipairs(ordered)do
+    local catalogBoss=item.boss;local stored=catalogBoss.id~=nil and byId[tostring(catalogBoss.id)]or byName[catalogBoss.name]
+    if not stored and catalogBoss.id~=nil then local named=byName[catalogBoss.name];if named and named.id==nil then stored=named end end
+    local best=bestLifetimeKill(stored)
+    result[#result+1]={bossId=catalogBoss.id,bossIdStable=catalogBoss.id~=nil,bossName=catalogBoss.name,raidInstanceId=raid.id,raidName=raid.name,difficulty=best and best.difficulty,kills=best and best.kills,order=tonumber(catalogBoss.order)or item.index}
+   end
+  end
+ end
+ return result
 end
 function CharacterUI:RaidIdentityMatches(value,identity)
  if identity==nil then return true end
@@ -132,22 +159,13 @@ function CharacterUI:RaidIdentityMatches(value,identity)
  return type(wantedName)=="string"and type(valueName)=="string"and wantedName==valueName
 end
 function CharacterUI:GetBestProgress(snapshot,raidIdentity)
-  local totals,seen={},{};local lifetime=type(snapshot)=="table"and snapshot.lifetime
-  for bossKey,boss in pairs(type(lifetime)=="table"and type(lifetime.bosses)=="table"and lifetime.bosses or{})do
-   if self:RaidIdentityMatches(boss,raidIdentity)then
-    local identity=tostring(boss.raidInstanceId or boss.journalInstanceId or boss.raidName or"").."\031"..tostring(boss.id or boss.name or bossKey)
-    local selected
-    for _,key in ipairs({"LFR","NORMAL","HEROIC","MYTHIC"})do
-     local entry=type(boss.difficulties)=="table"and boss.difficulties[key]
-     local trusted=type(entry)=="table"and entry.source=="blizzard-statistic"and tonumber(entry.statisticId)
-     local kills=trusted and tonumber(entry.kills)or nil
-     if kills and kills>0 then selected=key end
-    end
-    if selected then seen[selected]=seen[selected]or{};if not seen[selected][identity]then seen[selected][identity]=true;totals[selected]=(totals[selected]or 0)+1 end end
-   end
-  end
- local best;for _,key in ipairs({"LFR","NORMAL","HEROIC","MYTHIC"})do if totals[key]and totals[key]>0 then best={difficulty=key,killed=totals[key],total=totals[key]}end end
- local total=0;for _,raid in ipairs(type(snapshot)=="table"and snapshot.raids or{})do if self:RaidIdentityMatches(raid,raidIdentity)then total=math.max(total,#(raid.bosses or{}))end end;if best then best.total=total>0 and total or best.killed end
+ if raidIdentity==nil then return self:GetBestCurrentRaidProgress(snapshot)end
+ local raid
+ for _,candidate in ipairs(type(snapshot)=="table"and type(snapshot.raids)=="table"and snapshot.raids or{})do if self:RaidIdentityMatches(candidate,raidIdentity)then raid=candidate;break end end
+ if not raid then return nil end
+ local totals={}
+ for _,boss in ipairs(self:BuildRaidBestRows(snapshot,raid))do if boss.difficulty then totals[boss.difficulty]=(totals[boss.difficulty]or 0)+1 end end
+ local best;for _,key in ipairs(lifetimeDifficulties)do if(totals[key]or 0)>0 then best={difficulty=key,killed=totals[key],total=#(raid.bosses or{})}end end
  return best
 end
 function CharacterUI:GetBestCurrentRaidProgress(snapshot)
@@ -173,7 +191,8 @@ function CharacterUI:GetDashboardSummary(characterUUID)
  local currentSeason=currentMythicPlusSeason();local storedSeason=type(mythicPlus)=="table"and tonumber(mythicPlus.seasonId)
  local rating=type(mythicPlus)=="table"and(currentSeason and storedSeason==currentSeason and tonumber(mythicPlus.overallScore)or nil)or nil
  local lastUpdatedAt=0;for _,meta in ipairs({equipmentMeta or{},mythicMeta or{},raidMeta or{},delvesMeta or{},statsMeta or{}})do lastUpdatedAt=math.max(lastUpdatedAt,tonumber(meta.updatedAt)or 0)end
- return{characterUUID=characterUUID,name=context.name,coloredName=classColoredName(context,context.name),classFile=context.classFile,className=context.className,specName=context.spec and context.spec.name,specIcon=context.spec and context.spec.icon,level=context.level,realm=context.realm,guildRank=context.member and context.member.rank,itemLevel=itemLevel,mythicPlusRating=rating,mythicPlusSeasonId=rating and storedSeason or nil,bestRaid=self:GetBestCurrentRaidProgress(raid),bestRaidRows=self:BuildRaidBestRows(raid),equipment=equipment,mythicPlus=mythicPlus,raid=raid,delves=delves,stats=stats,lastUpdatedAt=lastUpdatedAt>0 and lastUpdatedAt or nil}
+ local bestRaid=self:GetBestCurrentRaidProgress(raid)
+ return{characterUUID=characterUUID,name=context.name,coloredName=classColoredName(context,context.name),classFile=context.classFile,className=context.className,specName=context.spec and context.spec.name,specIcon=context.spec and context.spec.icon,level=context.level,realm=context.realm,guildRank=context.member and context.member.rank,itemLevel=itemLevel,mythicPlusRating=rating,mythicPlusSeasonId=rating and storedSeason or nil,bestRaid=bestRaid,bestRaidRows=bestRaid and self:BuildRaidBestRows(raid,bestRaid)or{},equipment=equipment,mythicPlus=mythicPlus,raid=raid,delves=delves,stats=stats,lastUpdatedAt=lastUpdatedAt>0 and lastUpdatedAt or nil}
 end
 function CharacterUI:CanUseTab(definition)
  if definition.permission and HolyStorm.Policy and not HolyStorm.Policy:Can(definition.permission)then return false,"PERMISSION"end

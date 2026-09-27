@@ -9,6 +9,7 @@
 - Corrected profile card anchoring and applied the shared dashboard text styles to keep profile content readable.
 - Kept online Guild Roster versions current with jittered Sync Presence refreshes and removed them through the existing five-minute freshness policy.
 - Kept Mythic+ encounter-end events out of Raid scans, cached only complete lifetime statistic mappings, and split Statistics discovery into bounded central workflow chunks.
+- Corrected lifetime Raid Best to count against the full Encounter Journal boss catalog; Best tooltips now show every boss in encounter order, including those without confirmed kills.
 
 ### Deutsch
 
@@ -17,6 +18,7 @@
 - Die Profilkarte wurde korrekt verankert und verwendet nun die gemeinsamen Dashboard-Textstile für besser lesbare Profilinhalte.
 - Versionsanzeigen für Online-Mitglieder bleiben durch zeitversetzte Sync-Presence-Aktualisierungen aktuell und folgen weiterhin der bestehenden Frischefrist von fünf Minuten.
 - Mythic+-Kampfende lösen keine Raid-Scans mehr aus. Vollständige Lebenszeit-Statistikzuordnungen werden zwischengespeichert und die Ermittlung läuft in begrenzten Workflow-Abschnitten.
+- Der Raid-Lebenszeitbestwert verwendet nun alle Bosse des Abenteuerführer-Katalogs als Gesamtzahl. Bestwert-Tooltips zeigen jeden Boss in Begegnungsreihenfolge, auch ohne bestätigte Siege.
 
 ## 5.9.0 — 27.09.2026
 

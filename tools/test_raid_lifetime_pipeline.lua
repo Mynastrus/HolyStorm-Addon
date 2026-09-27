@@ -114,7 +114,7 @@ local best=HolyStorm.CharacterUI:GetBestProgress(consumed,consumed.raids[1])
 assert(best and best.difficulty=="NORMAL"and best.killed==6 and best.total==8,"stored Raid data must reach the real Best calculation")
 local rows=HolyStorm.CharacterUI:BuildRaidBestRows(consumed)
 local byName={};for _,row in ipairs(rows)do byName[row.bossName]=row end
-assert(#rows==6 and byName["Vashnik der Bösartige"].kills==7 and byName.Sszorak.kills==6 and byName["Die Zwillingsfänge"].kills==4 and byName["Die Zwillingsfänge"].difficulty=="NORMAL","Best tooltip rows must use stored normalized kills")
+assert(#rows==8 and byName["Vashnik der Bösartige"].kills==7 and byName.Sszorak.kills==6 and byName["Die Zwillingsfänge"].kills==4 and byName["Die Zwillingsfänge"].difficulty=="NORMAL"and rows[7].difficulty==nil and rows[8].difficulty==nil,"Best tooltip rows must retain every catalog boss and stored normalized kills")
 local view={summary={SetText=function()end},table={SetEmptyText=function()end,SetData=function(self,items)self.rows=items end}}
 tabs.raid.refresh(view,{characterUUID="Player-Fixture"})
 assert(view.table.rows[1].best:find("N 6/8",1,true),"StoredFeatureTabs must render the persisted Best")

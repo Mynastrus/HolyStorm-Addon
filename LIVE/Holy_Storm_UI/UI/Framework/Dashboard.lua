@@ -347,7 +347,7 @@ end
 function UI:BuildRaidTooltipRows(model)
  model=model or self.dashboardModel or{};local rows={};local C=HolyStorm.CharacterUI
  for _,boss in ipairs(model.raidRows or{})do
-  if model.raid and C and C.RaidIdentityMatches and C:RaidIdentityMatches(boss,model.raid)then rows[#rows+1]={cells={boss.bossName,RAID_SHORT[boss.difficulty]or boss.difficulty,boss.kills},colors={[2]=C:GetDifficultyColor(boss.difficulty)}}end
+  if model.raid and C and C.RaidIdentityMatches and C:RaidIdentityMatches(boss,model.raid)then rows[#rows+1]={cells={boss.bossName or unknown(),RAID_SHORT[boss.difficulty]or unknown(),boss.kills or unknown()},colors={[2]=C:GetDifficultyColor(boss.difficulty)}}end
  end
  return rows
 end

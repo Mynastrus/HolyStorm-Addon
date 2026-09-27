@@ -113,12 +113,9 @@ do
  local function bestText(snapshot,row)local C=HolyStorm.CharacterUI;local best=C:GetBestProgress(snapshot,row);if best and(tonumber(best.killed)or 0)>0 then return C:ColorDifficulty(best.difficulty,string.format("%s %d/%d",shortDifficulty(best.difficulty),best.killed,best.total))end;return snapshot.catalogReady==true and""or C:FormatState(nil)end
  local function bestSummary(snapshot)local C=HolyStorm.CharacterUI;local best=C:GetBestCurrentRaidProgress(snapshot);if best and(tonumber(best.killed)or 0)>0 then local progress=C:ColorDifficulty(best.difficulty,string.format("%s %d/%d",shortDifficulty(best.difficulty),best.killed,best.total));return string.format(L["BEST_PROGRESS_FORMAT"],best.raidName or C:FormatState(nil),progress)end;return snapshot.catalogReady==true and""or C:FormatState(nil)end
  local function bestTooltip(row,_,_,_,owner)
-  local C=HolyStorm.CharacterUI;local trustedById,trustedByName,fallbackByName,shownTrusted={},{},{},{};local rows={};local bestRows=C:BuildRaidBestRows(type(row)=="table"and row.snapshot or nil)
-  for _,boss in ipairs(bestRows)do if C:RaidIdentityMatches(boss,row)then local nameKey=raidKey(boss.bossName);if boss.bossIdStable then trustedById[tostring(boss.bossId)]=boss else fallbackByName[nameKey]=boss end;trustedByName[nameKey]=boss end end
+  local C=HolyStorm.CharacterUI;local rows={};local bestRows=C:BuildRaidBestRows(type(row)=="table"and row.snapshot or nil,row)
   local unknown=C:FormatState(nil)
-  local function addBest(boss)rows[#rows+1]={cells={boss.bossName,shortDifficulty(boss.difficulty),boss.kills},colors={[2]=C:GetDifficultyColor(boss.difficulty)}};shownTrusted[boss]=true end
-  for _,catalogBoss in ipairs(type(row)=="table"and row.catalogBosses or{})do local nameKey=raidKey(catalogBoss.name);local boss=catalogBoss.id~=nil and(trustedById[tostring(catalogBoss.id)]or fallbackByName[nameKey])or trustedByName[nameKey];if boss then addBest(boss)else rows[#rows+1]={cells={catalogBoss.name or L["UNKNOWN"],unknown,unknown}}end end
-  for _,boss in ipairs(bestRows)do if C:RaidIdentityMatches(boss,row)and not shownTrusted[boss]then addBest(boss)end end
+  for _,boss in ipairs(bestRows)do rows[#rows+1]={cells={boss.bossName or L["UNKNOWN"],boss.difficulty and shortDifficulty(boss.difficulty)or unknown,boss.kills or unknown},colors={[2]=C:GetDifficultyColor(boss.difficulty)}}end
   if#rows==0 then rows[1]={cells={L["NO_DATA"],unknown,unknown}}end
   local tooltips=HolyStorm.Tooltips
    return tooltips and tooltips:ShowTable("raid-best",owner,{anchor={point="LEFT",relativePoint="RIGHT",x=8,y=0},columns={{align="LEFT"},{align="CENTER"},{align="RIGHT"},},headers={{L["COLUMN_BOSS"],L["COLUMN_BEST"],L["COLUMN_KILLS"]}},separator=true,rows=rows})or false
