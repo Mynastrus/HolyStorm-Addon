@@ -115,12 +115,12 @@ function Loader:Load(definition, context)
     return loaded == true, reason
 end
 
-function Loader:HandleEvent(event)
+function Loader:HandleEvent(event,...)
     local bucket = self.addonsByEvent[event]
     if not bucket then return 0 end
     local loaded = 0
     for _, definition in pairs(bucket) do
-        if self:Load(definition, { reason = "event", trigger = event }) then loaded = loaded + 1 end
+        if self:Load(definition, { reason = "event", trigger = event, arguments = {...} }) then loaded = loaded + 1 end
     end
     return loaded
 end
@@ -133,7 +133,7 @@ end
 function Loader:Initialize()
     self:Discover()
     for event in pairs(self.addonsByEvent) do
-        HolyStorm.Events:Register(event, "addon-loader:" .. event, function(trigger) Loader:HandleEvent(trigger) end)
+        HolyStorm.Events:Register(event, "addon-loader:" .. event, function(trigger, ...) Loader:HandleEvent(trigger, ...) end)
     end
 end
 

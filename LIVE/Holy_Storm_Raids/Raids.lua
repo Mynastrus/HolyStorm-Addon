@@ -38,9 +38,22 @@ HolyStorm:RegisterModule(metadata,function(Module)
   if not tier or tier<1 or#raids==0 then reason="Raid catalog unavailable: Encounter Journal data pending";HolyStorm.Logger:Write("DEBUG","Raids","catalog",reason,{reason="ENCOUNTER_JOURNAL_PENDING",tier=tier,raidCount=#raids});return nil,tier,false,reason end
   return raids,tier,true
  end
- function Module:GetRaidJournalIndex()
-  local api,reason=ensureEncounterJournal();if not api then return nil,reason end;local ok,result=pcall(function()local previousTier=api.EJ_GetCurrentTier and api.EJ_GetCurrentTier();local byName={};for tier=1,(api.EJ_GetNumTiers()or 0)do for _,raid in ipairs(readRaidTier(api,tier))do local key=raidKey(raid.name);if key then byName[key]=raid end end end;if previousTier then api.EJ_SelectTier(previousTier)end;return byName end)
-  if not ok then reason="Raid catalog unavailable: Encounter Journal index scan failed";HolyStorm.Logger:Write("WARN","Raids","catalog",reason,{reason="ENCOUNTER_JOURNAL_INDEX_FAILED",error=tostring(result)});return nil,reason end;return result
+ function Module:GetRaidJournalIndex(currentRaids,currentTier)
+  local api,reason=ensureEncounterJournal();if not api then return nil,reason end
+  currentRaids=currentRaids or select(1,self:GetCurrentRaidCatalog());currentTier=currentTier or api.EJ_GetNumTiers()
+  if type(currentRaids)~="table"or not currentTier then return nil,"Raid catalog unavailable: current tier data pending"end
+  local signatureParts={tostring(currentTier)};for _,raid in ipairs(currentRaids)do signatureParts[#signatureParts+1]=tostring(raid.id)..":"..tostring(raid.name)end;local signature=table.concat(signatureParts,"\031")
+  if self.raidJournalIndex and self.raidJournalIndexKey==signature then return self.raidJournalIndex end
+  local ok,result=pcall(function()
+   local previousTier=api.EJ_GetCurrentTier and api.EJ_GetCurrentTier();local byName={}
+   local function add(raids)for _,raid in ipairs(raids)do local key=raidKey(raid.name);if key then byName[key]=raid end end end
+   add(currentRaids)
+   for tier=1,(api.EJ_GetNumTiers()or 0)do if tonumber(tier)~=tonumber(currentTier)then add(readRaidTier(api,tier))end end
+   if previousTier then api.EJ_SelectTier(previousTier)end;return byName
+  end)
+  if not ok then reason="Raid catalog unavailable: Encounter Journal index scan failed";HolyStorm.Logger:Write("WARN","Raids","catalog",reason,{reason="ENCOUNTER_JOURNAL_INDEX_FAILED",error=tostring(result)});return nil,reason end
+  if not next(result)then return nil,"Raid catalog unavailable: Encounter Journal index empty"end
+  self.raidJournalIndex,self.raidJournalIndexKey=result,signature;return result
  end
  local function statisticValue(raw)
   if type(raw)=="number"then return raw>=0 and raw or nil end;if type(raw)~="string"or raw==""or raw=="--"then return nil end
@@ -89,96 +102,151 @@ HolyStorm:RegisterModule(metadata,function(Module)
   end
   return records,positive
  end
- function Module:GetLifetimeStatisticCandidates(raids,manual,tierName)
-  local ids={};for _,raid in ipairs(raids or{})do ids[#ids+1]=tostring(raid.id)end
-  local cacheKey=tostring(tierName or"")..":"..table.concat(ids,",")
-  if not manual and self.lifetimeStatisticCandidates and self.lifetimeStatisticKey==cacheKey then
-   local cached=HolyStorm.Utils.DeepCopy(self.lifetimeStatisticAudit);cached.cached=true;return self.lifetimeStatisticCandidates,nil,cached
-  end
-  if manual then self.lifetimeStatisticCandidates,self.lifetimeStatisticAudit,self.lifetimeStatisticKey=nil,nil,nil end
-  local audit={mapping="CURRENT_CLIENT_STATISTIC_LABEL",categories=0,entries=0,statisticIds=0,candidates=0,relevantCategories=0,relevantEntries=0,discoveryRejected=0,apiFailures=0}
-  if type(GetStatisticsCategoryList)~="function"or type(GetCategoryNumAchievements)~="function"or type(GetStatistic)~="function"or type(GetAchievementInfo)~="function"then return nil,"STATISTIC_API_UNAVAILABLE",audit end
-  local listOk,categories=pcall(GetStatisticsCategoryList);if not listOk or type(categories)~="table"then return nil,"STATISTIC_CATEGORIES_UNAVAILABLE",audit end
-  audit.categories=#categories
-  if #categories==0 then return nil,"STATISTIC_CATEGORIES_EMPTY",audit end
-  local result,seen,raidTokens,bossTokens={},{},{},{}
+ local function makeLifetimeCacheKey(raids,tierName)
+  local parts={tostring(tierName or"")};local difficultyNames={}
   for _,raid in ipairs(raids or{})do
-   raidTokens[#raidTokens+1]=raidKey(raid.name)
-   for _,boss in ipairs(raid.bosses or{})do bossTokens[#bossTokens+1]=raidKey(boss.name)end
+   parts[#parts+1]=tostring(raid.id)..":"..tostring(raid.name)
+   for _,boss in ipairs(raid.bosses or{})do parts[#parts+1]=tostring(boss.id)..":"..tostring(boss.name)end
   end
-  local function relevant(name)
-   local token=raidKey(name);if not token then return false end
-   for _,wanted in ipairs(raidTokens)do if wanted and token:find(wanted,1,true)then return true end end
-   for _,wanted in ipairs(bossTokens)do if wanted and token:find(wanted,1,true)then return true end end
-   return false
+  for _,key in ipairs(lifetimeDifficultyOrder)do local id=lifetimeDifficultyIds[key];local name
+   if type(GetDifficultyInfo)=="function"then local ok,value=pcall(GetDifficultyInfo,id);if ok and type(value)=="string"then name=value end end
+   difficultyNames[key]=name;parts[#parts+1]=key..":"..tostring(name or"")
   end
-  local tierToken=raidKey(tierName)
-  local categoryNames={}
-  if type(GetCategoryInfo)=="function"then for _,id in ipairs(categories)do local ok,name,parent=pcall(GetCategoryInfo,id);if ok then categoryNames[id]={name=safeText(name),parent=safeNumber(parent)}end end end
-  local function relevantCategory(id)
-   local visited={};while id and not visited[id]do
-    visited[id]=true;local item=categoryNames[id];if not item then break end
-    local token=raidKey(item.name)
-    if token and((tierToken and token:find(tierToken,1,true))or relevant(item.name))then return true end
-    id=item.parent
-   end
-   return false
-  end
-  local logged,categoryLogged=0,0
-  for _,categoryId in ipairs(categories)do
-   local countOk,count=pcall(GetCategoryNumAchievements,categoryId);if not countOk then audit.apiFailures=audit.apiFailures+1 end
-   local relevantCount,candidateCount=0,0
-   for index=1,(countOk and safeNumber(count)or 0)do
-    audit.entries=audit.entries+1
-    local statOk,_,skip,statisticId=pcall(GetStatistic,categoryId,index)
-    if not statOk then audit.apiFailures=audit.apiFailures+1 end
-    statisticId=statOk and safeNumber(statisticId)or nil
-    if statisticId and not skip and not seen[statisticId]then
-     seen[statisticId]=true;audit.statisticIds=audit.statisticIds+1
-     local infoOk,_,name=pcall(GetAchievementInfo,statisticId)
-     if not infoOk then audit.apiFailures=audit.apiFailures+1 end
-     name=infoOk and safeText(name)or nil
-     local isRelevant=name and relevant(name)
-     if isRelevant then audit.relevantEntries=audit.relevantEntries+1;relevantCount=relevantCount+1 end
-     local parsed,reason=parseStatisticLabel(name)
-     if parsed then
-      result[#result+1]={statisticId=statisticId,name=name,categoryId=categoryId,bossToken=parsed.bossToken,raidToken=parsed.raidToken,difficultyToken=parsed.difficultyToken}
-      audit.candidates=audit.candidates+1;candidateCount=candidateCount+1
-     end
-     if reason and isRelevant then
-      audit.discoveryRejected=audit.discoveryRejected+1
-      if manual and logged<24 then logged=logged+1;HolyStorm.Logger:Write("DEBUG","Raids","lifetime-discovery","RAID_LIFETIME_CANDIDATE_REJECTED",{categoryId=categoryId,statisticId=statisticId,name=name,reason=reason})end
+  return table.concat(parts,"\031"),difficultyNames
+ end
+ local function slotKey(raidToken,bossToken,difficultyToken)return tostring(raidToken or"").."\031"..tostring(bossToken or"").."\031"..tostring(difficultyToken or"")end
+ local function makeLifetimeLookup(raids,candidates,difficultyNames)
+  local lookup={bySlot={},raidTokens={},bossTokens={},difficultyTokens={},slots=0,candidateComparisons=0,indexCandidates=#(candidates or{}),exactMappings=0}
+  local difficultyTokens={};for _,difficulty in ipairs(lifetimeDifficultyOrder)do difficultyTokens[difficulty]=raidKey(difficultyNames[difficulty]);if difficultyTokens[difficulty]then lookup.difficultyTokens[difficultyTokens[difficulty]]=true end end
+  for _,raid in ipairs(raids or{})do
+   local raidToken=raidKey(raid.name);if raidToken then lookup.raidTokens[raidToken]=true end
+   for _,boss in ipairs(raid.bosses or{})do
+    local bossToken=raidKey(boss.name);if bossToken then lookup.bossTokens[bossToken]=true end
+    for _,difficulty in ipairs(lifetimeDifficultyOrder)do
+     lookup.slots=lookup.slots+1;local difficultyToken=difficultyTokens[difficulty]
+     if raidToken and bossToken and difficultyToken then
+      local key=slotKey(raidToken,bossToken,difficultyToken);local matches=lookup.bySlot[key]
+      if not matches then matches={};lookup.bySlot[key]=matches end
      end
     end
    end
-   if relevantCount>0 or relevantCategory(categoryId)then
-    audit.relevantCategories=audit.relevantCategories+1
-    if manual and categoryLogged<16 then categoryLogged=categoryLogged+1;HolyStorm.Logger:Write("DEBUG","Raids","lifetime-discovery","RAID_LIFETIME_CATEGORY",{categoryId=categoryId,name=categoryNames[categoryId]and categoryNames[categoryId].name,parentId=categoryNames[categoryId]and categoryNames[categoryId].parent,entries=countOk and count or 0,relevantEntries=relevantCount,candidates=candidateCount})end
+  end
+  for _,candidate in ipairs(candidates or{})do
+   local key=slotKey(candidate.raidToken,candidate.bossToken,candidate.difficultyToken);local matches=lookup.bySlot[key]
+   if matches then matches[#matches+1]=candidate end
+  end
+  lookup.candidateComparisons=#(candidates or{})
+  for _,matches in pairs(lookup.bySlot)do if #matches>0 then lookup.exactMappings=lookup.exactMappings+1 end end
+  return lookup
+ end
+ function Module:InvalidateLifetimeStatisticCache(reason)
+  self.lifetimeStatisticCache=nil;self.raidScanGeneration=(tonumber(self.raidScanGeneration)or 0)+1
+  HolyStorm.Logger:Write("DEBUG","Raids","lifetime-discovery","RAID_LIFETIME_CACHE_INVALIDATED",{reason=reason or"EXPLICIT"})
+ end
+ function Module:InvalidateRaidCatalogCache(reason)
+  self.raidJournalIndex,self.raidJournalIndexKey=nil,nil
+  self:InvalidateLifetimeStatisticCache(reason or"CATALOG_INVALIDATED")
+ end
+ function Module:GetLifetimeStatisticCandidates(raids,manual,tierName,state,maxWork)
+  local cacheKey,difficultyNames;if state and state.key then cacheKey,difficultyNames=state.key,state.difficultyNames else cacheKey,difficultyNames=makeLifetimeCacheKey(raids,tierName)end;local cache=self.lifetimeStatisticCache
+  if cache and cache.key==cacheKey then local audit=HolyStorm.Utils.DeepCopy(cache.audit);audit.cached=true;return cache.candidates,nil,audit,cache end
+  local audit={mapping="CURRENT_CLIENT_STATISTIC_LABEL",categories=0,categoriesListCalls=0,categoryInfoReads=0,categoriesEnumerated=0,entries=0,statisticIds=0,labelReads=0,candidates=0,relevantCategories=0,relevantEntries=0,discoveryRejected=0,apiFailures=0,workChunks=0}
+  if type(GetStatisticsCategoryList)~="function"or type(GetCategoryNumAchievements)~="function"or type(GetStatistic)~="function"or type(GetAchievementInfo)~="function"then return nil,"STATISTIC_API_UNAVAILABLE",audit end
+  if not state or state.key~=cacheKey then
+   audit.categoriesListCalls=audit.categoriesListCalls+1;local listOk,categories=pcall(GetStatisticsCategoryList);if not listOk or type(categories)~="table"then return nil,"STATISTIC_CATEGORIES_UNAVAILABLE",audit end
+   audit.categories=#categories;if #categories==0 then return nil,"STATISTIC_CATEGORIES_EMPTY",audit end
+   local raidTokens,bossTokens,raidTokenSet,bossTokenSet={},{},{},{}
+   for _,raid in ipairs(raids or{})do local token=raidKey(raid.name);if token then raidTokens[#raidTokens+1]=token;raidTokenSet[token]=true end;for _,boss in ipairs(raid.bosses or{})do token=raidKey(boss.name);if token then bossTokens[#bossTokens+1]=token;bossTokenSet[token]=true end end end
+   state={key=cacheKey,difficultyNames=difficultyNames,categories=categories,categoryNames={},categoryCursor=1,raidTokens=raidTokens,bossTokens=bossTokens,raidTokenSet=raidTokenSet,bossTokenSet=bossTokenSet,tierToken=raidKey(tierName),result={},seen={},audit=audit,stage="metadata",logged=0,categoryLogged=0,chunkCount=0}
+  end
+  audit=state.audit;state.chunkCount=state.chunkCount+1;audit.workChunks=state.chunkCount
+  local budget=math.max(1,tonumber(maxWork)or math.huge);local rows=0;local categories=0;local categoryReads=0
+  local function yieldIfNeeded()
+   return nil,"STATISTIC_DISCOVERY_IN_PROGRESS",audit,state
+  end
+  if state.stage=="metadata"then
+   while state.categoryCursor<=#state.categories and categories<budget do
+    local id=state.categories[state.categoryCursor];state.categoryCursor=state.categoryCursor+1;categories=categories+1
+    if type(GetCategoryInfo)=="function"then audit.categoryInfoReads=audit.categoryInfoReads+1;local ok,name,parent=pcall(GetCategoryInfo,id);if ok then state.categoryNames[id]={name=safeText(name),parent=safeNumber(parent)}else audit.apiFailures=audit.apiFailures+1 end end
+   end
+   if state.categoryCursor<=#state.categories then return yieldIfNeeded()end
+   local function relevant(name)
+    local token=raidKey(name);if not token then return false end
+    for _,wanted in ipairs(state.raidTokens)do if token:find(wanted,1,true)then return true end end
+    for _,wanted in ipairs(state.bossTokens)do if token:find(wanted,1,true)then return true end end
+    return false
+   end
+   local function relevantCategory(id)
+    local visited={};while id and not visited[id]do
+     visited[id]=true;local item=state.categoryNames[id];if not item then break end
+     local token=raidKey(item.name);if token and((state.tierToken and token:find(state.tierToken,1,true))or relevant(item.name))then return true end;id=item.parent
+    end
+    return false
+   end
+   state.categoryRelevant={};state.categoryHadRelevant={}
+   for _,id in ipairs(state.categories)do if relevantCategory(id)then state.categoryRelevant[id]=true end end
+   -- Enumerate every category before caching. Category labels are useful for
+   -- diagnostics, but cannot prove that Blizzard placed no current Raid row in
+   -- a generically named category.
+   state.scanCategories=state.categories;state.stage="statistics";state.categoryCursor=1;state.entryCursor=1;state.entryCount=nil
+  end
+  while state.categoryCursor<=#state.scanCategories and rows<budget and categoryReads<budget do
+   local categoryId=state.scanCategories[state.categoryCursor]
+   if state.entryCount==nil then
+    local countOk,count=pcall(GetCategoryNumAchievements,categoryId);categoryReads=categoryReads+1;audit.categoriesEnumerated=audit.categoriesEnumerated+1;if not countOk then audit.apiFailures=audit.apiFailures+1 end
+    state.entryCount=countOk and safeNumber(count)or 0;state.entryCursor=1
+    if not countOk then state.entryCount=0 end
+   end
+   if state.entryCursor>state.entryCount then
+    state.categoryCursor=state.categoryCursor+1;state.entryCount=nil
+   else
+    local index=state.entryCursor;state.entryCursor=index+1;rows=rows+1;audit.entries=audit.entries+1
+    local statOk,_,skip,statisticId=pcall(GetStatistic,categoryId,index);if not statOk then audit.apiFailures=audit.apiFailures+1 end
+    statisticId=statOk and safeNumber(statisticId)or nil
+    if statisticId and not skip and not state.seen[statisticId]then
+     state.seen[statisticId]=true;audit.statisticIds=audit.statisticIds+1
+     audit.labelReads=audit.labelReads+1;local infoOk,_,name=pcall(GetAchievementInfo,statisticId);if not infoOk then audit.apiFailures=audit.apiFailures+1 end;name=infoOk and safeText(name)or nil
+     local parsed,rejectReason=parseStatisticLabel(name);local isRelevant=parsed and(state.raidTokenSet[parsed.raidToken]or state.bossTokenSet[parsed.bossToken])or false
+     if not isRelevant and rejectReason and name then local token=raidKey(name);for _,wanted in ipairs(state.raidTokens)do if token and token:find(wanted,1,true)then isRelevant=true;break end end;if not isRelevant then for _,wanted in ipairs(state.bossTokens)do if token and token:find(wanted,1,true)then isRelevant=true;break end end end end
+     if isRelevant then audit.relevantEntries=audit.relevantEntries+1;state.categoryHadRelevant[categoryId]=true end
+     if parsed then state.result[#state.result+1]={statisticId=statisticId,name=name,categoryId=categoryId,bossToken=parsed.bossToken,raidToken=parsed.raidToken,difficultyToken=parsed.difficultyToken};audit.candidates=audit.candidates+1 end
+     if rejectReason and isRelevant then
+      audit.discoveryRejected=audit.discoveryRejected+1
+      if manual and state.logged<24 then state.logged=state.logged+1;HolyStorm.Logger:Write("DEBUG","Raids","lifetime-discovery","RAID_LIFETIME_CANDIDATE_REJECTED",{categoryId=categoryId,statisticId=statisticId,name=name,reason=rejectReason})end
+     end
+    end
    end
   end
-  audit.categoryLogsTruncated=manual and math.max(0,audit.relevantCategories-categoryLogged)or 0
-  if #result>0 then self.lifetimeStatisticCandidates=result;self.lifetimeStatisticAudit=HolyStorm.Utils.DeepCopy(audit);self.lifetimeStatisticKey=cacheKey end
-  return result,nil,audit
+  if state.categoryCursor<=#state.scanCategories then return yieldIfNeeded()end
+  local relevantCategoryCount=0
+  for _,id in ipairs(state.scanCategories)do if state.categoryRelevant[id]or state.categoryHadRelevant[id]then relevantCategoryCount=relevantCategoryCount+1 end end
+  audit.relevantCategories=relevantCategoryCount;audit.categoryLogsTruncated=manual and math.max(0,audit.relevantCategories-state.categoryLogged)or 0
+  local lookup=makeLifetimeLookup(raids,state.result,difficultyNames);audit.slots=lookup.slots;audit.exactMappings=lookup.exactMappings;audit.mappingProbes=lookup.slots;audit.candidateComparisons=lookup.candidateComparisons
+  local complete=audit.apiFailures==0 and #state.result>0 and lookup.exactMappings>0;audit.cacheable=complete
+  local completed={key=cacheKey,candidates=state.result,audit=HolyStorm.Utils.DeepCopy(audit),difficultyNames=difficultyNames,lookup=lookup}
+  if complete then self.lifetimeStatisticCache=completed end
+  if manual then for _,id in ipairs(state.scanCategories)do if(state.categoryRelevant[id]or state.categoryHadRelevant[id])and state.categoryLogged<16 then state.categoryLogged=state.categoryLogged+1;local item=state.categoryNames[id];HolyStorm.Logger:Write("DEBUG","Raids","lifetime-discovery","RAID_LIFETIME_CATEGORY",{categoryId=id,name=item and item.name,parentId=item and item.parent})end end;audit.categoryLogsTruncated=math.max(0,audit.relevantCategories-state.categoryLogged)end
+  return state.result,nil,audit,completed
  end
- function Module:CaptureLifetime(raids,previous,manual,tierName)
+ function Module:CaptureLifetime(raids,previous,manual,tierName,candidatesOverride,auditOverride,cacheOverride)
   local lifetime=HolyStorm.Utils.DeepCopy(type(previous)=="table"and previous or{bosses={},seen={}});lifetime.bosses=type(lifetime.bosses)=="table"and lifetime.bosses or{};lifetime.seen=type(lifetime.seen)=="table"and lifetime.seen or{}
   if manual then HolyStorm.Logger:Write("INFO","Raids","lifetime","RAID_LIFETIME_SCAN_STARTED",{raidCount=#(raids or{}),tierName=tierName})end
-  local candidates,candidateReason,audit=self:GetLifetimeStatisticCandidates(raids,manual,tierName)
-  audit=audit or{};audit.reason=candidateReason or"OK";audit.recognized=0;audit.reads=0;audit.positive=0;audit.zero=0;audit.unavailable=0;audit.mappedBosses=0;audit.unmapped=0;audit.missingMappings=0;audit.slots=0
-  local difficultyNames={};if type(GetDifficultyInfo)=="function"then for key,id in pairs(lifetimeDifficultyIds)do local ok,name=pcall(GetDifficultyInfo,id);if ok and type(name)=="string"then difficultyNames[key]=name end end end
+  local candidates,candidateReason,audit,cache
+  if candidatesOverride~=nil then candidates,audit,cache=candidatesOverride,auditOverride,cacheOverride else candidates,candidateReason,audit,cache=self:GetLifetimeStatisticCandidates(raids,manual,tierName)end
+  audit=audit or{};audit.reason=candidateReason or"OK";audit.recognized=0;audit.valueReads=0;audit.reads=0;audit.positive=0;audit.zero=0;audit.unavailable=0;audit.mappedBosses=0;audit.unmapped=0;audit.missingMappings=0;audit.slots=0
+  local difficultyNames=cache and cache.difficultyNames or{};if not cache and type(GetDifficultyInfo)=="function"then for key,id in pairs(lifetimeDifficultyIds)do local ok,name=pcall(GetDifficultyInfo,id);if ok and type(name)=="string"then difficultyNames[key]=name end end end
+  local lookup=cache and cache.lookup or makeLifetimeLookup(raids,candidates,difficultyNames)
+  local difficultyTokens={};for _,difficulty in ipairs(lifetimeDifficultyOrder)do difficultyTokens[difficulty]=raidKey(difficultyNames[difficulty])end
   local mappedIds,mappedBossIds,detailCount={},{},0
   for _,raid in ipairs(raids or{})do
+   local raidToken=raidKey(raid.name)
    for _,boss in ipairs(raid.bosses or{})do
+    local bossToken=raidKey(boss.name)
     for _,difficulty in ipairs(lifetimeDifficultyOrder)do
      audit.slots=audit.slots+1
-     local matches={};local difficultyName=difficultyNames[difficulty]
-     if candidates and difficultyName then
-      local bossToken,raidToken,difficultyToken=raidKey(boss.name),raidKey(raid.name),raidKey(difficultyName)
-      for _,candidate in ipairs(candidates)do
-       if candidate.bossToken==bossToken and candidate.raidToken==raidToken and candidate.difficultyToken==difficultyToken then matches[#matches+1]=candidate end
-      end
-     end
+     local difficultyName=difficultyNames[difficulty];local key=slotKey(raidToken,bossToken,difficultyTokens[difficulty]);local matches=candidates and lookup.bySlot[key]or{}
      audit.recognized=audit.recognized+#matches
+     audit.candidateComparisons=(audit.candidateComparisons or 0)+#matches
      local candidate=#matches==1 and matches[1]or nil;local raw,kills,accepted,why
      if not candidates then why=candidateReason
      elseif not difficultyName then why="DIFFICULTY_NAME_UNAVAILABLE"
@@ -186,7 +254,7 @@ HolyStorm:RegisterModule(metadata,function(Module)
      elseif#matches>1 then why="AMBIGUOUS_STATISTIC";audit.missingMappings=audit.missingMappings+1
      else
       mappedIds[candidate.statisticId]=true
-      local ok,value=pcall(GetStatistic,candidate.statisticId);raw=ok and value or nil
+      audit.valueReads=audit.valueReads+1;local ok,value=pcall(GetStatistic,candidate.statisticId);raw=ok and value or nil
       if not ok then audit.apiFailures=audit.apiFailures+1 end
       kills=ok and safeStatisticValue(value)or nil;accepted=kills~=nil
       if accepted then audit.reads=audit.reads+1;if kills>0 then audit.positive=audit.positive+1 else audit.zero=audit.zero+1 end
@@ -209,19 +277,11 @@ HolyStorm:RegisterModule(metadata,function(Module)
     end
    end
   end
-  local logged=0
+  audit.unmappedCandidateChecks=0;local logged=0
   for _,candidate in ipairs(candidates or{})do
+   audit.unmappedCandidateChecks=audit.unmappedCandidateChecks+1
    if not mappedIds[candidate.statisticId]then
-    local raidMatch,bossMatch,difficultyMatch=false,false,false
-    for _,raid in ipairs(raids or{})do
-     local raidToken=raidKey(raid.name)
-     if candidate.raidToken==raidToken then raidMatch=true end
-     for _,boss in ipairs(raid.bosses or{})do
-      local bossToken=raidKey(boss.name)
-      if candidate.bossToken==bossToken then bossMatch=true end
-     end
-    end
-    for _,name in pairs(difficultyNames)do if candidate.difficultyToken==raidKey(name)then difficultyMatch=true end end
+    local raidMatch=lookup.raidTokens[candidate.raidToken]==true;local bossMatch=lookup.bossTokens[candidate.bossToken]==true;local difficultyMatch=lookup.difficultyTokens[candidate.difficultyToken]==true
     if raidMatch or bossMatch then
      audit.unmapped=audit.unmapped+1
      local reason=not raidMatch and"RAID_NAME_NOT_FOUND"or not bossMatch and"BOSS_NAME_NOT_FOUND"or not difficultyMatch and"DIFFICULTY_NAME_NOT_FOUND"or"AMBIGUOUS_STATISTIC"
@@ -252,11 +312,31 @@ HolyStorm:RegisterModule(metadata,function(Module)
   end end
   return lifetime,audit
  end
- function Module:Collect(manual)
-  local raids,tier,catalogReady,reason=self:GetCurrentRaidCatalog();if not catalogReady then return{pending=true,pendingReason=reason or"raid catalog pending"}end;local journalByName,indexReason=self:GetRaidJournalIndex();if not journalByName then return{pending=true,pendingReason=indexReason or"raid catalog pending"}end;local latest=raids[1]and{id=raids[1].id,name=raids[1].name,tier=tier}or nil
-  local tierName;if type(EJ_GetTierInfo)=="function"then local ok,name=pcall(EJ_GetTierInfo,tier);if ok and type(name)=="string"then tierName=name end end
-  local old=self:GetCharacterSnapshot(UnitGUID("player"));local lifetime=self:CaptureLifetime(raids,type(old)=="table"and old.lifetime,manual,tierName)
-  local s={currentRaid=latest,currentTier=tier,catalogReady=catalogReady,raids=raids,lockouts={},lifetime=lifetime,updatedAt=HolyStorm.Utils.Now(),snapshotVersion=3,bestProgress={killed=0,total=0,difficultyId=0}}
+ function Module:Collect(manual,workState)
+  workState=workState or{};local generation=tonumber(self.raidScanGeneration)or 0
+  if workState.initialized and workState.generation~=generation then for key in pairs(workState)do workState[key]=nil end end
+  if not workState.initialized then
+   local raids,tier,catalogReady,reason=self:GetCurrentRaidCatalog();if not catalogReady then return{pending=true,pendingReason=reason or"raid catalog pending"}end
+   local journalByName,indexReason=self:GetRaidJournalIndex(raids,tier);if not journalByName then return{pending=true,pendingReason=indexReason or"raid catalog pending"}end
+   local tierName;if type(EJ_GetTierInfo)=="function"then local ok,name=pcall(EJ_GetTierInfo,tier);if ok and type(name)=="string"then tierName=name end end
+   local old=self:GetCharacterSnapshot(UnitGUID("player"));workState.initialized=true;workState.generation=generation;workState.raids=raids;workState.tier=tier;workState.tierName=tierName;workState.old=old;workState.journalByName=journalByName;workState.catalogReady=catalogReady
+  end
+  local candidates,candidateReason,audit,cache=self:GetLifetimeStatisticCandidates(workState.raids,manual,workState.tierName,workState.discovery,workState.chunked and 32 or nil)
+  if candidateReason=="STATISTIC_DISCOVERY_IN_PROGRESS"then workState.discovery=cache;return nil,"IN_PROGRESS"end
+  local statisticsUnavailable=not candidates and candidateReason=="STATISTIC_API_UNAVAILABLE"
+  if not statisticsUnavailable and(not candidates or audit and(audit.apiFailures or 0)>0)then
+   local oldLifetime=workState.old and workState.old.lifetime
+   return{pending=true,pendingReason=candidateReason or"STATISTIC_DISCOVERY_INCOMPLETE",currentRaid=workState.raids[1]and{id=workState.raids[1].id,name=workState.raids[1].name,tier=workState.tier}or nil,currentTier=workState.tier,catalogReady=workState.catalogReady,raids=workState.raids,lockouts={},lifetime=HolyStorm.Utils.DeepCopy(oldLifetime or{bosses={},seen={}}),snapshotVersion=3,bestProgress={killed=0,total=0,difficultyId=0}}
+  end
+  local raids,tier,journalByName=workState.raids,workState.tier,workState.journalByName
+  local latest=raids[1]and{id=raids[1].id,name=raids[1].name,tier=tier}or nil
+  local old=workState.old;local lifetime
+  if statisticsUnavailable then lifetime=HolyStorm.Utils.DeepCopy(type(old)=="table"and type(old.lifetime)=="table"and old.lifetime or{bosses={},seen={},reliable=false});lifetime.bosses=type(lifetime.bosses)=="table"and lifetime.bosses or{};lifetime.seen=type(lifetime.seen)=="table"and lifetime.seen or{};HolyStorm.Logger:Write("DEBUG","Raids","lifetime","Raid Statistics APIs unavailable; retaining prior lifetime data",{reason=candidateReason})
+  else
+   local lifetimeAudit;lifetime,lifetimeAudit=self:CaptureLifetime(raids,type(old)=="table"and old.lifetime,manual,workState.tierName,candidates,audit,cache)
+   if lifetimeAudit.apiFailures>0 then return{pending=true,pendingReason="STATISTIC_VALUE_READ_FAILED",currentRaid=latest,currentTier=tier,catalogReady=workState.catalogReady,raids=raids,lockouts={},lifetime=HolyStorm.Utils.DeepCopy(type(old)=="table"and type(old.lifetime)=="table"and old.lifetime or{bosses={},seen={},reliable=false}),snapshotVersion=3,bestProgress={killed=0,total=0,difficultyId=0}}end
+  end
+  local s={currentRaid=latest,currentTier=tier,catalogReady=workState.catalogReady,raids=raids,lockouts={},lifetime=lifetime,updatedAt=HolyStorm.Utils.Now(),snapshotVersion=3,bestProgress={killed=0,total=0,difficultyId=0}}
   for i=1,(GetNumSavedInstances and GetNumSavedInstances()or 0)do
    local name,id,reset,diff,locked,extended,_,isRaid,maxPlayers,diffName,encounters,encounterProgress=GetSavedInstanceInfo(i)
    if isRaid and locked then
@@ -279,11 +359,28 @@ HolyStorm:RegisterModule(metadata,function(Module)
   HolyStorm.Logger:Write(ok and"INFO"or"WARN","Raids","lifetime","RAID_LIFETIME_COMMIT",{committed=ok==true,reason=not ok and reason or nil,version=meta and meta.version,schema=stored and stored.snapshotVersion,lifetimeBosses=records,positiveBosses=positive})
   return ok,reason
  end
- function Module:Queue(sync,delay,requestRaidInfo,manual)
+ function Module:Queue(sync,delay,requestRaidInfo,manual,reason)
   -- UPDATE_INSTANCE_INFO is the response to RequestRaidInfo(). Requesting the
   -- data again from that event creates a loop and keeps extending the debounce.
-  if requestRaidInfo~=false and RequestRaidInfo then RequestRaidInfo()end
-  return HolyStorm.Snapshots:Queue("raids",function()return Module:Collect(manual)end,function(s)return Module:Validate(s)end,function(s,f)return Module:Commit(s,f,sync)end,{source="Raids",delay=delay or 1,retryDelay=2.5,priority=3})
+  local run={generation=self.raidScanGeneration or 0,workState={chunked=true}}
+  local function scanner()
+   if run.generation~=(Module.raidScanGeneration or 0)then run.generation=Module.raidScanGeneration or 0;run.workState={chunked=true}end
+   run.workState.generation=run.generation
+   local snapshot,status=Module:Collect(manual,run.workState)
+   if status=="IN_PROGRESS"then return{workflowAction="GOTO",gotoStep=1,delay=0}end
+   run.snapshotGeneration=run.generation;run.scanComplete=true;run.workState={chunked=true};return snapshot
+  end
+  local function validator(s)if run.snapshotGeneration~=(Module.raidScanGeneration or 0)then return false,"RAID_SCAN_STALE"end;return Module:Validate(s)end
+  local function commit(s,f)
+   if run.snapshotGeneration~=(Module.raidScanGeneration or 0)then return{workflowAction="RETRY",gotoStep=1,delay=0,maxRetries=5,reason="RAID_SCAN_STALE"}end
+   run.commitStarted=true;local committed,commitReason=Module:Commit(s,f,sync);run.committed=committed~=false
+   return committed,commitReason
+  end
+  local queued,workflowId=HolyStorm.Snapshots:Queue("raids",scanner,validator,commit,{source="Raids",triggerSource=reason or"RAID_SCAN",delay=delay or 1,retryDelay=2.5,priority=3,maxRetries=5})
+  if queued then run.workflowId=workflowId;self.activeRaidRun=run end
+  if queued and requestRaidInfo~=false and RequestRaidInfo then local now=tonumber(GetTime and GetTime())or 0;if not self.raidInfoRequestPendingUntil or self.raidInfoRequestPendingUntil<now then self.raidInfoRequestPendingUntil=now+10;pcall(RequestRaidInfo)end end
+  HolyStorm.Logger:Write("DEBUG","Raids","scan","Raid scan queued",{workflowId=workflowId,reason=reason or"UNKNOWN",manual=manual==true,requestRaidInfo=requestRaidInfo~=false},workflowId)
+  return queued,workflowId
  end
  function Module:GetSnapshotStatus()
   local snapshot,meta=self:GetCharacterSnapshot(UnitGUID("player"))
@@ -309,9 +406,33 @@ HolyStorm:RegisterModule(metadata,function(Module)
   return lines
  end
  function Module:OnInitialize()
-  HolyStorm.CharacterScans:RegisterProvider("Raids",{block="raid",capability="character.scan.raids",addonId="raids",order=30,request=function(sync,reason,reasons)local manual=reason=="MANUAL_COMMAND"or type(reasons)=="table"and reasons.MANUAL_COMMAND==true;local _,workflowId=Module:Queue(sync,reason=="BOSS_KILL"and.5 or 1,reason~="UPDATE_INSTANCE_INFO",manual);return workflowId end,status=function()return Module:GetSnapshotStatus()end})
+  HolyStorm.CharacterScans:RegisterProvider("Raids",{block="raid",capability="character.scan.raids",addonId="raids",order=30,request=function(sync,reason,reasons)local manual=reason=="MANUAL_COMMAND"or type(reasons)=="table"and reasons.MANUAL_COMMAND==true;local _,workflowId=Module:Queue(sync,1,reason~="UPDATE_INSTANCE_INFO",manual,reason);return workflowId end,status=function()return Module:GetSnapshotStatus()end})
   HolyStorm:RegisterCapability("Raids","character.scan.raids",function(_,sync,reason)return HolyStorm.CharacterScans:Request("raid",reason or"CAPABILITY",sync,{order=30})end)
  end
- function Module:OnEnable()for _,ev in ipairs({"UPDATE_INSTANCE_INFO","BOSS_KILL","ENCOUNTER_END"})do local event=ev;HolyStorm.Events:Register(event,"raids",function()HolyStorm.CharacterScans:Request("raid",event,true,{order=30})end)end;local context=self.loadContext;if context and context.reason=="event"then HolyStorm.CharacterScans:Request("raid",context.trigger,true,{order=30})end end
- function Module:OnDisable()HolyStorm.Events:UnregisterOwner("raids");HolyStorm.Snapshots:Cancel("raids")end
+ local function inRaidInstance()if type(IsInInstance)~="function"then return false end;local inside,instanceType=IsInInstance();return inside==true and instanceType=="raid"end
+ local function requestRaidRefresh(event,success,loadContext)
+  if not inRaidInstance()then local instanceType;if type(IsInInstance)=="function"then local _,kind=IsInInstance();instanceType=kind end;HolyStorm.Logger:Write("DEBUG","Raids","trigger","Raid refresh ignored outside a Raid instance",{event=event,instanceType=instanceType or"UNKNOWN"});return false end
+  if event=="ENCOUNTER_END"and success~=1 then HolyStorm.Logger:Write("DEBUG","Raids","trigger","Unsuccessful encounter end ignored",{event=event,success=success});return false end
+  local now=tonumber(GetTime and GetTime())or 0
+  local requestedResponse=event=="UPDATE_INSTANCE_INFO"and Module.raidInfoRequestPendingUntil and Module.raidInfoRequestPendingUntil>=now
+  if requestedResponse then Module.raidInfoRequestPendingUntil=nil end
+  Module.raidScanGeneration=(Module.raidScanGeneration or 0)+1
+  local active=HolyStorm.CharacterScans and HolyStorm.CharacterScans.active;local run=Module.activeRaidRun
+  local activeScan=run and not run.commitStarted and(not active or active.block=="raid"and active.workflowId==run.workflowId)
+  if activeScan then
+   HolyStorm.Logger:Write("DEBUG","Raids","trigger",requestedResponse and"Raid info response folded into active refresh"or"Raid refresh merged into active scan",{event=event,workflowId=run.workflowId,generation=Module.raidScanGeneration},run.workflowId)
+   return true
+  end
+  HolyStorm.Logger:Write("DEBUG","Raids","trigger","Raid refresh requested",{event=event,loadContext=loadContext==true,generation=Module.raidScanGeneration})
+  return HolyStorm.CharacterScans:Request("raid",event,true,{order=30})
+ end
+ function Module:OnEnable()
+  HolyStorm.Events:Register("UPDATE_INSTANCE_INFO","raids",function(event)requestRaidRefresh(event)end)
+  HolyStorm.Events:Register("ENCOUNTER_END","raids",function(event,encounterId,encounterName,difficultyId,groupSize,success)requestRaidRefresh(event,success)end)
+  local function releaseRun(_,workflow)if Module.activeRaidRun and workflow and Module.activeRaidRun.workflowId==workflow.workflowId then Module.activeRaidRun=nil end end
+  for _,event in ipairs({"HS_WORKFLOW_COMPLETED","HS_WORKFLOW_FAILED","HS_WORKFLOW_CANCELLED"})do HolyStorm.Events:Register(event,"raids-run",releaseRun)end
+  local context=self.loadContext
+  if context and context.reason=="event"and context.trigger=="ENCOUNTER_END"then local args=context.arguments or{};requestRaidRefresh(context.trigger,args[5],true)end
+ end
+ function Module:OnDisable()HolyStorm.Events:UnregisterOwner("raids");HolyStorm.Events:UnregisterOwner("raids-run");HolyStorm.Snapshots:Cancel("raids");self.activeRaidRun=nil end
 end)
