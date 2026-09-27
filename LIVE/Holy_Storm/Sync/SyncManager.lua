@@ -1,7 +1,7 @@
 local addonVersion="3.5.0"
 local HolyStorm=LibStub("AceAddon-3.0"):GetAddon("Holy_Storm")
 local L=LibStub("AceLocale-3.0"):GetLocale("Holy_Storm")
-local Sync={version=addonVersion,protocol=3,domains={},requests={},activeRequests={},heard={},heardAt={},sequence=0,maxOffers=100,knownOnline={},knownVersions={},fetchTailByPeer={},publishedVersions={},requestTimeout=60,presenceTimeout=300,cleanupTimer=nil,cleanupDue=nil,cleanupTaskId=nil,loginSessionId=nil,presencePublished=false,peerVersionReceived=false,outdatedNotified=false}
+local Sync={version=addonVersion,protocol=3,domains={},requests={},activeRequests={},heard={},heardAt={},sequence=0,maxOffers=100,knownOnline={},knownVersions={},fetchTailByPeer={},publishedVersions={},requestTimeout=60,presenceTimeout=300,presenceRefreshMin=180,presenceRefreshJitter=60,cleanupTimer=nil,cleanupDue=nil,cleanupTaskId=nil,loginSessionId=nil,presencePublished=false,peerVersionReceived=false,outdatedNotified=false}
 local function copy(v)return HolyStorm.Utils.DeepCopy(v)end
 local function now()return HolyStorm.Utils.Now()end
 local function validId(v)return type(v)=="string"and#v>0 and#v<=160 end
@@ -35,6 +35,7 @@ function Sync:GetNextCleanupAt()
  for _,request in pairs(self.requests)do include((tonumber(request.createdAt)or 0)+self.requestTimeout)end
  for _,at in pairs(self.heardAt)do include((tonumber(at)or 0)+self.requestTimeout)end
  for _,at in pairs(self.knownOnline)do include((tonumber(at)or 0)+self.presenceTimeout)end
+ for _,entry in pairs(self.knownVersions)do include((tonumber(entry.receivedAt)or 0)+self.presenceTimeout)end
  return due
 end
 function Sync:CancelCleanupTimer()if self.cleanupTimer then self.cleanupTimer:Cancel()end;self.cleanupTimer,self.cleanupDue=nil,nil end
@@ -138,20 +139,28 @@ function Sync:RunPassive(task)local m=task.metadata;local domain=self.domains[m.
 function Sync:GetOnlineName(guid)if type(guid)~="string"then return nil end;local guild=HolyStorm.Data.GuildStore:GetCurrent();local member=guild and guild.roster and guild.roster[guid];return member and member.online and member.name or nil end
 function Sync:GetDiagnostics()local candidates=0;for _,request in pairs(self.requests)do for _,peers in pairs(request.candidates or{})do candidates=candidates+HolyStorm.Utils.TableCount(peers)end end;return{requests=HolyStorm.Utils.TableCount(self.requests),activeRequests=HolyStorm.Utils.TableCount(self.activeRequests),heard=HolyStorm.Utils.TableCount(self.heard),knownOnline=HolyStorm.Utils.TableCount(self.knownOnline),domains=HolyStorm.Utils.TableCount(self.domains),fetchPeers=HolyStorm.Utils.TableCount(self.fetchTailByPeer),peerCandidates=candidates,lastSelection=self.lastSelection,publishedVersions=HolyStorm.Utils.TableCount(self.publishedVersions),cleanupScheduled=self.cleanupTimer~=nil or self.cleanupTaskId~=nil,transport=HolyStorm.Comms and HolyStorm.Comms:GetDiagnostics().transport}end
 function Sync:Cleanup()
- local current=now();local requestCutoff=current-self.requestTimeout;for requestId,request in pairs(self.requests)do if(request.createdAt or 0)<=requestCutoff then self.activeRequests[request.key or key(request.domain,request.objectId)]=nil;self.requests[requestId]=nil end end;for requestId,at in pairs(self.heardAt)do if at<=requestCutoff then self.heardAt[requestId]=nil;self.heard[requestId]=nil end end;local presenceCutoff=current-self.presenceTimeout;for guid,at in pairs(self.knownOnline)do if at<=presenceCutoff then self.knownOnline[guid]=nil end end;self:ScheduleCleanup();return true
+ local current=now();local requestCutoff=current-self.requestTimeout;for requestId,request in pairs(self.requests)do if(request.createdAt or 0)<=requestCutoff then self.activeRequests[request.key or key(request.domain,request.objectId)]=nil;self.requests[requestId]=nil end end;for requestId,at in pairs(self.heardAt)do if at<=requestCutoff then self.heardAt[requestId]=nil;self.heard[requestId]=nil end end;local presenceCutoff=current-self.presenceTimeout;for guid,at in pairs(self.knownOnline)do if at<=presenceCutoff then self.knownOnline[guid]=nil end end;for guid,entry in pairs(self.knownVersions)do if not validPresenceVersion(entry.version)or(tonumber(entry.receivedAt)or 0)<=presenceCutoff then self.knownVersions[guid]=nil end end;self:ScheduleCleanup();return true
 end
 function Sync:RunCatchUp()
  -- Each domain is a distinct logical scope. Discover() merges repeated catch-up requests per domain/scope.
  if not IsInGuild()then return false end;for domainId,domain in pairs(self.domains)do if domain.catchUp~=false then self:Discover(domainId,nil,{reason="LOGIN_CATCHUP",priority=98,watermark=HolyStorm.PlayerData:GetForeignWatermark(domainId)})end end;log("DEBUG","catchup","Delayed login catch-up started",{watermark=HolyStorm.PlayerData:GetForeignWatermark(),domains=HolyStorm.Utils.TableCount(self.domains)});return true
 end
-function Sync:GetKnownVersion(guid)local entry=type(guid)=="string"and self.knownVersions[guid];if not entry then return nil end;if not validPresenceVersion(entry.version)or now()-(tonumber(entry.receivedAt)or 0)>self.presenceTimeout then self.knownVersions[guid]=nil;return nil end;return entry.version end
+function Sync:GetKnownVersion(guid)local entry=type(guid)=="string"and self.knownVersions[guid];if not entry then return nil end;if not validPresenceVersion(entry.version)or now()-(tonumber(entry.receivedAt)or 0)>=self.presenceTimeout then self.knownVersions[guid]=nil;return nil end;return entry.version end
 function Sync:BeginLoginSession()
  self.loginSessionId="LOGIN-"..self:NewRequestId();self.presencePublished=false;self.peerVersionReceived=false;self.outdatedNotified=false;self.knownVersions={}
  return HolyStorm.Tasks:Queue("Sync.LoginPresence",{delay=1.5,startupPhase=4,priority=98,triggerSource="PLAYER_LOGIN",metadata={sessionId=self.loginSessionId}})
 end
 function Sync:RunLoginPresence(task)
  if not IsInGuild()then return false end;local sessionId=task.metadata and task.metadata.sessionId or self.loginSessionId
- self:QueueEnvelope("PRESENCE",nil,{version=HolyStorm.version,sessionId=sessionId,replyRequested=true,reason="LOGIN_PRESENCE"},"GUILD",nil,90);self:RunCatchUp();return true
+ self:QueueEnvelope("PRESENCE",nil,{version=HolyStorm.version,sessionId=sessionId,replyRequested=true,reason="LOGIN_PRESENCE"},"GUILD",nil,90);self:SchedulePresenceHeartbeat();self:RunCatchUp();return true
+end
+function Sync:SchedulePresenceHeartbeat()
+ local delay=self.presenceRefreshMin+math.random()*self.presenceRefreshJitter
+ return HolyStorm.Tasks:Queue("Sync.PresenceHeartbeat",{delay=delay,priority=90,triggerSource="PRESENCE_REFRESH_SCHEDULED"})~=nil
+end
+function Sync:RunPresenceHeartbeat()
+ if IsInGuild()then self:QueueEnvelope("PRESENCE",nil,{version=HolyStorm.version,reason="PRESENCE_HEARTBEAT"},"GUILD",nil,90)end
+ self:SchedulePresenceHeartbeat();return IsInGuild()
 end
 function Sync:EvaluateOutdatedVersion()
  if self.outdatedNotified or not self.presencePublished or not self.peerVersionReceived then return false end
@@ -159,8 +168,8 @@ function Sync:EvaluateOutdatedVersion()
  return false
 end
 function Sync:OnPresence(data,sender,resolved)
- if not resolved then return false end;self.knownOnline[resolved]=now();self:ScheduleCleanup()
- if validPresenceVersion(data.version)then self.knownVersions[resolved]={guid=resolved,sender=sender,version=data.version,receivedAt=now()};self.peerVersionReceived=true;HolyStorm.Events:Emit("HS_SYNC_VERSION_UPDATED",resolved,data.version,sender);HolyStorm.Tasks:Queue("Sync.VersionNotice",{delay=2,priority=99,triggerSource="PEER_VERSION_RECEIVED"})end
+ if not resolved then return false end;local receivedAt=now();self.knownOnline[resolved]=receivedAt
+ if validPresenceVersion(data.version)then self.knownVersions[resolved]={guid=resolved,sender=sender,version=data.version,receivedAt=receivedAt};self.peerVersionReceived=true;HolyStorm.Events:Emit("HS_SYNC_VERSION_UPDATED",resolved,data.version,sender);HolyStorm.Tasks:Queue("Sync.VersionNotice",{delay=2,priority=99,triggerSource="PEER_VERSION_RECEIVED"})end;self:ScheduleCleanup()
  if data.replyRequested==true and not data.responseTo then self:QueueEnvelope("PRESENCE",nil,{version=HolyStorm.version,responseTo=data.sessionId,reason="PRESENCE_RESPONSE"},"WHISPER",sender,90,.2+math.random()*.6)end
  return true
 end
@@ -181,6 +190,7 @@ function Sync:Initialize()
  HolyStorm.Tasks:RegisterTaskType("Sync.PassiveRefresh",{name=L["TASK_SYNC_PASSIVE"],localizedNameKey="TASK_SYNC_PASSIVE",module="Sync",priority=95,executionMode="MERGE_BY_KEY",execute=function(task)return Sync:RunPassive(task)end})
  HolyStorm.Tasks:RegisterTaskType("Sync.Cleanup",{name="Sync cleanup",module="Sync",priority=100,executionMode="UNIQUE",execute=function()Sync.cleanupTaskId=nil;return Sync:Cleanup()end})
  HolyStorm.Tasks:RegisterTaskType("Sync.LoginPresence",{name=L["TASK_SYNC_CATCHUP"],localizedNameKey="TASK_SYNC_CATCHUP",module="Sync",priority=98,executionMode="UNIQUE",conditions={"PLAYER_LOGGED_IN","PLAYER_READY","NOT_LOADING","NOT_ZONING","GUILD_AVAILABLE"},execute=function(task)return Sync:RunLoginPresence(task)end})
+ HolyStorm.Tasks:RegisterTaskType("Sync.PresenceHeartbeat",{name=L["TASK_SYNC_PRESENCE_HEARTBEAT"],localizedNameKey="TASK_SYNC_PRESENCE_HEARTBEAT",module="Sync",priority=90,executionMode="UNIQUE",conditions={"PLAYER_LOGGED_IN","PLAYER_READY","NOT_LOADING","NOT_ZONING","GUILD_AVAILABLE"},execute=function(task)return Sync:RunPresenceHeartbeat(task)end})
  HolyStorm.Tasks:RegisterTaskType("Sync.VersionNotice",{name=L["TASK_SYNC_VERSION_NOTICE"],localizedNameKey="TASK_SYNC_VERSION_NOTICE",module="Sync",priority=99,executionMode="UNIQUE",execute=function()return Sync:EvaluateOutdatedVersion()end})
  self:RegisterDomain("character",{getMetadata=function(objectId)local guid,block=splitCharacterId(objectId);return guid and HolyStorm.PlayerData:GetMetadata(guid,block)end,listMetadata=function(since)local out={};for guid,record in pairs(HolyStorm.PlayerData:GetCharacters())do for block in pairs(record.blockMeta or{})do local meta=HolyStorm.PlayerData:GetMetadata(guid,block);if meta and(meta.updatedAt or 0)>since then out[#out+1]=meta end end end;return out end,export=function(objectId)local guid,block=splitCharacterId(objectId);local data=guid and HolyStorm.PlayerData:GetBlock(guid,block);return data and{guid=guid,block=block,data=data}end,validate=function(payload,meta,objectId)local guid,block=splitCharacterId(objectId);return type(payload)=="table"and payload.guid==guid and payload.block==block and type(payload.data)=="table"and meta.owner==guid end,authorize=function(_,meta,_,_,objectId)local guid=splitCharacterId(objectId);return meta.owner==guid end,import=function(objectId,payload,meta,senderId,sender)local guid,block=splitCharacterId(objectId);return HolyStorm.PlayerData:AcceptRemoteBlock(guid,block,payload.data,meta,senderId,sender)end,updateEvent="HS_CHARACTER_SYNC_UPDATED"})
  HolyStorm.Events:Register("HS_COMMS_MESSAGE","sync",function(_,payload,sender,channel,transport)Sync:Receive(payload,sender,channel,transport)end)

@@ -67,6 +67,7 @@ L["ERROR_MODULE_DISPLAY_NAME"] = "Der Anzeigename des Moduls muss eine Zeichenke
 L["ERROR_MODULE_INTERNAL_NAME"] = "Der interne Name des Moduls muss eine Zeichenkette sein."
 L["ERROR_MODULE_VERSION"] = "Die Modulversion muss eine Zeichenkette sein."
 L["TASK_SYNC_SEND"] = "Synchronisierte Nachricht senden"
+L["TASK_SYNC_PRESENCE_HEARTBEAT"] = "Sync-Presence aktualisieren"
 L["TASK_SYNC_PUBLISH"] = "Synchronisierte Metadaten veröffentlichen"
 L["TASK_SYNC_DISCOVER"] = "Synchronisierte Metadaten suchen"
 L["TASK_SYNC_OFFER"] = "Synchronisierte Metadaten anbieten"

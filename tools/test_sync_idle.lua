@@ -51,4 +51,10 @@ clock=5120;assert(Sync:Cleanup());assert(Sync.heardAt.offer==nil and Sync.heard.
 assert(Sync.knownOnline["Player-Remote"]==5060 and Sync:GetNextCleanupAt()==5360,"presence state retains the existing 300 second expiry")
 clock=5360;assert(Sync:Cleanup());assert(next(Sync.knownOnline)==nil and Sync:GetNextCleanupAt()==nil,"expired presence state is removed without recurring cleanup")
 
+clock=6000;Sync.knownVersions["Player-Version"]={version="DEV",receivedAt=clock};assert(Sync:ScheduleCleanup())
+assert(Sync:GetNextCleanupAt()==6300 and timers[#timers].delay==300,"version freshness independently schedules canonical Presence cleanup")
+clock=6300;timers[#timers].callback();assert(queued[#queued].id=="Sync.Cleanup","expired remote versions queue the production cleanup task")
+Sync.cleanupTaskId=nil;assert(Sync:Cleanup())
+assert(Sync.knownVersions["Player-Version"]==nil and Sync:GetNextCleanupAt()==nil,"cleanup removes remote version metadata at the same Presence TTL")
+
 print("Sync idle cleanup and login discovery tests passed")

@@ -7,12 +7,14 @@
 - Refined Character Overview spacing, compact profile sizing, and dynamic widget height; Mythic+ cards now use a neutral current-season label instead of exposing Blizzard's internal season ID.
 - Dynamic providers now form a two-column content-sized grid. Event weekdays and compact card descriptions use localized labels, and an empty achievement catalog has a clear zero state.
 - Corrected profile card anchoring and applied the shared dashboard text styles to keep profile content readable.
+- Kept online Guild Roster versions current with jittered Sync Presence refreshes and removed them through the existing five-minute freshness policy.
 
 ### Deutsch
 
 - Abstände, kompakte Profilgröße und Höhe dynamischer Widgets in der Charakterübersicht wurden verbessert. Mythic+-Karten zeigen nun eine neutrale Bezeichnung für die aktuelle Saison statt Blizzards interner Saison-ID.
 - Dynamische Anbieter verwenden nun ein zweispaltiges, inhaltsabhängiges Raster. Wochentage und kompakte Kartenbeschreibungen sind lokalisiert; ein leerer Erfolgskatalog zeigt einen eindeutigen Nullwert.
 - Die Profilkarte wurde korrekt verankert und verwendet nun die gemeinsamen Dashboard-Textstile für besser lesbare Profilinhalte.
+- Versionsanzeigen für Online-Mitglieder bleiben durch zeitversetzte Sync-Presence-Aktualisierungen aktuell und folgen weiterhin der bestehenden Frischefrist von fünf Minuten.
 
 ## 5.9.0 — 27.09.2026
 
