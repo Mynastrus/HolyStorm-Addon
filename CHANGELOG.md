@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Redesigned the Character Overview home page as a responsive native dashboard with a character/profile header, interactive Equipment, current-season Mythic+, lifetime Raid, Delves, Achievements, Stats and Twinks cards, and provider-driven News, sanitized Calendar events and visible guild-achievement awards. Profile settings, card navigation, tooltips and the normal character refresh workflow are connected; unavailable optional widgets collapse cleanly.
 - Fixed unresolved development version placeholders appearing in Holy Storm UI and Presence data; packaged release versions remain sourced from addon metadata.
 - Corrected Raid lifetime Statistics mapping to use Blizzard's displayed statistic IDs and exact current-client boss, difficulty, and raid labels without requiring achievement criteria or Encounter Journal creature assets. The end-to-end eight-boss fixture now reaches lifetime Best through persistence and Character UI; final Retail acceptance has been confirmed.
 - Added structured Raid lifetime discovery, mapping, snapshot and commit diagnostics for manual scans, plus `/hs scan raid status` for the stored snapshot. Manual scans refresh Blizzard statistic discovery, and empty results are no longer cached.
@@ -16,6 +17,8 @@
 - Added `/hs scan <target>` commands for forced Raid, Equipment, Mythic+, Delves, Stats, and queued all-provider character scans through CharacterScanManager, with localized usage, availability, and workflow-completion feedback.
 
 ### Deutsche Änderungen
+
+- Die Charakter-Uebersicht wurde als responsives natives Dashboard mit Charakter- und Profilkopf, interaktiven Karten fuer Ausruestung, aktuelle Mythic+-Wertung, Raid-Lebenszeitbestwert, Tiefen, Erfolge, Werte und weitere Charaktere neu gestaltet. News-, Kalender- und Gildenerfolg-Widgets verwenden verfuegbare Provider; Profilnavigation, Tooltips, Tab-Wechsel und der zentrale Aktualisierungsablauf sind eingebunden. Nicht verfuegbare optionale Widgets hinterlassen keine leeren Karten.
 
 - Nicht aufgelöste Entwicklungs-Versionsplatzhalter erscheinen nicht mehr in der Holy-Storm-Oberfläche oder in Presence-Daten; Paketversionen stammen weiterhin aus den Addon-Metadaten.
 - Die Zuordnung der Raid-Lebenszeitstatistiken verwendet nun Blizzards angezeigte Statistik-IDs und die passenden Boss-, Schwierigkeits- und Raid-Namen des aktuellen Clients, ohne Achievement-Kriterien oder Kreaturen-IDs aus dem Encounter Journal vorauszusetzen. Der End-to-End-Test mit acht Bossen erreicht den Bestwert über Speicherung und Charakteransicht; die abschließende Retail-Prüfung wurde in Retail erfolgreich bestätigt.
@@ -49,6 +52,10 @@ im Ordner `LIVE` fest. Änderungen an Projektdokumentation, dem Release-Ordner
 oder anderen Dateien außerhalb von `LIVE` gehören nicht in dieses Changelog.
 
 ## Noch nicht veröffentlicht
+
+### 27. September 2026
+
+- Die Charakter-Übersicht wurde als anpassbares, natives Dashboard neu gestaltet. Es zeigt Charakter- und Profildaten sowie interaktive Karten für Ausrüstung, Mythisch+, Raid-Lebenszeitfortschritt, Tiefen, Erfolge, Werte und weitere Charaktere. News, geschützte Kalenderereignisse und sichtbare Gildenerfolge kommen über optionale Provider. Profilnavigation, Tooltips, Charakteransichten und der normale Scan-Ablauf sind angebunden; nicht verfügbare Widgets werden ausgeblendet.
 
 ### 26. September 2026
 

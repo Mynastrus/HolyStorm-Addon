@@ -3,7 +3,7 @@ local HolyStorm=LibStub("AceAddon-3.0"):GetAddon("Holy_Storm")
 local localeLibrary=LibStub("AceLocale-3.0",true)
 
 local UIManager={
-    version=addonVersion,driver=nil,pages={},views={},viewOrder={},dirty={},scheduled={},initializedExtensions={},
+    version=addonVersion,driver=nil,pages={},views={},viewOrder={},dirty={},scheduled={},initializedExtensions={},dashboardProviders={},
     Layout=HolyStorm.UILayout,Components=HolyStorm.UIComponents,
 }
 
@@ -27,6 +27,7 @@ end
 function UIManager:SetDriver(driver)
     self.driver=driver;HolyStorm.State:Set("uiReady",driver~=nil)
     HolyStorm.Events:Register("HS_UI_STATUS_REQUESTED","ui-manager-status",function(_,text)if UIManager.driver then UIManager.driver:SetStatusText(text)end end)
+    if driver and driver.RegisterDashboardProvider then for id,definition in pairs(self.dashboardProviders)do driver:RegisterDashboardProvider(id,definition)end end
     if HolyStorm.Administration and HolyStorm.Administration.RefreshNavigation then HolyStorm.Administration:RefreshNavigation()end
     self:RefreshViewAvailability();self:FlushExtensions();return true
 end
@@ -143,7 +144,25 @@ function UIManager:Open()if self.driver then self.driver:Open();return true end;
 function UIManager:ShowHome()if self.driver and self.driver.ShowModules then self.driver:ShowModules();return true end;return false end
 function UIManager:AddNavigation(...)return self.driver and self.driver:AddRightDockIcon(...)or false end
 function UIManager:RemoveNavigation(id)return self.driver and self.driver.RemoveRightDockIcon and self.driver:RemoveRightDockIcon(id)or false end
-function UIManager:RegisterDashboardProvider(...)return self.driver and self.driver:RegisterDashboardProvider(...)or false end
+function UIManager:RegisterDashboardProvider(id,definition,owner)
+    if not validId(id)or(type(definition)~="table"and type(definition)~="function")then return false,"INVALID_DASHBOARD_PROVIDER"end
+    if type(definition)=="function"then definition={owner=owner or id,order=100,title=id,getItems=definition}
+    else definition=copyDefinition(definition);definition.owner=definition.owner or owner or id end
+    self.dashboardProviders[id]=definition
+    if self.driver and self.driver.RegisterDashboardProvider then self.driver:RegisterDashboardProvider(id,definition)end
+    if HolyStorm.Events then HolyStorm.Events:Emit("HS_UI_DASHBOARD_PROVIDER_CHANGED",id,"REGISTERED",definition.owner)end
+    return true
+end
+function UIManager:UnregisterDashboardProvider(id)
+    local definition=self.dashboardProviders[id];if not definition then return false end
+    self.dashboardProviders[id]=nil;if self.driver and self.driver.UnregisterDashboardProvider then self.driver:UnregisterDashboardProvider(id)end
+    if HolyStorm.Events then HolyStorm.Events:Emit("HS_UI_DASHBOARD_PROVIDER_CHANGED",id,"UNREGISTERED",definition.owner)end
+    return true
+end
+function UIManager:UnregisterDashboardProviderOwner(owner)
+    local ids={};for id,definition in pairs(self.dashboardProviders)do if definition.owner==owner then ids[#ids+1]=id end end;table.sort(ids)
+    for _,id in ipairs(ids)do self:UnregisterDashboardProvider(id)end;return #ids
+end
 function UIManager:SetStatusText(text)if self.driver then self.driver:SetStatusText(text)end end
 function UIManager:ShowOptions(name)if self.driver then self.driver:ShowOptions(name);return true end;return false end
 function UIManager:GetVisiblePage()if not self.driver or not self.driver.pages then return nil end;for id,page in pairs(self.driver.pages)do if page.frame:IsShown()then return id end end end

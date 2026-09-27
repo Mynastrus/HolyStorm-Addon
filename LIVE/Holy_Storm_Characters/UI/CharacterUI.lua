@@ -161,12 +161,19 @@ function CharacterUI:GetBestCurrentRaidProgress(snapshot)
  end
  return best
 end
+local function currentMythicPlusSeason()
+ local api=C_MythicPlus;if not api or type(api.GetCurrentSeason)~="function"then return nil end
+ local ok,value=pcall(api.GetCurrentSeason);return ok and tonumber(value)or nil
+end
 function CharacterUI:GetDashboardSummary(characterUUID)
  characterUUID=characterUUID or(UnitGUID and UnitGUID("player"));local context=characterUUID and self:ResolveContext(characterUUID)
  if not context then return nil end
- local equipment=self:GetSnapshot(characterUUID,"equipment");local mythicPlus=self:GetSnapshot(characterUUID,"mythicPlus");local raid=self:GetSnapshot(characterUUID,"raid")
+ local equipment,equipmentMeta=self:GetSnapshot(characterUUID,"equipment");local mythicPlus,mythicMeta=self:GetSnapshot(characterUUID,"mythicPlus");local raid,raidMeta=self:GetSnapshot(characterUUID,"raid");local delves,delvesMeta=self:GetSnapshot(characterUUID,"delves");local stats,statsMeta=self:GetSnapshot(characterUUID,"stats")
  local itemLevel=type(equipment)=="table"and tonumber(equipment.itemLevel)or nil;if itemLevel and itemLevel<=0 then itemLevel=nil end
- return{characterUUID=characterUUID,name=context.name,coloredName=classColoredName(context,context.name),classFile=context.classFile,className=context.className,specName=context.spec and context.spec.name,specIcon=context.spec and context.spec.icon,itemLevel=itemLevel,mythicPlusRating=type(mythicPlus)=="table"and tonumber(mythicPlus.overallScore)or nil,bestRaid=self:GetBestCurrentRaidProgress(raid)}
+ local currentSeason=currentMythicPlusSeason();local storedSeason=type(mythicPlus)=="table"and tonumber(mythicPlus.seasonId)
+ local rating=type(mythicPlus)=="table"and(currentSeason and storedSeason==currentSeason and tonumber(mythicPlus.overallScore)or nil)or nil
+ local lastUpdatedAt=0;for _,meta in ipairs({equipmentMeta or{},mythicMeta or{},raidMeta or{},delvesMeta or{},statsMeta or{}})do lastUpdatedAt=math.max(lastUpdatedAt,tonumber(meta.updatedAt)or 0)end
+ return{characterUUID=characterUUID,name=context.name,coloredName=classColoredName(context,context.name),classFile=context.classFile,className=context.className,specName=context.spec and context.spec.name,specIcon=context.spec and context.spec.icon,level=context.level,realm=context.realm,guildRank=context.member and context.member.rank,itemLevel=itemLevel,mythicPlusRating=rating,mythicPlusSeasonId=rating and storedSeason or nil,bestRaid=self:GetBestCurrentRaidProgress(raid),bestRaidRows=self:BuildRaidBestRows(raid),equipment=equipment,mythicPlus=mythicPlus,raid=raid,delves=delves,stats=stats,lastUpdatedAt=lastUpdatedAt>0 and lastUpdatedAt or nil}
 end
 function CharacterUI:CanUseTab(definition)
  if definition.permission and HolyStorm.Policy and not HolyStorm.Policy:Can(definition.permission)then return false,"PERMISSION"end

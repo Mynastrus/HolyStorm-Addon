@@ -3,47 +3,108 @@ local workspace=script:match("^(.*)/tools/[^/]+$")or"."
 local uiRoot=workspace.."/LIVE/Holy_Storm_UI/"
 local function read(path)local file=assert(io.open(path,"rb"),path);local value=file:read("*a");file:close();return value end
 
-local listeners={}
-local HolyStorm={version="test",Events={},CharacterUI={}}
-function HolyStorm:RegisterRequiredModule()local module={};self.dashboardDriver=module;return module end
-function HolyStorm:ApplyModuleMetadata()end
-function HolyStorm.Events:Register(event,owner,callback)listeners[event]=listeners[event]or{};listeners[event][owner]=callback end
-function UnitGUID()return"Player-Local"end
-local locale=setmetatable({DASHBOARD_ITEM_LEVEL="Item Level",DASHBOARD_MYTHICPLUS_RATING="Mythic+ Rating",DASHBOARD_BEST_RAID="Best Raid"},{__index=function(_,key)return key end})
-function LibStub(name)if name=="AceAddon-3.0"then return{GetAddon=function()return HolyStorm end}elseif name=="AceLocale-3.0"then return{GetLocale=function()return locale end}end;error(name)end
-
-function HolyStorm.CharacterUI:GetDashboardSummary(guid)
- assert(guid=="Player-Local","dashboard queries only the logged-in character")
- return{coloredName="|cffff80ccMarithiel|r",className="Paladin",specName="Retribution",specIcon=98765,itemLevel=710.5,mythicPlusRating=2500,bestRaid={difficulty="MYTHIC",killed=2,total=8}}
+local listeners={};local providersEnabled={News=true,Calendar=false,AchievementsUI=false};local openedTab,openedPage,request
+local UI={dashboardProviders={}}
+local profiles={selected=nil}
+local unknown="|cff888888\226\128\147|r"
+local HolyStorm={version="test",Events={},Utils={},State={},Data={}}
+HolyStorm.UIComponents={FormatState=function()return unknown end}
+HolyStorm.Utils.SafeCall=function(_,callback,...)
+ local values={pcall(callback,...)};local ok=table.remove(values,1);return ok,table.unpack(values)
 end
+function HolyStorm:RegisterRequiredModule()return UI end
+function HolyStorm:ApplyModuleMetadata()end
+function HolyStorm:GetModule(id)
+ if id=="UI"then return UI end
+ if id=="Profiles"then return profiles end
+ if id=="AchievementsUI"then return{IsEnabled=function()return providersEnabled.AchievementsUI end}end
+end
+function HolyStorm:IsOptionalModuleEnabled(id)return providersEnabled[id]==true end
+function HolyStorm.Events:Register(event,owner,callback)listeners[event]=listeners[event]or{};listeners[event][owner]=callback end
+function HolyStorm.Events:Emit(event,...)for _,callback in pairs(listeners[event]or{})do callback(event,...)end end
+function UI:ShowPage(id)openedPage=id;return true end
+function UnitGUID()return"Player-Local"end
+HolyStorm.UI=UI
+local raidLocale={RAID_DIFFICULTY_NORMAL="Normal",RAID_COLUMN_BOSS="Boss",RAID_COLUMN_BEST="Best",RAID_COLUMN_KILLS="Kills"}
+local locale=setmetatable({TABLE_EMPTY="No entries",TABLE_UNKNOWN="Unknown",DASHBOARD_SPEC_CLASS="%s - %s",DASHBOARD_SEASON="Season %d",DASHBOARD_DELVE_ACTIVITIES="%d activities this week",DASHBOARD_ACHIEVEMENTS_COUNT="%d / %d",DASHBOARD_BIRTHDAY="Birthday: %s",DASHBOARD_PREFERRED_ROLE="Preferred role: %s",DASHBOARD_ROLE_HEALER="Healer"},{__index=function(_,key)return key end})
+function LibStub(name,silent)
+ if name=="AceAddon-3.0"then return{GetAddon=function()return HolyStorm end}
+ elseif name=="AceLocale-3.0"then return{GetLocale=function(_,id)return id=="Holy_Storm_CharacterUI"and raidLocale or locale end}end
+ if silent then return nil end;error(name)
+end
+
+local latestSnapshot={
+ coloredName="|cff70c0ffTestdruid|r",name="Testdruid",className="Druid",classFile="DRUID",specName="Balance",specIcon=12345,level=90,realm="Norgannon",guildRank="Council",
+ itemLevel=312.6,mythicPlusRating=2009,mythicPlusSeasonId=18,equipment={slots={head={itemLevel=312},chest={itemLevel=310},legs=false}},
+ bestRaid={difficulty="NORMAL",killed=6,total=8,raidName="The Poisonous Abyss",raidInstanceId=500},bestRaidRows={{bossName="Current Boss",difficulty="NORMAL",kills=5,raidInstanceId=500},{bossName="Old Boss",difficulty="MYTHIC",kills=8,raidInstanceId=100}},
+ delves={weeklyProgress=4,activities={{},{}}},stats={primary={strength={effective=10},agility={effective=20}},secondary={haste={rating=30}}},
+}
+local context={characterUUID="Player-Local",accountUUID="Account-1",name="Testdruid",classFile="DRUID",record={profile={preferredRole="HEALER"}},guild={}}
+HolyStorm.CharacterUI={
+ GetDashboardSummary=function(_,guid)assert(guid=="Player-Local");return latestSnapshot end,
+ ResolveContext=function(_,guid)assert(guid=="Player-Local");return context end,
+ GetTab=function(_,id)return id=="achievements"and providersEnabled.AchievementsUI and{}or nil end,
+ OpenCharacter=function(_,guid,id)openedTab={guid=guid,id=id};return true end,
+ RequestRefresh=function(_,guid,blocks,reason)request={guid=guid,blocks=blocks,reason=reason};return true end,
+ RaidIdentityMatches=function(_,row,identity)return row.raidInstanceId==identity.raidInstanceId end,
+ GetDifficultyColor=function(_,key)return key=="NORMAL"and{r=.2,g=1,b=.2}or nil end,
+ ColorDifficulty=function(_,key,value)return"|cff33ff33"..value.."|r"end,
+}
+HolyStorm.Data.PlayerStore={GetLocalPlayerId=function()return"Player-Local"end,Get=function()return{metadata={displayName="Richard",birthdate="14 March"}}end}
+HolyStorm.TwinkCore={GetVisibleCharactersForViewer=function(_,account)return account=="Account-1"and{"Player-Local","AltOne","AltTwo"}or{}end}
+HolyStorm.Achievements={
+ GetDefinitions=function()return{{achievementID="one"},{achievementID="two"}}end,
+ IsEarned=function(_,id)return id=="one"end,
+}
+HolyStorm.Tasks={GetTaskType=function(_,id)return id=="Character.Refresh"end}
+
 assert(loadfile(uiRoot.."UI/Framework/MainWindow.lua"))()
-local UI=HolyStorm.dashboardDriver
+assert(loadfile(uiRoot.."UI/Framework/Dashboard.lua"))()
+
 local model=UI:BuildDashboardModel()
-assert(model.name=="|cffff80ccMarithiel|r"and model.specialization:find("Retribution",1,true)and model.specialization:find("Paladin",1,true)and model.specIcon==98765,"dashboard model retains class-colored name and specialization identity")
-assert(model.itemLevel=="710.5"and model.mythicPlusRating=="2500"and model.bestRaid=="M 2/8","dashboard model renders exactly the three authoritative summary values")
+assert(model.name==latestSnapshot.coloredName and model.specification=="Balance - Druid"and model.classFile=="DRUID","class-colored identity and spec/class use stored Character data")
+assert(model.itemLevel=="312.6"and model.equippedCount==2,"equipment value and slot summary come from the stored Equipment block")
+assert(model.mythicPlusRating=="2009"and model.mythicPlusSubtitle=="Season 18","Mythic+ card uses current-season stored rating")
+assert(model.raidValue:find("Normal 6/8",1,true)and model.raidSubtitle=="The Poisonous Abyss","Raid card shows catalog-scoped lifetime progress, not weekly lockouts")
+assert(model.delvesValue=="4"and model.delvesSubtitle=="2 activities this week","Delves card reflects stored weekly progress")
+assert(model.statsValue=="3"and model.twinksValue=="2","Stats and additional-character counts are based on their existing data APIs")
+assert(model.profileAvailable and#model.profileRows==3 and model.profileRows[1].text=="Richard"and model.profileRows[3].text=="Preferred role: Healer","only configured local profile fields are displayed")
+assert(not model.achievementsAvailable,"optional Achievements tab stays hidden while its feature module is disabled")
 
-local function textWidget()return{text=nil,SetText=function(self,value)self.text=value end}end
-local icon={image=nil,SetImage=function(self,value)self.image=value end}
-UI.dashboardWidgets={icon=icon,name=textWidget(),specialization=textWidget(),itemLevel=textWidget(),mythicPlusRating=textWidget(),bestRaid=textWidget()}
-UI.scroll={DoLayout=function(self)self.laidOut=true end}
-assert(UI:RefreshDashboard()and icon.image==98765 and UI.dashboardWidgets.name.text==model.name and UI.dashboardWidgets.bestRaid.text=="M 2/8"and UI.scroll.laidOut,"dashboard refresh updates the existing responsive widgets")
+providersEnabled.AchievementsUI=true;local withAchievement=UI:BuildDashboardModel();assert(withAchievement.achievementsAvailable and withAchievement.achievementValue=="1 / 2","Achievements card appears only with the existing enabled feature and reports actual earned definitions")
+context.record.profile={};HolyStorm.Data.PlayerStore.Get=function()return{metadata={}}end;local noProfile=UI:BuildDashboardModel();assert(not noProfile.profileAvailable and#noProfile.profileRows==0,"an empty profile collapses the personal panel")
+context.record.profile={preferredRole="HEALER"};HolyStorm.Data.PlayerStore.Get=function()return{metadata={displayName="Richard",birthdate="14 March"}}end
 
-HolyStorm.CharacterUI.GetDashboardSummary=function()return{name="Unknown"}end
-local unknown=UI:BuildDashboardModel();for _,key in ipairs({"itemLevel","mythicPlusRating","bestRaid"})do assert(unknown[key]:find("|cff888888",1,true)and unknown[key]~="0","missing dashboard data uses the standard gray unknown state")end
+local unknownSnapshot={name="Unknown",className=nil,specName=nil,specIcon=nil,itemLevel=nil,mythicPlusRating=nil,bestRaid=nil,bestRaidRows={}}
+HolyStorm.CharacterUI.GetDashboardSummary=function()return unknownSnapshot end
+local unknown=UI:BuildDashboardModel()
+for _,value in ipairs({unknown.itemLevel,unknown.mythicPlusRating,unknown.raidValue,unknown.statsValue})do assert(value=="|cff888888\226\128\147|r","unknown summary values stay neutral and do not become zero")end
+HolyStorm.CharacterUI.GetDashboardSummary=function()return latestSnapshot end
 
-local refreshes=0;UI.RefreshDashboard=function()refreshes=refreshes+1;return true end;UI:RegisterDashboardEvents()
-for _,event in ipairs({"HS_CHARACTER_UPDATED","HS_STATS_UPDATED","HS_EQUIPMENT_UPDATED","HS_MYTHICPLUS_UPDATED","HS_RAIDLOCKS_UPDATED"})do assert(listeners[event]and listeners[event]["ui-dashboard"],event.." refresh contract");listeners[event]["ui-dashboard"](event,"Player-Other");listeners[event]["ui-dashboard"](event,"Player-Local")end
-assert(refreshes==5,"only current-character producer events refresh the dashboard")
+local layout450=UI:CalculateDashboardLayout(860,450);assert(layout450.navButtonWidth>89 and layout450.widgetHeight>100 and layout450.primaryHeight==94,"standard-size page keeps labeled tabs, primary cards and a useful dynamic area")
+local compactLayout=UI:CalculateDashboardLayout(600,380);assert(compactLayout.navButtonWidth<89,"narrow layouts have a clear icon-only tab threshold")
+local none,zeroColumns=UI:CalculateDashboardProviderLayout(0,800);local one,oneColumn=UI:CalculateDashboardProviderLayout(1,800);local two,twoColumns=UI:CalculateDashboardProviderLayout(2,800);local three,threeColumns=UI:CalculateDashboardProviderLayout(3,800)
+assert(#none==0 and zeroColumns==0 and oneColumn==1 and one[1].width==800,"no providers leave no placeholder; one widget uses the full row")
+assert(twoColumns==2 and two[2].x>two[1].x and threeColumns==3 and three[3].x>three[2].x,"dynamic widgets reflow into two or three balanced columns")
 
-local providerCalls=0;assert(UI:RegisterDashboardProvider("legacy",function()providerCalls=providerCalls+1;return{}end));UI:RefreshDashboardProviders();assert(providerCalls==0,"legacy dashboard providers remain registrable but cannot add home content")
-assert(type(UI.ShowNewsPortal)=="function"and type(UI.ShowNewsArticle)=="function","legacy news navigation entry points remain harmless compatibility shims")
+local skippedCalls=0
+assert(UI:RegisterDashboardProvider("calendar-test",{owner="Calendar",moduleName="Calendar",optional=true,getItems=function()skippedCalls=skippedCalls+1;return{{title="Should stay hidden"}}end}))
+local absent=UI:BuildDynamicProviderItems();assert(#absent==0 and skippedCalls==0,"a disabled optional Calendar provider is neither called nor rendered")
+assert(UI:RegisterDashboardProvider("news-test",{owner="News",order=10,title="News",available=function()return true end,getItems=function()return{{title="Season update",summary="Published today"}}end}))
+local visible=UI:BuildDynamicProviderItems();assert(#visible==1 and visible[1].id=="news-test"and visible[1].items[1].title=="Season update","available providers contribute data-backed widget entries")
+local tooltipRows=UI:BuildRaidTooltipRows({raid=latestSnapshot.bestRaid,raidRows=latestSnapshot.bestRaidRows});assert(#tooltipRows==1 and tooltipRows[1].cells[1]=="Current Boss"and tooltipRows[1].cells[2]=="N"and tooltipRows[1].cells[3]==5,"Raid tooltip reuses trusted lifetime boss rows scoped to the displayed raid")
+assert(UI:UnregisterDashboardProviderOwner("News")==1 and UI:BuildDynamicProviderItems()[1]==nil,"providers unregister cleanly with their owning module")
+assert(UI:UnregisterDashboardProvider("calendar-test"),"optional provider can be removed")
 
-local source=read(uiRoot.."UI/Framework/MainWindow.lua")
-for _,obsolete in ipairs({"NEWS_WELCOME_TITLE","NEWS_MODULES_TITLE","NEWS_PROFILES_TITLE","MODULE_LIST_TITLE","COMMAND_LIST_TITLE","ReloadUI","InlineGroup"})do assert(not source:find(obsolete,1,true),"obsolete dashboard construction remains: "..obsolete)end
-for _,forbidden in ipairs({"HS_Player_DB","HolyStormDB","C_Timer.NewTicker"})do assert(not source:find(forbidden,1,true),"forbidden dashboard dependency: "..forbidden)end
-assert(source:find('function UI:CreateRightDock()',1,true)and source:find('self:AddRightDockIcon("home"',1,true)and source:find('self:AddRightDockIcon("options"',1,true),"right dock remains intact")
+assert(UI:OpenCharacterTab("raid")and openedTab.guid=="Player-Local"and openedTab.id=="raid","dashboard navigation opens the established Character tab")
+HolyStorm.UI={ShowPage=function(_,id)openedPage=id;return true end}
+UI:OpenProfileSettings();assert(openedPage=="profiles"and profiles.selected=="Player-Local","personal profile interaction opens the existing settings page and selects the current character")
+local status="";UI.SetStatusText=function(_,value)status=value end;UI.refreshButton={enabled=true,SetEnabled=function(self,value)self.enabled=value end}
+assert(UI:RefreshCharacterData()and request.guid=="Player-Local"and request.reason=="MANUAL"and status=="DASHBOARD_REFRESHING"and not UI.refreshButton.enabled,"refresh routes through the existing central Character.Refresh workflow")
+local source=read(uiRoot.."UI/Framework/Dashboard.lua")
+for _,forbidden in ipairs({"HS_Player_DB","HolyStormDB","PlayerData:WriteOwnedBlock","PlayerStore:SetLocalMetadata","C_Timer.NewTicker","CallCapability(\"character.scan"})do assert(not source:find(forbidden,1,true),"dashboard must consume APIs and avoid direct writes, extra scans or polling: "..forbidden)end
 local en=read(uiRoot.."UI/Locales/enUS.lua");local de=read(uiRoot.."UI/Locales/deDE.lua")
-assert(en:find('"Item Level"',1,true)and en:find('"Mythic+ Rating"',1,true)and en:find('"Best Raid"',1,true),"English dashboard labels")
-assert(de:find('"Gegenstandsstufe"',1,true)and de:find('"Mythic+ Wertung"',1,true)and de:find('"Bester Raid"',1,true),"German dashboard labels")
+for _,key in ipairs({"DASHBOARD_PROFILE_TITLE","DASHBOARD_BIRTHDAY","DASHBOARD_PREFERRED_ROLE","DASHBOARD_REFRESH","DASHBOARD_RAID_TOOLTIP","DASHBOARD_VIEW_ALL"})do assert(en:find('L["'..key..'"]',1,true)and de:find('L["'..key..'"]',1,true),"both locales include "..key)end
+assert(source:find("function UI:BuildHomeDashboard",1,true)and source:find("function UI:LayoutDashboard",1,true)and source:find("function UI:RefreshDashboardProviders",1,true),"native dashboard construction, resize layout and provider refresh are connected")
 
-print("Compact current-character dashboard, compatibility, refresh and localization tests passed")
+print("Interactive responsive dashboard model, optional providers, reflow, lifetime raid tooltip, navigation and refresh tests passed")

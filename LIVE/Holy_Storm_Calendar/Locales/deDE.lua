@@ -1,6 +1,8 @@
 local addonVersion = "2.0.0"
 local L = LibStub("AceLocale-3.0"):NewLocale("Holy_Storm_GuildEvents", "deDE")
 if not L then return end
+L["DASHBOARD_EVENT_META"] = "%s \194\183 %s"
+L["DASHBOARD_EVENT_DATE_FORMAT"] = "%a %d.%m."
 L["DISPLAY_NAME"] = "Events"
 L["DESCRIPTION"] = "Zeigt Gildenevents aus dem WoW-Kalender."
 L["NOTIFICATION_MARKER"] = "!"

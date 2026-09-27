@@ -11,38 +11,8 @@ HolyStorm:ApplyModuleMetadata(UI, {
 })
 
 local UNKNOWN = "|cff888888\226\128\147|r"
+local CLASS_FALLBACK_ICON = "Interface\\Icons\\INV_Misc_QuestionMark"
 local SPEC_FALLBACK_ICON = "Interface\\Icons\\INV_Misc_QuestionMark"
-local RAID_SHORT = { MYTHIC="M", HEROIC="H", NORMAL="N", LFR="LFR" }
-
-local function numberText(value)
-    value=tonumber(value);if value==nil then return UNKNOWN end
-    return value%1==0 and tostring(value)or string.format("%.1f",value)
-end
-
-function UI:BuildDashboardModel()
-    local characterUI=HolyStorm.CharacterUI;local guid=UnitGUID and UnitGUID("player")
-    local summary=characterUI and characterUI.GetDashboardSummary and characterUI:GetDashboardSummary(guid)or nil
-    local best=summary and summary.bestRaid;local raidText=UNKNOWN
-    if best and RAID_SHORT[best.difficulty]and tonumber(best.killed)and tonumber(best.total)then raidText=string.format("%s %d/%d",RAID_SHORT[best.difficulty],best.killed,best.total)end
-    local specText=UNKNOWN
-    if summary then specText=(summary.specName or UNKNOWN).." \226\128\147 "..(summary.className or UNKNOWN)end
-    return{name=summary and summary.coloredName or UNKNOWN,specialization=specText,specIcon=summary and summary.specIcon or SPEC_FALLBACK_ICON,itemLevel=numberText(summary and summary.itemLevel),mythicPlusRating=numberText(summary and summary.mythicPlusRating),bestRaid=raidText}
-end
-
-function UI:RefreshDashboard()
-    if not self.dashboardWidgets then return false end
-    local model=self:BuildDashboardModel();local widgets=self.dashboardWidgets
-    widgets.icon:SetImage(model.specIcon);widgets.name:SetText(model.name);widgets.specialization:SetText(model.specialization)
-    widgets.itemLevel:SetText(model.itemLevel);widgets.mythicPlusRating:SetText(model.mythicPlusRating);widgets.bestRaid:SetText(model.bestRaid)
-    if self.scroll then self.scroll:DoLayout()end
-    return true
-end
-
-function UI:RegisterDashboardEvents()
-    for _,event in ipairs({"HS_CHARACTER_UPDATED","HS_STATS_UPDATED","HS_EQUIPMENT_UPDATED","HS_MYTHICPLUS_UPDATED","HS_RAIDLOCKS_UPDATED"})do
-        HolyStorm.Events:Register(event,"ui-dashboard",function(_,guid)if not guid or guid==UnitGUID("player")then UI:RefreshDashboard()end end)
-    end
-end
 
 function UI:OnInitialize()
     local frame = CreateFrame("Frame", "HolyStormMainFrame", UIParent, "ButtonFrameTemplate")
@@ -85,16 +55,19 @@ function UI:OnInitialize()
     local inset = frame.Inset or frame
     local content = CreateFrame("Frame", nil, frame)
     content:SetPoint("TOPLEFT", inset, "TOPLEFT", 5, -5)
-    content:SetPoint("BOTTOMRIGHT", inset, "BOTTOMRIGHT", -5, 5)
+    content:SetPoint("BOTTOMRIGHT", inset, "BOTTOMRIGHT", -5, 30)
 
     local scroll = aceGUI:Create("ScrollFrame")
     scroll:SetLayout("List")
     scroll.frame:SetParent(content)
     scroll.frame:SetAllPoints(content)
+    local dashboardGroup
     local function updateScrollLayout(_, width, height)
         scroll:SetWidth(width)
         scroll:SetHeight(height)
+        if dashboardGroup then dashboardGroup:SetHeight(math.max(380, height - 8)) end
         scroll:DoLayout()
+        if UI.LayoutDashboard then UI:LayoutDashboard() end
     end
     content:HookScript("OnSizeChanged", updateScrollLayout)
     updateScrollLayout(nil, content:GetWidth(), content:GetHeight())
@@ -103,52 +76,45 @@ function UI:OnInitialize()
     page:SetLayout("List")
     scroll:AddChild(page)
     local dashboard = {}
-    local dashboardGroup = aceGUI:Create("SimpleGroup")
+    dashboardGroup = aceGUI:Create("SimpleGroup")
     dashboardGroup:SetFullWidth(true)
-    dashboardGroup:SetLayout("List")
+    dashboardGroup:SetHeight(math.max(380, content:GetHeight() - 8)); dashboardGroup.noAutoHeight = true
+    dashboardGroup:SetLayout("Fill")
     page:AddChild(dashboardGroup)
     table.insert(dashboard, dashboardGroup.frame)
 
     local identity = aceGUI:Create("SimpleGroup")
     identity:SetFullWidth(true); identity:SetLayout("Flow"); identity:SetHeight(84); identity.noAutoHeight = true
-    dashboardGroup:AddChild(identity)
+    local classIcon = aceGUI:Create("Icon")
+    classIcon:SetImage(CLASS_FALLBACK_ICON); classIcon:SetImageSize(64, 64); classIcon:SetWidth(78); classIcon:SetHeight(74)
+    classIcon.frame:EnableMouse(false)
     local specIcon = aceGUI:Create("Icon")
     specIcon:SetImage(SPEC_FALLBACK_ICON); specIcon:SetImageSize(64, 64); specIcon:SetWidth(78); specIcon:SetHeight(74)
     specIcon.frame:EnableMouse(false)
-    identity:AddChild(specIcon)
     local identityText = aceGUI:Create("SimpleGroup")
     identityText:SetLayout("List"); identityText:SetRelativeWidth(0.70); identityText:SetHeight(70); identityText.noAutoHeight = true
-    identity:AddChild(identityText)
     local characterName = aceGUI:Create("Label")
     characterName:SetText(UNKNOWN); characterName:SetFontObject(GameFontHighlightLarge); characterName:SetFullWidth(true); characterName:SetHeight(30)
     identityText:AddChild(characterName)
     local specialization = aceGUI:Create("Label")
     specialization:SetText(UNKNOWN); specialization:SetFontObject(GameFontHighlight); specialization:SetFullWidth(true); specialization:SetHeight(24)
     identityText:AddChild(specialization)
+    local characterDetails = aceGUI:Create("Label")
+    characterDetails:SetText(""); characterDetails:SetFontObject(GameFontHighlightSmall); characterDetails:SetFullWidth(true); characterDetails:SetHeight(18)
+    identityText:AddChild(characterDetails)
 
-    local statistics = aceGUI:Create("SimpleGroup")
-    statistics:SetFullWidth(true); statistics:SetLayout("Flow"); statistics:SetHeight(86); statistics.noAutoHeight = true
-    dashboardGroup:AddChild(statistics)
-    local values = {}
-    for _, definition in ipairs({
-        { "itemLevel", "DASHBOARD_ITEM_LEVEL" },
-        { "mythicPlusRating", "DASHBOARD_MYTHICPLUS_RATING" },
-        { "bestRaid", "DASHBOARD_BEST_RAID" },
-    }) do
-        local column = aceGUI:Create("SimpleGroup")
-        column:SetLayout("List"); column:SetRelativeWidth(0.333); column:SetHeight(76); column.noAutoHeight = true
-        statistics:AddChild(column)
-        local label = aceGUI:Create("Label")
-        label:SetText(L[definition[2]]); label:SetFontObject(GameFontNormal); label:SetFullWidth(true); label:SetJustifyH("CENTER"); label:SetHeight(24)
-        column:AddChild(label)
-        local value = aceGUI:Create("Label")
-        value:SetText(UNKNOWN); value:SetFontObject(GameFontHighlightLarge); value:SetFullWidth(true); value:SetJustifyH("CENTER"); value:SetHeight(34)
-        column:AddChild(value)
-        values[definition[1]] = value
-    end
+    local dashboardWidgets = {identity=identity,identityText=identityText,classIcon=classIcon,specIcon=specIcon,name=characterName,specialization=specialization,details=characterDetails}
+    self:BuildHomeDashboard(dashboardGroup.frame, dashboardWidgets)
 
     local status = frame:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
     status:SetPoint("BOTTOMLEFT", frame, "BOTTOMLEFT", 16, 10); status:SetText(string.format(L["STATUS_BAR_READY"], HolyStorm.version))
+    local updated = frame:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    updated:SetPoint("RIGHT", frame, "BOTTOMRIGHT", -190, 10); updated:SetJustifyH("RIGHT"); updated:SetText(L["DASHBOARD_UPDATE_UNKNOWN"])
+    local refresh = CreateFrame("Button", nil, frame, "UIPanelButtonTemplate")
+    refresh:SetSize(158, 26); refresh:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", -24, 4); refresh:SetText(L["DASHBOARD_REFRESH"])
+    refresh:SetScript("OnClick", function() UI:RefreshCharacterData() end)
+    refresh:SetScript("OnEnter", function(button) GameTooltip:SetOwner(button, "ANCHOR_TOP"); GameTooltip:SetText(L["DASHBOARD_REFRESH_TOOLTIP"], 1, 1, 1, true); GameTooltip:Show() end)
+    refresh:SetScript("OnLeave", function() GameTooltip:Hide() end)
     local resize = CreateFrame("Button", nil, frame)
     resize:SetSize(16, 16); resize:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", -4, 4); resize:SetNormalTexture("Interface\\ChatFrame\\UI-ChatIM-SizeGrabber-Up")
     resize:SetScript("OnMouseDown", function(_, button)
@@ -163,7 +129,8 @@ function UI:OnInitialize()
     resize:SetScript("OnMouseUp", function() frame:StopMovingOrSizing(); UI:SaveWindowSize() end)
 
     self.frame, self.content, self.scroll, self.page, self.pages = frame, content, scroll, page, {}
-    self.dashboardElements, self.dashboardWidgets, self.windowTitle, self.status = dashboard, { icon=specIcon, name=characterName, specialization=specialization, itemLevel=values.itemLevel, mythicPlusRating=values.mythicPlusRating, bestRaid=values.bestRaid }, title, status
+    self.dashboardElements, self.dashboardWidgets, self.windowTitle, self.status = dashboard, dashboardWidgets, title, status
+    self.updatedStatus, self.refreshButton = updated, refresh
     self:LoadWindowState()
     self:CreateRightDock()
     self:RegisterDashboardEvents()
@@ -171,6 +138,7 @@ function UI:OnInitialize()
     frame:HookScript("OnHide", function() UI:SetRightDockVisible(false) end)
     self:SetRightDockVisible(false)
     HolyStorm.UI:SetDriver(self)
+    self:RefreshDashboard()
 end
 
 function UI:SetRightDockVisible(visible)

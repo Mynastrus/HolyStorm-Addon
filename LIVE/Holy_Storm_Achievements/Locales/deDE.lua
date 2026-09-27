@@ -1,5 +1,8 @@
 local L=LibStub("AceLocale-3.0"):NewLocale("Holy_Storm_Achievements","deDE")
 if not L then return end
+L["DASHBOARD_LATEST_GUILD_ACHIEVEMENT"]="Letzter Gildenerfolg"
+L["DASHBOARD_LATEST_AWARD_DATE"]="Verliehen am %s"
+L["DASHBOARD_AWARD_DATE_FORMAT"]="%d.%m.%Y"
 L["SOURCE_FILTER"]="Gildenfilter"
 L["SOURCE_MANUAL"]="Manuelle Auswahl"
 L["RULE_FIELD_GUILD_ACHIEVEMENT"]="Gildenerfolg"

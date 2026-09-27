@@ -15,3 +15,4 @@ L["ADDON_PREFIX"]="|cff3FC7EB[Holy Storm]|r  ";L["CONTENT_UNAVAILABLE"]="Inhalt 
 L["DEBUG_FORMAT"]="ID %s · Revision %s · Quelle %s · Body %s · Links %d · ungelöst %d · Parserfehler %d"
 L["DIAGNOSTICS"]="Content-Diagnose";L["DEBUG_HEADER"]="ID | Typ | Revision | Quelle | Sync | Payload | Bytes | sichtbar | Links | ungelöst | Fehler";L["DEBUG_ENTRY"]="%s | %s | %s | %s | %s | %s | %d | %s | %d | %d | %d";L["DEBUG_LINK"]="    ↳ %s: %s (aufgelöst: %s)"
 L["TASK_CONTENT_INDEX"]="Content-Index neu aufbauen";L["TASK_CONTENT_MIGRATE"]="Alte Gildeninhalte migrieren"
+L["DASHBOARD_DATE_FORMAT"]="%d.%m.%Y"

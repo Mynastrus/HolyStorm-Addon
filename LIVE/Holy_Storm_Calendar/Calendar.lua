@@ -547,6 +547,25 @@ HolyStorm:RegisterModule(metadata, function(Events)
         end, { priority=3, debounce=1, combat="defer" })
     end
 
+    function Events:RegisterDashboardProvider()
+        if not HolyStorm.UI.RegisterDashboardProvider then return false end
+        return HolyStorm.UI:RegisterDashboardProvider("calendar-events", {
+            owner="GuildEvents", moduleName="GuildEvents", optional=true, order=20, title=L["DISPLAY_NAME"], icon="Interface\\Calendar\\UI-Calendar-Event-PVP",
+            available=function()return Events:IsEnabled()and(not HolyStorm.Policy or HolyStorm.Policy:Can("calendar-read"))end,
+            getItems=function()
+                local entries={};local current=HolyStorm.Utils.Now()
+                for _,event in ipairs(Events.events or{})do
+                    local timestamp=GetEventTimestamp(event)
+                    if timestamp>current and type(event.title)=="string"and event.title~=""and#entries<4 then
+                        local selected=event;local day=date(L["DASHBOARD_EVENT_DATE_FORMAT"],timestamp);local hour=tonumber(SafeCalendarScalar(event.hour));local minute=tonumber(SafeCalendarScalar(event.minute));local timeText=hour and minute and string.format("%02d:%02d",hour,minute)or L["STATUS_UNKNOWN"]
+                        entries[#entries+1]={title=SafeCalendarText(event.title,L["UNTITLED"]),summary=string.format(L["DASHBOARD_EVENT_META"],day,timeText),icon=SafeCalendarScalar(event.texture),tooltip=SafeCalendarText(event.description,L["NO_DESCRIPTION"]),onClick=function()HolyStorm.UI:ShowPage("guildEvents");Events:ShowDetails(selected)end}
+                    end
+                end
+                return entries
+            end,
+            moreAction=function()Events:QueueAutomaticRefresh(0);HolyStorm.UI:ShowPage("guildEvents")end,
+        })
+    end
     function Events:InitializeUI()
         local UI = HolyStorm:GetModule("UI", true); local aceGUI = LibStub("AceGUI-3.0"); local page = CreateFrame("Frame", nil, UI.content)
         local heading = page:CreateFontString(nil, "OVERLAY", "GameFontHighlightLarge"); heading:SetPoint("TOPLEFT", page, "TOPLEFT", 18, -18); heading:SetText(L["HEADING"])
@@ -581,6 +600,7 @@ HolyStorm:RegisterModule(metadata, function(Events)
         content:SetWidth(scroll:GetWidth()); scroll:SetScript("OnSizeChanged", function(frame) content:SetWidth(frame:GetWidth()); Events:Render() end)
         HolyStorm.UI:RegisterPage("guildEvents", page, L["WINDOW_TITLE"], function() Events:Render() end, { "HS_CALENDAR_UPDATED" })
         HolyStorm.UI:AddNavigation("guildEvents", 6, "Interface\\Icons\\INV_Misc_Note_05", L["DISPLAY_NAME"], L["DESCRIPTION"], function() Events:QueueAutomaticRefresh(0); HolyStorm.UI:ShowPage("guildEvents") end)
+        self:RegisterDashboardProvider()
         local function onCalendarEvent(event)
             if event == "PLAYER_LOGIN" or (event == "PLAYER_ENTERING_WORLD" and not Events.loginCheckQueued) then
                 Events.loginCheckQueued = true; Events:QueueAutomaticRefresh(5); return
@@ -595,5 +615,6 @@ HolyStorm:RegisterModule(metadata, function(Events)
         if type(HolyStorm.Database:Get("guildEvents","global"))~="table"then HolyStorm.Database:Set("guildEvents",{unread=false},"global")end
         HolyStorm:RegisterUIExtension("GuildEvents",{id="calendar.page",order=6,initialize=function()Events:InitializeUI()end})
     end
-    function Events:OnDisable() HolyStorm.Events:UnregisterOwner("calendar"); HolyStorm.Tasks:Cancel("calendar.auto-refresh"); HolyStorm.Tasks:CancelRecurring("calendar.periodic") end
+    function Events:OnEnable() if self.page then self:RegisterDashboardProvider() end end
+    function Events:OnDisable() HolyStorm.Events:UnregisterOwner("calendar"); if HolyStorm.UI and HolyStorm.UI.UnregisterDashboardProviderOwner then HolyStorm.UI:UnregisterDashboardProviderOwner("GuildEvents")end; HolyStorm.Tasks:Cancel("calendar.auto-refresh"); HolyStorm.Tasks:CancelRecurring("calendar.periodic") end
 end)

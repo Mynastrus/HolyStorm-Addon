@@ -15,3 +15,4 @@ L["ADDON_PREFIX"]="|cff3FC7EB[Holy Storm]|r  ";L["CONTENT_UNAVAILABLE"]="Content
 L["DEBUG_FORMAT"]="ID %s · revision %s · source %s · body %s · links %d · unresolved %d · parser errors %d"
 L["DIAGNOSTICS"]="Content diagnostics";L["DEBUG_HEADER"]="ID | type | revision | source | sync | payload | bytes | visible | links | unresolved | errors";L["DEBUG_ENTRY"]="%s | %s | %s | %s | %s | %s | %d | %s | %d | %d | %d";L["DEBUG_LINK"]="    ↳ %s: %s (resolved: %s)"
 L["TASK_CONTENT_INDEX"]="Rebuild content index";L["TASK_CONTENT_MIGRATE"]="Migrate legacy guild content"
+L["DASHBOARD_DATE_FORMAT"]="%m/%d/%Y"

@@ -50,6 +50,7 @@ UI\Framework\UIManager.lua
 UI\Framework\Notifications.lua
 UI\Framework\RichContentRenderer.lua
 UI\Framework\MainWindow.lua
+UI\Framework\Dashboard.lua
 UI\Framework\Components\HolyStormHeaderBar.lua
 UI\Framework\Components\HolyStormTabGroup.lua
 UI\Pages\OptionsLocales\enUS.lua
