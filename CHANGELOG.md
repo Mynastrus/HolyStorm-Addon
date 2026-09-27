@@ -1,5 +1,15 @@
 # Holy Storm Changelog
 
+## Unreleased
+
+### English
+
+- Refined Character Overview spacing, compact profile sizing, and dynamic widget height; Mythic+ cards now use a neutral current-season label instead of exposing Blizzard's internal season ID.
+
+### Deutsch
+
+- Abstände, kompakte Profilgröße und Höhe dynamischer Widgets in der Charakterübersicht wurden verbessert. Mythic+-Karten zeigen nun eine neutrale Bezeichnung für die aktuelle Saison statt Blizzards interner Saison-ID.
+
 ## 5.9.0 — 27.09.2026
 
 ### English

@@ -83,7 +83,8 @@ function UI:BuildDashboardModel()
  end
  local equipment=summary and summary.equipment;local equipped=0
  for _,item in pairs(type(equipment)=="table"and type(equipment.slots)=="table"and equipment.slots or{})do if type(item)=="table"then equipped=equipped+1 end end
- local mythicSubtitle=summary and summary.mythicPlusSeasonId and string.format(L["DASHBOARD_SEASON"],summary.mythicPlusSeasonId)or L["DASHBOARD_MYTHIC_CURRENT"]
+ -- C_MythicPlus.GetCurrentSeason exposes Blizzard's internal season ID, not a stable display number.
+ local mythicSubtitle=L["DASHBOARD_MYTHIC_CURRENT"]
  local delve=summary and summary.delves;local delveValue=unknown();local delveSubtitle=""
  if type(delve)=="table"then
   local progress=delve.weeklyProgress
@@ -127,20 +128,32 @@ function UI:CalculateDashboardProviderLayout(count,width)
  for index=1,math.min(count,3)do layout[index]={x=(index-1)*(cardWidth+gap),width=cardWidth,column=index,columns=columns}end
  return layout,columns
 end
+function UI:CalculateDashboardProfileHeight(rowCount)
+ return 34+math.max(0,tonumber(rowCount)or 0)*17
+end
+function UI:CalculateDashboardWidgetHeight(providers,availableHeight)
+ local required=0
+ for _,provider in ipairs(providers or{})do
+  local height=36
+  for index=1,math.min(4,#(provider.items or{}))do height=height+(text(provider.items[index].summary)and 34 or 26)end
+  required=math.max(required,height)
+ end
+ return math.min(math.max(0,tonumber(availableHeight)or 0),required)
+end
 function UI:CalculateDashboardLayout(width,height)
  width=math.max(1,tonumber(width)or 1);height=math.max(380,tonumber(height)or 440)
  local margin,gap=7,7;local available=width-margin*2
- local widgetTop,widgetBottom=302,math.max(346,height-margin)
- return{width=width,height=height,margin=margin,gap=gap,headerTop=margin,headerHeight=78,navTop=92,navHeight=30,primaryTop=130,primaryHeight=94,secondaryTop=232,secondaryHeight=62,widgetTop=widgetTop,widgetBottom=widgetBottom,widgetHeight=widgetBottom-widgetTop,navButtonWidth=math.max(1,(available-4*7)/8)}
+ local widgetTop,widgetBottom=306,math.max(350,height-margin)
+ return{width=width,height=height,margin=margin,gap=gap,headerTop=margin,headerHeight=86,navTop=100,navHeight=28,primaryTop=137,primaryHeight=94,secondaryTop=239,secondaryHeight=62,widgetTop=widgetTop,widgetBottom=widgetBottom,widgetHeight=math.min(184,widgetBottom-widgetTop),navButtonWidth=math.max(1,(available-4*7)/8)}
 end
 
 local function makeMetricCard(parent,kind)
  local frame=buttonPanel(parent);frame.kind=kind
- frame.icon=frame:CreateTexture(nil,"ARTWORK");frame.icon:SetSize(50,50);frame.icon:SetPoint("LEFT",frame,"LEFT",12,0);frame.icon:SetTexCoord(.08,.92,.08,.92)
+ frame.icon=frame:CreateTexture(nil,"ARTWORK");frame.icon:SetSize(46,46);frame.icon:SetPoint("LEFT",frame,"LEFT",12,0);frame.icon:SetTexCoord(.08,.92,.08,.92)
  frame.title=frame:CreateFontString(nil,"OVERLAY","GameFontNormal");frame.title:SetPoint("TOPLEFT",frame,"TOPLEFT",73,-13);frame.title:SetTextColor(1,.78,.18);frame.title:SetJustifyH("LEFT")
  frame.value=frame:CreateFontString(nil,"OVERLAY","GameFontHighlightLarge");frame.value:SetPoint("TOPLEFT",frame.title,"BOTTOMLEFT",0,-1);frame.value:SetPoint("RIGHT",frame,"RIGHT",-29,0);frame.value:SetJustifyH("LEFT");frame.value:SetWordWrap(false)
  frame.subtitle=frame:CreateFontString(nil,"OVERLAY","GameFontHighlightSmall");frame.subtitle:SetPoint("BOTTOMLEFT",frame,"BOTTOMLEFT",73,10);frame.subtitle:SetPoint("RIGHT",frame,"RIGHT",-12,0);frame.subtitle:SetJustifyH("LEFT");frame.subtitle:SetWordWrap(false);frame.subtitle:SetTextColor(.72,.78,.86)
- frame.arrow=frame:CreateFontString(nil,"OVERLAY","GameFontHighlightLarge");frame.arrow:SetPoint("RIGHT",frame,"RIGHT",-8,0);frame.arrow:SetText("›");frame.arrow:SetTextColor(1,.78,.18)
+ frame.arrow=frame:CreateFontString(nil,"OVERLAY","GameFontHighlight");frame.arrow:SetPoint("RIGHT",frame,"RIGHT",-9,0);frame.arrow:SetText("›");frame.arrow:SetTextColor(.9,.68,.2)
  frame:SetScript("OnClick",function(self,button)if button=="RightButton"then if self.settings then self.settings()end;return end;if self.action then self.action()end end)
  return frame
 end
@@ -222,7 +235,11 @@ function UI:LayoutDashboard()
  local header=self.headerPanel;header:ClearAllPoints();header:SetPoint("TOPLEFT",canvas,"TOPLEFT",margin,-layout.headerTop);header:SetPoint("TOPRIGHT",canvas,"TOPRIGHT",-margin,-layout.headerTop);header:SetHeight(layout.headerHeight)
  local headerContent=self.headerContent;headerContent:ClearAllPoints();headerContent:SetPoint("TOPLEFT",header,"TOPLEFT",5,-4);headerContent:SetPoint("BOTTOMRIGHT",header,"BOTTOMRIGHT",-5,4)
  local profile=self.profilePanel;local profileAvailable=self.dashboardModel and self.dashboardModel.profileAvailable==true
- profile:SetShown(profileAvailable);if profileAvailable then profile:ClearAllPoints();profile:SetPoint("TOPRIGHT",headerContent,"TOPRIGHT",-2,-2);profile:SetPoint("BOTTOMRIGHT",headerContent,"BOTTOMRIGHT",-2,2);profile:SetWidth(math.min(232,math.max(184,width*.27)))end
+ profile:SetShown(profileAvailable);if profileAvailable then
+  profile:ClearAllPoints();profile:SetPoint("RIGHT",headerContent,"RIGHT",-2,0);profile:SetWidth(math.min(232,math.max(172,width*.27)))
+  profile:SetHeight(self:CalculateDashboardProfileHeight(#self.dashboardModel.profileRows));profile:SetClipsChildren(true)
+  profile:SetPoint("TOP",headerContent,"TOP",0,-(layout.headerHeight-profile:GetHeight())/2)
+ end
  local identity=self.dashboardWidgets.identity;identity.frame:SetParent(headerContent);identity.frame:ClearAllPoints();identity.frame:SetPoint("TOPLEFT",headerContent,"TOPLEFT",0,0);if profileAvailable then identity.frame:SetPoint("BOTTOMRIGHT",profile,"BOTTOMLEFT",-8,0)else identity.frame:SetPoint("BOTTOMRIGHT",headerContent,"BOTTOMRIGHT",-4,0)end;identity.frame:Show()
  local classIcon=self.dashboardWidgets.classIcon;classIcon.frame:ClearAllPoints();classIcon.frame:SetParent(identity.frame);classIcon.frame:SetSize(68,68);classIcon.frame:SetPoint("LEFT",identity.frame,"LEFT",3,0);classIcon.frame:Show();classIcon.image:ClearAllPoints();classIcon.image:SetSize(62,62);classIcon.image:SetPoint("CENTER",classIcon.frame,"CENTER")
  local specIcon=self.dashboardWidgets.specIcon;specIcon.frame:ClearAllPoints();specIcon.frame:SetParent(identity.frame);specIcon.frame:SetSize(52,52);specIcon.frame:SetPoint("LEFT",classIcon.frame,"RIGHT",8,0);specIcon.frame:Show();specIcon.image:ClearAllPoints();specIcon.image:SetSize(46,46);specIcon.image:SetPoint("CENTER",specIcon.frame,"CENTER")
@@ -250,7 +267,7 @@ function UI:LayoutDashboard()
   card.value:ClearAllPoints();card.value:SetFontObject(GameFontHighlight);card.value:SetPoint("TOPLEFT",card.title,"BOTTOMLEFT",0,-1);card.value:SetPoint("RIGHT",card,"RIGHT",-10,0)
   card.subtitle:ClearAllPoints();card.subtitle:SetPoint("BOTTOMLEFT",card,"BOTTOMLEFT",52,5);card.subtitle:SetPoint("RIGHT",card,"RIGHT",-10,0)
  end
- local widgetTop=layout.widgetTop;local bottom=layout.widgetBottom;local widgetHeight=bottom-widgetTop
+ local widgetTop=layout.widgetTop;local widgetHeight=self:CalculateDashboardWidgetHeight(self.visibleDashboardProviders,layout.widgetHeight)
  local providerLayouts,providerColumns=self:CalculateDashboardProviderLayout(#(self.visibleDashboardProviders or{}),width-2*margin)
  for index,provider in ipairs(self.visibleDashboardProviders or{})do
   local frame=self.widgetFrames[index];local slot=providerLayouts[index]
@@ -268,7 +285,7 @@ function UI:UpdateProfilePanel(model)
  for index,value in ipairs(rows)do
   local row=frame.rows[index]
   if not row then row={icon=frame:CreateTexture(nil,"ARTWORK"),text=frame:CreateFontString(nil,"OVERLAY","GameFontHighlightSmall")};row.icon:SetSize(17,17);frame.rows[index]=row end
-  row.icon:ClearAllPoints();row.icon:SetPoint("LEFT",frame,"LEFT",12,-(23+index*15));row.text:ClearAllPoints();row.text:SetPoint("LEFT",row.icon,"RIGHT",6,0);row.text:SetPoint("RIGHT",frame,"RIGHT",-10,0);row.text:SetJustifyH("LEFT");row.text:SetWordWrap(false);row.text:SetText(value.text);row.text:SetTextColor(.72,.84,.96)
+  row.icon:ClearAllPoints();row.icon:SetPoint("LEFT",frame,"LEFT",12,-(25+(index-1)*17));row.text:ClearAllPoints();row.text:SetPoint("LEFT",row.icon,"RIGHT",6,0);row.text:SetPoint("RIGHT",frame,"RIGHT",-10,0);row.text:SetJustifyH("LEFT");row.text:SetWordWrap(false);row.text:SetText(value.text);row.text:SetTextColor(.72,.84,.96)
   if value.role then row.icon:SetTexture("Interface\\LFGFrame\\UI-LFG-ICON-ROLES");row.icon:SetTexCoord(unpack(value.role))elseif value.kind=="birthday"then row.icon:SetTexture("Interface\\Calendar\\UI-Calendar-Event-PVP");row.icon:SetTexCoord(0,1,0,1)elseif value.kind=="name"then row.icon:SetTexture("Interface\\FriendsFrame\\UI-Toast-FriendOnlineIcon");row.icon:SetTexCoord(0,1,0,1)else row.icon:SetTexture("Interface\\Icons\\INV_Misc_QuestionMark");row.icon:SetTexCoord(0,1,0,1)end
   row.icon:Show();row.text:Show()
  end
@@ -297,7 +314,7 @@ end
 function UI:LayoutProviderWidget(frame,provider,height)
  frame.title:SetText(provider.definition.title or provider.id);frame.icon:SetTexture(provider.definition.icon or"Interface\\Icons\\INV_Misc_Note_05");frame.more.text:SetText(provider.definition.moreLabel or L["DASHBOARD_VIEW_ALL"]);frame.more:SetShown(type(provider.definition.moreAction)=="function");frame.more:SetScript("OnClick",function()provider.definition.moreAction()end)
  frame.title:SetPoint("RIGHT",frame.more,"LEFT",-5,0)
- local rows=math.min(4,#provider.items);local rowHeight=math.max(22,math.min(31,(height-32)/math.max(1,rows)))
+ local rows=math.min(4,#provider.items);local rowHeight=math.max(26,math.min(31,(height-32)/math.max(1,rows)))
  for index=1,rows do
   local item=provider.items[index];local row=frame.entries[index]
   if not row then
@@ -306,7 +323,8 @@ function UI:LayoutProviderWidget(frame,provider,height)
    row:SetScript("OnLeave",function(self)self.title:SetTextColor(.84,.92,1);if GameTooltip then GameTooltip:Hide()end end)
    row:SetScript("OnClick",function(self)if self.item and type(self.item.onClick)=="function"then self.item.onClick()end end)
   end
-  row:ClearAllPoints();row:SetPoint("TOPLEFT",frame,"TOPLEFT",10,-29-(index-1)*rowHeight);row:SetPoint("TOPRIGHT",frame,"TOPRIGHT",-10,-29-(index-1)*rowHeight);row:SetHeight(rowHeight);row.icon:SetTexture(item.icon or provider.definition.icon or"Interface\\Icons\\INV_Misc_Note_05");row.title:SetText(item.title);row.title:SetTextColor(.84,.92,1);row.summary:SetText(item.summary or"");if text(item.summary)then row.summary:Show()else row.summary:Hide()end;row.item=item;row:Show()
+  local compactHeight=text(item.summary)and math.min(34,rowHeight)or math.min(26,rowHeight)
+  row:ClearAllPoints();row:SetPoint("TOPLEFT",frame,"TOPLEFT",10,-29-(index-1)*rowHeight);row:SetPoint("TOPRIGHT",frame,"TOPRIGHT",-10,-29-(index-1)*rowHeight);row:SetHeight(compactHeight);row.icon:SetTexture(item.icon or provider.definition.icon or"Interface\\Icons\\INV_Misc_Note_05");row.title:SetText(item.title);row.title:SetTextColor(.84,.92,1);row.summary:SetText(item.summary or"");if text(item.summary)then row.summary:Show()else row.summary:Hide()end;row.item=item;row:Show()
  end
  for index=rows+1,#frame.entries do frame.entries[index]:Hide()end
 end
