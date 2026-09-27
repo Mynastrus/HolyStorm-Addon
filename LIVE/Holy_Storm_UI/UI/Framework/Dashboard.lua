@@ -12,6 +12,7 @@ local ROLE_COORDS={TANK={0,19/64,22/64,41/64},HEALER={20/64,39/64,1/64,20/64},DA
 local RAID_SHORT={LFR="LFR",NORMAL="N",HEROIC="H",MYTHIC="M"}
 local ROLE_KEYS={TANK="DASHBOARD_ROLE_TANK",HEALER="DASHBOARD_ROLE_HEALER",MELEE="DASHBOARD_ROLE_MELEE",MELEE_DPS="DASHBOARD_ROLE_MELEE",RANGED="DASHBOARD_ROLE_RANGED",RANGED_DPS="DASHBOARD_ROLE_RANGED",DAMAGER="DASHBOARD_ROLE_DAMAGER"}
 local function text(value)return type(value)=="string"and value~=""and value or nil end
+local function colorText(value,r,g,b)return string.format("|cff%02x%02x%02x%s|r",math.floor(r*255+.5),math.floor(g*255+.5),math.floor(b*255+.5),tostring(value or""))end
 local function unknown()local components=HolyStorm.UIComponents;return components and components.FormatState and components:FormatState(nil)or"|cff888888\226\128\147|r"end
 local function numberText(value)
  value=tonumber(value);if not value then return unknown()end
@@ -146,7 +147,7 @@ end
 
 local function profileTooltip(owner,model)
  if not GameTooltip then return end
- GameTooltip:SetOwner(owner,"ANCHOR_CURSOR_RIGHT");GameTooltip:SetText(L["DASHBOARD_PROFILE_TITLE"],1,.78,.18)
+ GameTooltip:SetOwner(owner,"ANCHOR_CURSOR_RIGHT");GameTooltip:SetText(colorText(L["DASHBOARD_PROFILE_TITLE"],1,.78,.18))
  for _,row in ipairs(model.profileRows or{})do GameTooltip:AddLine(row.text,.9,.95,1,true)end
  GameTooltip:AddLine(L["DASHBOARD_PROFILE_TOOLTIP"],.75,.82,.92,true);GameTooltip:Show()
 end
@@ -301,7 +302,7 @@ function UI:LayoutProviderWidget(frame,provider,height)
   local item=provider.items[index];local row=frame.entries[index]
   if not row then
    row=CreateFrame("Button",nil,frame);row.icon=row:CreateTexture(nil,"ARTWORK");row.icon:SetSize(26,26);row.icon:SetPoint("LEFT",row,"LEFT",2,0);row.title=row:CreateFontString(nil,"OVERLAY","GameFontHighlightSmall");row.title:SetPoint("TOPLEFT",row.icon,"TOPRIGHT",7,-1);row.title:SetPoint("RIGHT",row,"RIGHT",-6,0);row.title:SetJustifyH("LEFT");row.title:SetWordWrap(false);row.summary=row:CreateFontString(nil,"OVERLAY","GameFontHighlightSmall");row.summary:SetPoint("TOPLEFT",row.title,"BOTTOMLEFT",0,-1);row.summary:SetPoint("RIGHT",row,"RIGHT",-6,0);row.summary:SetJustifyH("LEFT");row.summary:SetWordWrap(false);frame.entries[index]=row
-   row:SetScript("OnEnter",function(self)self.title:SetTextColor(1,.85,.4);if self.item and self.item.tooltip and GameTooltip then GameTooltip:SetOwner(self,"ANCHOR_CURSOR_RIGHT");GameTooltip:SetText(self.item.title,1,.78,.18);GameTooltip:AddLine(self.item.tooltip,.88,.9,.94,true);GameTooltip:Show()end end)
+   row:SetScript("OnEnter",function(self)self.title:SetTextColor(1,.85,.4);if self.item and self.item.tooltip and GameTooltip then GameTooltip:SetOwner(self,"ANCHOR_CURSOR_RIGHT");GameTooltip:SetText(colorText(self.item.title,1,.78,.18));GameTooltip:AddLine(self.item.tooltip,.88,.9,.94,true);GameTooltip:Show()end end)
    row:SetScript("OnLeave",function(self)self.title:SetTextColor(.84,.92,1);if GameTooltip then GameTooltip:Hide()end end)
    row:SetScript("OnClick",function(self)if self.item and type(self.item.onClick)=="function"then self.item.onClick()end end)
   end
@@ -336,7 +337,7 @@ function UI:ShowMetricTooltip(kind,owner)
   local tooltips=HolyStorm.Tooltips
   if#rows>0 and tooltips then return tooltips:ShowTable("raid-best",owner,{anchor={point="LEFT",relativePoint="RIGHT",x=8,y=0},columns={{align="LEFT"},{align="CENTER"},{align="RIGHT"}},headers={{raidLocale["RAID_COLUMN_BOSS"],raidLocale["RAID_COLUMN_BEST"],raidLocale["RAID_COLUMN_KILLS"]}},separator=true,rows=rows})end
  end
- GameTooltip:SetOwner(owner,"ANCHOR_CURSOR_RIGHT");GameTooltip:SetText(self.primaryCards[kind].title:GetText(),1,.78,.18)
+ GameTooltip:SetOwner(owner,"ANCHOR_CURSOR_RIGHT");GameTooltip:SetText(colorText(self.primaryCards[kind].title:GetText(),1,.78,.18))
  if kind=="equipment"then
   GameTooltip:AddLine(string.format(L["DASHBOARD_EQUIPMENT_TOOLTIP"],model.equippedCount or 0),.9,.94,1,true)
  elseif kind=="mythicPlus"then GameTooltip:AddLine(model.mythicPlusSubtitle or"",.9,.94,1,true)
@@ -346,7 +347,7 @@ end
 
 function UI:ShowSecondaryTooltip(kind,owner)
  local card=self.secondaryCards[kind];if not GameTooltip or not card then return false end
- GameTooltip:SetOwner(owner,"ANCHOR_CURSOR_RIGHT");GameTooltip:SetText(card.title:GetText(),1,.78,.18);GameTooltip:AddLine(L["DASHBOARD_CLICK_TO_OPEN"],.25,.78,.92,true);GameTooltip:Show();return true
+ GameTooltip:SetOwner(owner,"ANCHOR_CURSOR_RIGHT");GameTooltip:SetText(colorText(card.title:GetText(),1,.78,.18));GameTooltip:AddLine(L["DASHBOARD_CLICK_TO_OPEN"],.25,.78,.92,true);GameTooltip:Show();return true
 end
 
 function UI:RefreshCharacterData()

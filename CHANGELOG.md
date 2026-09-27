@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Fixed legacy RGB arguments in MainWindow and related tooltip titles for the current Retail `GameTooltip:SetText` contract.
 - Redesigned the Character Overview home page as a responsive native dashboard with a character/profile header, interactive Equipment, current-season Mythic+, lifetime Raid, Delves, Achievements, Stats and Twinks cards, and provider-driven News, sanitized Calendar events and visible guild-achievement awards. Profile settings, card navigation, tooltips and the normal character refresh workflow are connected; unavailable optional widgets collapse cleanly.
 - Fixed unresolved development version placeholders appearing in Holy Storm UI and Presence data; packaged release versions remain sourced from addon metadata.
 - Corrected Raid lifetime Statistics mapping to use Blizzard's displayed statistic IDs and exact current-client boss, difficulty, and raid labels without requiring achievement criteria or Encounter Journal creature assets. The end-to-end eight-boss fixture now reaches lifetime Best through persistence and Character UI; final Retail acceptance has been confirmed.
@@ -17,6 +18,8 @@
 - Added `/hs scan <target>` commands for forced Raid, Equipment, Mythic+, Delves, Stats, and queued all-provider character scans through CharacterScanManager, with localized usage, availability, and workflow-completion feedback.
 
 ### Deutsche Änderungen
+
+- Behebt veraltete RGB-Argumente in MainWindow- und verwandten Tooltip-Titeln fuer den aktuellen Retail-GameTooltip:SetText-Aufruf.
 
 - Die Charakter-Uebersicht wurde als responsives natives Dashboard mit Charakter- und Profilkopf, interaktiven Karten fuer Ausruestung, aktuelle Mythic+-Wertung, Raid-Lebenszeitbestwert, Tiefen, Erfolge, Werte und weitere Charaktere neu gestaltet. News-, Kalender- und Gildenerfolg-Widgets verwenden verfuegbare Provider; Profilnavigation, Tooltips, Tab-Wechsel und der zentrale Aktualisierungsablauf sind eingebunden. Nicht verfuegbare optionale Widgets hinterlassen keine leeren Karten.
 
