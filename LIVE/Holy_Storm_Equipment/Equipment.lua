@@ -2,12 +2,11 @@ local addonVersion="6.3.0"
 local HolyStorm=LibStub("AceAddon-3.0"):GetAddon("Holy_Storm")
 local L=LibStub("AceLocale-3.0"):GetLocale("Holy_Storm_Equipment")
 if HolyStorm.PermissionRegistry then HolyStorm.PermissionRegistry:RegisterLegacyAlias("equipment.read","equipment-read")end
-if HolyStorm.PlayerData then HolyStorm.PlayerData:RegisterBlock("equipment",{fields={"equipment","itemLevel"},event="HS_EQUIPMENT_UPDATED",staleAfter=21600})end
 local metadata={id="equipment",name="Equipment",displayName=L["DISPLAY_NAME"],description=L["DESCRIPTION"],version=addonVersion,moduleType="feature",category="feature",permissions={{id="equipment-read",category="Equipment",defaults={member=true}},"sync-send","sync-receive"},dependencies={"core","synchronization"},capabilities={"character.scan.equipment"},ui={characterTab="equipment"},data={block="equipment",snapshotType="equipment",schemaVersion=4,capability="character.scan.equipment"},sync={domains={"character"}},enabledByDefault=true,ruleFields={{id="equipment.itemLevel",aliases={"itemLevel"},type="number",name=L["RULE_FIELD_ITEM_LEVEL"],nameKey="RULE_FIELD_ITEM_LEVEL",description=L["RULE_FIELD_ITEM_LEVEL_DESC"],descriptionKey="RULE_FIELD_ITEM_LEVEL_DESC",category=L["DISPLAY_NAME"],dependencies={"equipment"},unit="itemLevel",resolver=function(context)local block=context.character and context.character.equipment or HolyStorm.Data.CharacterStore:GetBlock(context.characterUUID,"equipment");return block and tonumber(block.itemLevel)or nil end}}}
 local SLOTS={INVSLOT_HEAD,INVSLOT_NECK,INVSLOT_SHOULDER,INVSLOT_CHEST,INVSLOT_WAIST,INVSLOT_LEGS,INVSLOT_FEET,INVSLOT_WRIST,INVSLOT_HAND,INVSLOT_FINGER1,INVSLOT_FINGER2,INVSLOT_TRINKET1,INVSLOT_TRINKET2,INVSLOT_BACK,INVSLOT_MAINHAND,INVSLOT_OFFHAND}
 local WORKFLOW="EQUIPMENT_UPDATE"
 local function runtime(task)local w=HolyStorm.Workflows.workflows[task.workflowId];return w,w and w.context end
-local function fingerprint(snapshot)local value=HolyStorm.Utils.DeepCopy(snapshot);if type(value)=="table"then value.updatedAt=nil;value.version=nil;value.snapshotVersion=nil end;return HolyStorm.Serializer:Serialize(value)end
+local function fingerprint(snapshot)return HolyStorm.PlayerData:FingerprintSnapshot(snapshot)end
 local function tooltipDetails(slot)
  local enchantName,socketNames
  if not(C_TooltipInfo and C_TooltipInfo.GetInventoryItem)then return nil,{}end
@@ -42,6 +41,14 @@ local function captureItem(slot)
  local quality=select(3,GetItemInfo(link));local setID=select(16,GetItemInfo(link));local enchantId;if fields[3]==""then enchantId=0 elseif fields[3]~=nil then enchantId=tonumber(fields[3])end
  return{slot=slot,itemId=itemId,link=link,itemLevel=level,enchantId=enchantId,enchantName=enchantName,gems=gems,sockets=socketCount,quality=quality,icon=GetInventoryItemTexture("player",slot),setID=setID,isTier=isTierItem(itemId,setID)}
 end
+local function validEquipmentSnapshot(snapshot)
+ if type(snapshot)~="table"or snapshot.snapshotVersion~=4 or type(snapshot.slots)~="table"or not tonumber(snapshot.itemLevel)or tonumber(snapshot.itemLevel)<0 or not tonumber(snapshot.equippedCount)or snapshot.equippedCount<0 or snapshot.equippedCount%1~=0 then return false,"INVALID_EQUIPMENT_SNAPSHOT"end
+ local count=0
+ for _,slot in ipairs(SLOTS)do local item=snapshot.slots[slot];if item==nil then return false,"INCOMPLETE_EQUIPMENT_SLOTS"end;if item~=false then if type(item)~="table"or not tonumber(item.itemId)or not tonumber(item.itemLevel)or tonumber(item.itemLevel)<=0 then return false,"INVALID_EQUIPMENT_ITEM"end;count=count+1 end end
+ if count~=snapshot.equippedCount then return false,"EQUIPMENT_COUNT_MISMATCH"end
+ return true
+end
+if HolyStorm.PlayerData then HolyStorm.PlayerData:RegisterBlock("equipment",{fields={"equipment","itemLevel"},event="HS_EQUIPMENT_UPDATED",staleAfter=21600,owner="equipment",schemaVersion=4,snapshotVersion=4,capability="character.scan.equipment",validate=function(data)if type(data)~="table"then return false,"INVALID_EQUIPMENT_BLOCK"end;local valid,reason=validEquipmentSnapshot(data.equipment);if not valid then return false,reason end;if tonumber(data.itemLevel)~=tonumber(data.equipment.itemLevel)then return false,"EQUIPMENT_ITEM_LEVEL_MISMATCH"end;return true end})end
 
 HolyStorm:RegisterModule(metadata,function(Module)
  HolyStorm:ApplyModuleMetadata(Module,metadata)
@@ -49,26 +56,30 @@ HolyStorm:RegisterModule(metadata,function(Module)
  function Module:Collect()
   local snapshot={slots={},updatedAt=HolyStorm.Utils.Now(),snapshotVersion=4};local count=0
   for _,slot in ipairs(SLOTS)do local item,reason=captureItem(slot);if reason then snapshot.pending=reason end;snapshot.slots[slot]=item or false;if item then count=count+1 end end
-  snapshot.equippedCount=count;snapshot.itemLevel=GetAverageItemLevel and select(2,GetAverageItemLevel())or 0;return snapshot
+  snapshot.equippedCount=count;snapshot.itemLevel=GetAverageItemLevel and select(2,GetAverageItemLevel())or nil;return snapshot
  end
  function Module:Validate(snapshot)
-  if type(snapshot)~="table"or type(snapshot.slots)~="table"or snapshot.pending then return false,snapshot and snapshot.pending or"MISSING_SNAPSHOT"end
-  for _,slot in ipairs(SLOTS)do if snapshot.slots[slot]==nil then return false,"MISSING_SLOT"end end
+  if type(snapshot)~="table"or snapshot.pending then return false,snapshot and snapshot.pending or"MISSING_SNAPSHOT"end
+  local valid,reason=validEquipmentSnapshot(snapshot);if not valid then return false,reason end
   local old=HolyStorm.Data.CharacterStore:Get(UnitGUID("player"));local oldCount=old and old.equipment and old.equipment.equippedCount or 0
-  if snapshot.equippedCount==0 and oldCount>0 then local fp=fingerprint(snapshot.slots);if self.emptyCandidate~=fp then self.emptyCandidate=fp;return false,"SUDDEN_EMPTY_EQUIPMENT"end end
+  if snapshot.equippedCount==0 and oldCount>0 then local fp=fingerprint(snapshot.slots);if self.emptyCandidate~=fp then self.emptyCandidate=fp;return false,"SUDDEN_EMPTY_EQUIPMENT"end;return true end
   self.emptyCandidate=nil;return true
  end
  function Module:Store(snapshot)
   local guid=UnitGUID("player")
-  local changed=HolyStorm.PlayerData:WriteOwnedBlock(guid,"equipment",{equipment=snapshot,itemLevel=snapshot.itemLevel},"blizzard")
-  return changed
+  local changed,reason=HolyStorm.PlayerData:WriteOwnedBlock(guid,"equipment",{equipment=snapshot,itemLevel=snapshot.itemLevel},"blizzard")
+  if changed or reason=="UNCHANGED"then self.emptyCandidate=nil end
+  return changed,reason
  end
  function Module:RegisterWorkflow()
   HolyStorm.Tasks:RegisterTaskType("Equipment.Scan",{name=L["TASK_SCAN"],localizedNameKey="TASK_SCAN",module="Equipment",priority=25,executionMode="UNIQUE",conditions={"PLAYER_LOGGED_IN","PLAYER_READY","NOT_IN_COMBAT","NOT_LOADING","NOT_ZONING"},maxRetries=5,execute=function(task)local _,c=runtime(task);local snapshot=Module:Collect();c.data.snapshot=snapshot;return snapshot end})
   HolyStorm.Tasks:RegisterTaskType("Equipment.Validate",{name=L["TASK_VALIDATE"],localizedNameKey="TASK_VALIDATE",module="Equipment",priority=25,executionMode="UNIQUE",execute=function(task)local _,c=runtime(task);local valid,reason=Module:Validate(c.data.snapshot);if not valid then return{workflowAction="RETRY",gotoStep=1,delay=2.5,maxRetries=5,reason=reason}end;return{valid=true}end})
-  HolyStorm.Tasks:RegisterTaskType("Equipment.Compare",{name=L["TASK_COMPARE"],localizedNameKey="TASK_COMPARE",module="Equipment",priority=25,executionMode="UNIQUE",execute=function(task)local _,c=runtime(task);local record=HolyStorm.Data.CharacterStore:Get(UnitGUID("player"));local old=record and record.equipment;local changed=fingerprint(c.data.snapshot)~=fingerprint(old);c.data.changed=changed;if not changed then return{workflowAction="COMPLETE",changed=false}end;return{changed=true}end})
-  HolyStorm.Tasks:RegisterTaskType("Equipment.Store",{name=L["TASK_STORE"],localizedNameKey="TASK_STORE",module="Equipment",priority=25,executionMode="UNIQUE",execute=function(task)local _,c=runtime(task);c.data.stored=Module:Store(c.data.snapshot);return{stored=c.data.stored}end})
-  HolyStorm.Workflows:Register(WORKFLOW,{name=L["WORKFLOW_EQUIPMENT_UPDATE"],localizedNameKey="WORKFLOW_EQUIPMENT_UPDATE",module="Equipment",priority=25,allowParallel=false,debounce=1,steps={{id="scan",taskType="Equipment.Scan"},{id="validate",taskType="Equipment.Validate"},{id="compare",taskType="Equipment.Compare"},{id="store",taskType="Equipment.Store"}}})
+  HolyStorm.Tasks:RegisterTaskType("Equipment.Compare",{name=L["TASK_COMPARE"],localizedNameKey="TASK_COMPARE",module="Equipment",priority=25,executionMode="UNIQUE",execute=function(task)local _,c=runtime(task);local record=HolyStorm.Data.CharacterStore:Get(UnitGUID("player"));local old=record and record.equipment;local changed=fingerprint(c.data.snapshot)~=fingerprint(old);c.data.changed=changed;if not changed then return{workflowAction="COMPLETE",changed=false,status="UNCHANGED"}end;return{workflowAction="GOTO",gotoStep=5,changed=true}end})
+  HolyStorm.Tasks:RegisterTaskType("Equipment.ConfirmScan",{name=L["TASK_SCAN"],localizedNameKey="TASK_SCAN",module="Equipment",priority=25,executionMode="UNIQUE",conditions={"PLAYER_LOGGED_IN","PLAYER_READY","NOT_IN_COMBAT","NOT_LOADING","NOT_ZONING"},execute=function(task)local _,c=runtime(task);local snapshot=Module:Collect();c.data.confirmSnapshot=snapshot;return{snapshot=snapshot}end})
+  HolyStorm.Tasks:RegisterTaskType("Equipment.ConfirmValidate",{name=L["TASK_VALIDATE"],localizedNameKey="TASK_VALIDATE",module="Equipment",priority=25,executionMode="UNIQUE",execute=function(task)local _,c=runtime(task);local valid,reason=Module:Validate(c.data.confirmSnapshot);if not valid then return{workflowAction="RETRY",gotoStep=1,delay=2.5,maxRetries=5,reason=reason}end;return{valid=true}end})
+  HolyStorm.Tasks:RegisterTaskType("Equipment.StabilityCompare",{name=L["TASK_COMPARE"],localizedNameKey="TASK_COMPARE",module="Equipment",priority=25,executionMode="UNIQUE",execute=function(task)local _,c=runtime(task);if fingerprint(c.data.snapshot)~=fingerprint(c.data.confirmSnapshot)then return{workflowAction="RETRY",gotoStep=1,delay=2.5,maxRetries=5,reason="EQUIPMENT_CHANGED_DURING_CONFIRMATION"}end;c.data.snapshot=c.data.confirmSnapshot;return{stable=true}end})
+  HolyStorm.Tasks:RegisterTaskType("Equipment.Store",{name=L["TASK_STORE"],localizedNameKey="TASK_STORE",module="Equipment",priority=25,executionMode="UNIQUE",execute=function(task)local _,c=runtime(task);local stored,reason=Module:Store(c.data.snapshot);if stored==false and reason~="UNCHANGED"then error("equipment commit failed: "..tostring(reason or"UNKNOWN"))end;c.data.stored=stored;return{stored=stored,status=stored and"COMMITTED"or"UNCHANGED"}end})
+  HolyStorm.Workflows:Register(WORKFLOW,{name=L["WORKFLOW_EQUIPMENT_UPDATE"],localizedNameKey="WORKFLOW_EQUIPMENT_UPDATE",module="Equipment",priority=25,allowParallel=false,debounce=1,steps={{id="scan",taskType="Equipment.Scan"},{id="validate",taskType="Equipment.Validate"},{id="compare",taskType="Equipment.Compare"},{id="confirm-scan",taskType="Equipment.ConfirmScan"},{id="confirm-validate",taskType="Equipment.ConfirmValidate"},{id="stability-compare",taskType="Equipment.StabilityCompare"},{id="store",taskType="Equipment.Store"}}})
  end
  -- DE: Waerend RUNNING werden Trigger zu genau einem Pending-Restart verdichtet.
  -- EN: While RUNNING, triggers collapse into exactly one pending restart.

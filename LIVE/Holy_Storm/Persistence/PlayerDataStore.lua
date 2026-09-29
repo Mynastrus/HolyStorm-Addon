@@ -13,18 +13,22 @@ local PlayerData = {
 local function copy(value) return HolyStorm.Utils.DeepCopy(value) end
 local function now() return HolyStorm.Utils.Now() end
 local function validId(value) return type(value)=="string" and #value>0 and #value<=128 end
-local function same(left,right)
-    local function comparable(value)
-        if type(value)~="table"then return value end
-        local result={}
-        for key,child in pairs(value)do if key~="version"and key~="updatedAt"then
-            if type(child)=="table"then local projected={};for childKey,nested in pairs(child)do if childKey~="version"and childKey~="updatedAt"then projected[childKey]=nested end end;result[key]=projected else result[key]=child end
-        end end
-        return result
+local ignoredSnapshotMetadata={version=true,updatedAt=true,committedAt=true,receivedAt=true,originCreatedAt=true,receivedFrom=true,transport=true,transportMetadata=true,syncMetadata=true,schemaVersion=true,snapshotVersion=true}
+local function comparable(value,root)
+    if type(value)~="table"then return value end
+    local result={}
+    for key,child in pairs(value)do if not(root and ignoredSnapshotMetadata[key])then result[key]=comparable(child,false)end end
+    return result
+end
+local function semanticDigest(value)return HolyStorm.Serializer and HolyStorm.Serializer:Serialize(comparable(value,true))end
+local function same(left,right,definition)
+    if type(definition)~="table"or#definition.fields==1 then local a,b=semanticDigest(left),semanticDigest(right);return a~=nil and a==b end
+    local function blockDigest(data)
+        local values={}
+        for _,field in ipairs(definition.fields)do values[field]=semanticDigest(type(data)=="table"and data[field]or nil)end
+        return HolyStorm.Serializer and HolyStorm.Serializer:Serialize(values)
     end
-    local a=HolyStorm.Serializer and HolyStorm.Serializer:Serialize(comparable(left))
-    local b=HolyStorm.Serializer and HolyStorm.Serializer:Serialize(comparable(right))
-    return a~=nil and a==b
+    local a,b=blockDigest(left),blockDigest(right);return a~=nil and a==b
 end
 
 local function ensureBlockMetadata(record,guid,blockId,definition)
@@ -41,8 +45,11 @@ end
 function PlayerData:RegisterBlock(id,definition)
     if not validId(id) or type(definition)~="table" or type(definition.fields)~="table" then return false,"INVALID_BLOCK" end
     if self.blocks[id]then return false,"BLOCK_EXISTS"end
-    local fields={};for _,field in ipairs(definition.fields)do if type(field)~="string"or self.fieldToBlock[field]then return false,"INVALID_BLOCK_FIELD"end;fields[#fields+1]=field;self.fieldToBlock[field]=id end
-    self.blocks[id]={id=id,fields=fields,validate=definition.validate,event=definition.event or("HS_"..id:upper().."_UPDATED"),staleAfter=tonumber(definition.staleAfter)or 21600}
+    local fields,seenFields={},{};for _,field in ipairs(definition.fields)do if type(field)~="string"or self.fieldToBlock[field]or seenFields[field]then return false,"INVALID_BLOCK_FIELD"end;fields[#fields+1]=field;seenFields[field]=true end
+    local schemaVersion=tonumber(definition.schemaVersion);local snapshotVersion=tonumber(definition.snapshotVersion)
+    if definition.schemaVersion~=nil and not schemaVersion or definition.snapshotVersion~=nil and not snapshotVersion or schemaVersion and(schemaVersion<1 or schemaVersion%1~=0)or snapshotVersion and(snapshotVersion<1 or snapshotVersion%1~=0)then return false,"INVALID_BLOCK_VERSION"end
+    for _,field in ipairs(fields)do self.fieldToBlock[field]=id end
+    self.blocks[id]={id=id,fields=fields,owner=definition.owner or id,schemaVersion=schemaVersion,snapshotVersion=snapshotVersion,validate=definition.validate,event=definition.event or("HS_"..id:upper().."_UPDATED"),staleAfter=tonumber(definition.staleAfter)or 21600,syncEnabled=definition.syncEnabled~=false,persistenceEnabled=definition.persistenceEnabled~=false,authority=definition.authority or"character-owner",compatibility=type(definition.compatibility)=="table"and copy(definition.compatibility)or{},addonId=definition.addonId or id,capability=definition.capability,scanProvider=definition.scanProvider or id}
     if self.root and type(self.root.characters)=="table"then
         self.root.normalizedBlocks=type(self.root.normalizedBlocks)=="table"and self.root.normalizedBlocks or{}
         if self.root.normalizedBlocks[id]~=true then
@@ -53,6 +60,12 @@ function PlayerData:RegisterBlock(id,definition)
     return true
 end
 function PlayerData:HasBlock(id)return self.blocks[id]~=nil end
+function PlayerData:IsBlockSyncEnabled(id)local definition=self.blocks[id];return definition~=nil and definition.syncEnabled~=false end
+function PlayerData:FingerprintSnapshot(value)return semanticDigest(value)end
+function PlayerData:FingerprintBlock(blockId,value)local definition=self.blocks[blockId];if not definition then return nil end;if#definition.fields==1 then return semanticDigest(value)end;local values={};for _,field in ipairs(definition.fields)do values[field]=semanticDigest(type(value)=="table"and value[field]or nil)end;return HolyStorm.Serializer:Serialize(values)end
+function PlayerData:SnapshotsEqual(left,right,blockId)return same(left,right,blockId and self.blocks[blockId])end
+function PlayerData:GetBlockDefinition(id)local definition=self.blocks[id];return definition and copy(definition)or nil end
+function PlayerData:GetBlockDefinitions()local result={};for id in pairs(self.blocks)do result[#result+1]=copy(self.blocks[id])end;table.sort(result,function(a,b)return a.id<b.id end);return result end
 
 function PlayerData:Initialize()
     HS_Player_DB=type(HS_Player_DB)=="table"and HS_Player_DB or{}
@@ -126,7 +139,11 @@ function PlayerData:GetBlock(guid,blockId)
 end
 function PlayerData:GetMetadata(guid,blockId)
     local record=self:GetCharacter(guid);local meta=record and record.blockMeta and record.blockMeta[blockId];if not meta then return nil end
-    local result=copy(meta);result.objectId=guid.."\031"..blockId;result.owner=result.owner or guid;result.block=blockId;result.guid=guid;return result
+    local result=copy(meta);local definition=self.blocks[blockId];local header=self:GetBlockHeader(guid,blockId)
+    result.objectId=guid.."\031"..blockId;result.owner=result.owner or guid;result.block=blockId;result.guid=guid
+    result.schemaVersion=header and header.schemaVersion or definition and definition.schemaVersion
+    result.snapshotVersion=header and header.snapshotVersion or definition and definition.snapshotVersion
+    return result
 end
 function PlayerData:CompareMetadata(localMeta,remoteMeta)
     if type(remoteMeta)~="table"then return -1,"INVALID_METADATA"end;local rv=tonumber(remoteMeta.version);if not rv or rv<0 then return -1,"INVALID_VERSION"end
@@ -143,6 +160,8 @@ function PlayerData:ApplyBlock(guid,blockId,data,meta,mode)
     if self.futureSchema then return false,"FUTURE_SCHEMA_READ_ONLY",false end
     if not validId(guid)or type(meta)~="table"then return false,"INVALID_IDENTITY",false end
     local definition=self.blocks[blockId];if not definition then return false,"INVALID_BLOCK_DATA",false end
+    if definition.persistenceEnabled==false then return false,"PERSISTENCE_DISABLED",true end
+    if mode=="remote"and definition.syncEnabled==false then return false,"SYNC_DISABLED",true end
     local valid,reason=self:ValidateBlock(blockId,data);if not valid then return false,reason or"INVALID_BLOCK_DATA",false end
     local record=self:GetOrCreateCharacter(guid);local current=record.blockMeta[blockId]
     if mode=="remote"then
@@ -152,7 +171,7 @@ function PlayerData:ApplyBlock(guid,blockId,data,meta,mode)
         local storedVersion=tonumber(current and current.version)or 0;local identical=false
         if current and storedVersion==incomingVersion then
             local existing;if#definition.fields==1 then existing=record[definition.fields[1]]else existing={};for _,field in ipairs(definition.fields)do existing[field]=record[field]end end
-            identical=same(existing,data)
+            identical=same(existing,data,definition)
         end
         local locallyOwned=self:IsLocallyOwned(guid)
         if incomingVersion<storedVersion then return false,"STALE_REVISION",true end
@@ -169,7 +188,7 @@ function PlayerData:ApplyBlock(guid,blockId,data,meta,mode)
     if mode~="remote"and#definition.fields>1 then for _,field in ipairs(definition.fields)do if clean[field]==nil then clean[field]=copy(record[field])end end end
     local version=mode=="remote"and tonumber(meta.version)or((tonumber(current and current.version)or 0)+1)
     local updatedAt=mode=="remote"and tonumber(meta.originCreatedAt or meta.updatedAt)or now()
-    if mode~="remote"and current then local existing;if#definition.fields==1 then existing=record[definition.fields[1]]else existing={};for _,field in ipairs(definition.fields)do existing[field]=record[field]end end;if same(existing,clean)then return false,"UNCHANGED",true end end
+    if mode~="remote"and current then local existing;if#definition.fields==1 then existing=record[definition.fields[1]]else existing={};for _,field in ipairs(definition.fields)do existing[field]=record[field]end end;if same(existing,clean,definition)then return false,"UNCHANGED",true end end
     if #definition.fields==1 then record[definition.fields[1]]=clean else for _,field in ipairs(definition.fields)do record[field]=clean[field]end end
     -- Keep block-local metadata visible to compatible readers without making it authoritative.
     for _,field in ipairs(definition.fields)do if type(record[field])=="table"then record[field].version=version;record[field].updatedAt=updatedAt end end

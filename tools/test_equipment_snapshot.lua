@@ -1,6 +1,7 @@
 local root=(arg[0]:gsub("tools[/\\]test_equipment_snapshot.lua$","")).."LIVE/Holy_Storm/"
 local featureRoot=(arg[0]:gsub("tools[/\\]test_equipment_snapshot.lua$","")).."LIVE/Holy_Storm_Equipment/"
-local HolyStorm={Utils={Now=function()return 100 end,DeepCopy=function(value)return value end},Workflows={workflows={}},Serializer={Serialize=function()return"snapshot"end}}
+local oldCharacter=nil
+local HolyStorm={Utils={Now=function()return 100 end,DeepCopy=function(value)return value end},Data={CharacterStore={Get=function()return oldCharacter end}},PlayerData={RegisterBlock=function()return true end,FingerprintSnapshot=function(_,value)return tostring(value[INVSLOT_HEAD])end},Workflows={workflows={}},Serializer={Serialize=function()return"snapshot"end}}
 function LibStub(name)if name=="AceAddon-3.0"then return{GetAddon=function()return HolyStorm end}end;return{GetLocale=function()return setmetatable({},{__index=function(_,key)return key end})end}end
 function HolyStorm:RegisterModule(_,factory)local module={};factory(module);self.Equipment=module end
 function HolyStorm:ApplyModuleMetadata()end
@@ -33,4 +34,5 @@ C_Item.GetSetBonusesForSpecializationByItemID=nil
 snapshot=HolyStorm.Equipment:Collect();assert(snapshot.slots[INVSLOT_HEAD].isTier==nil,"a missing tier API remains unknown even when setID exists")
 itemLink="|cffa335ee|Hitem:111::::::::80:70:::::::|h[Plain Helm]|h|r";snapshot=HolyStorm.Equipment:Collect();assert(snapshot.slots[INVSLOT_HEAD].enchantId==0,"an explicit empty enchant field is known unenchanted")
 itemLink="|cffa335ee|Hitem:111:unknown:::::::80:70:::::::|h[Pending Helm]|h|r";snapshot=HolyStorm.Equipment:Collect();assert(snapshot.slots[INVSLOT_HEAD].enchantId==nil,"an unparseable enchant field remains unknown")
+oldCharacter={equipment={equippedCount=1}};GetInventoryItemID=function()return nil end;GetInventoryItemLink=function()return nil end;snapshot=HolyStorm.Equipment:Collect();local firstValid,firstReason=HolyStorm.Equipment:Validate(snapshot);assert(not firstValid and firstReason=="SUDDEN_EMPTY_EQUIPMENT","the first sudden-empty scan is rejected");assert(HolyStorm.Equipment:Validate(snapshot),"the second full scan confirms the empty candidate");assert(HolyStorm.Equipment:Validate(snapshot),"the separate stability-confirmation scan accepts the same empty candidate")
 print("Equipment rich snapshot tests passed")

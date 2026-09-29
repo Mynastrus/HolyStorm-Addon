@@ -18,12 +18,14 @@ function HolyStorm.Events:Register(event,owner,fn)self.listeners[event]=self.lis
 function HolyStorm.Events:Emit(event,...)self.emitted[#self.emitted+1]=event;for _,fn in pairs(self.listeners[event]or{})do fn(event,...)end end
 HS_Player_DB={ ["Player-Legacy"]={guid="Player-Legacy",equipment={slots={},version=4},mythicPlus={seasonId=18,dungeons={{name="Legacy Dungeon",challengeMapId=1,timeLimit=1800}},version=4,updatedAt=900},version=4,updatedAt=400} }
 assert(loadfile(root.."Persistence/PlayerDataStore.lua"))()
-HolyStorm.PlayerData:RegisterBlock("equipment",{fields={"equipment","itemLevel"},event="HS_EQUIPMENT_UPDATED"})
+HolyStorm.PlayerData:RegisterBlock("equipment",{fields={"equipment","itemLevel"},event="HS_EQUIPMENT_UPDATED",owner="equipment",schemaVersion=4,snapshotVersion=4})
 HolyStorm.PlayerData:RegisterBlock("raid",{fields={"raidLockouts"},event="HS_RAIDLOCKS_UPDATED",staleAfter=100})
 HolyStorm.PlayerData:RegisterBlock("stats",{fields={"stats"},event="HS_STATS_UPDATED"})
 HolyStorm.PlayerData:RegisterBlock("mythicPlus",{fields={"mythicPlus"},event="HS_MYTHICPLUS_UPDATED",validate=function(data)if type(data)~="table"then return false,"INVALID_MYTHICPLUS_DATA"end;if data.dungeons~=nil and type(data.dungeons)~="table"then return false,"INVALID_MYTHICPLUS_DUNGEONS"end;local count=0;for _,dungeon in pairs(type(data.dungeons)=="table"and data.dungeons or{})do if type(dungeon)~="table"then return false,"INVALID_MYTHICPLUS_DUNGEON"end;count=count+1 end;if data.seasonId==nil and data.overallScore==nil and data.ownedKey==nil and count==0 then return false,"EMPTY_MYTHICPLUS_DATA"end;return true end})
 local function validDelves(data)return type(data)=="table"and type(data.runs)=="table","INVALID_DELVES_DATA"end
 HolyStorm.PlayerData:RegisterBlock("delves",{fields={"delves"},event="HS_DELVES_UPDATED",validate=validDelves})
+HolyStorm.PlayerData:RegisterBlock("localOnly",{fields={"localOnly"},syncEnabled=false,schemaVersion=2,snapshotVersion=1})
+local invalidBlock,invalidBlockReason=HolyStorm.PlayerData:RegisterBlock("invalidVersion",{fields={"invalidField"},schemaVersion=0});assert(not invalidBlock and invalidBlockReason=="INVALID_BLOCK_VERSION"and HolyStorm.PlayerData.fieldToBlock.invalidField==nil,"invalid descriptors do not partially claim fields")
 HolyStorm.PlayerData:Initialize()
 assert(HS_Player_DB.schemaVersion==2 and HS_Player_DB.characters["Player-Legacy"])
 assert(HS_Player_DB.normalizationVersion==1 and HS_Player_DB.normalizedBlocks.mythicPlus==true,"player data migration work is persistently marked after the combined normalization pass")
@@ -63,6 +65,8 @@ local goodMythic={seasonId=18,overallScore=2500,dungeons={{name="Dungeon",challe
 local invalidMythic,invalidMythicReason=HolyStorm.PlayerData:WriteOwnedBlock("Player-Local","mythicPlus",{seasonId=18,dungeons="broken",snapshotVersion=3},"blizzard");assert(not invalidMythic and invalidMythicReason=="INVALID_MYTHICPLUS_DUNGEONS","malformed Mythic+ blocks are rejected");local emptyMythic,emptyMythicReason=HolyStorm.PlayerData:WriteOwnedBlock("Player-Local","mythicPlus",{},"blizzard");assert(not emptyMythic and emptyMythicReason=="EMPTY_MYTHICPLUS_DATA","empty Mythic+ blocks are rejected");storedMythic,storedMythicMeta=HolyStorm.Data.CharacterStore:GetBlock("Player-Local","mythicPlus");assert(storedMythic.overallScore==2500 and storedMythicMeta.version==1,"rejected Mythic+ data leaves last-known-good storage untouched")
 clock=1010;ok,meta=HolyStorm.PlayerData:WriteOwnedBlock("Player-Local","equipment",{equipment={slots={[1]=true}},itemLevel=701},"blizzard");assert(ok and meta.version==2)
 local unchanged,unchangedReason=HolyStorm.PlayerData:WriteOwnedBlock("Player-Local","equipment",{equipment={slots={[1]=true}},itemLevel=701},"blizzard");assert(not unchanged and unchangedReason=="UNCHANGED");assert(HolyStorm.PlayerData:GetMetadata("Player-Local","equipment").version==2)
+local timestampOnly,timestampOnlyReason=HolyStorm.PlayerData:WriteOwnedBlock("Player-Local","equipment",{equipment={slots={[1]=true},updatedAt=999,snapshotVersion=77},itemLevel=701},"blizzard");assert(not timestampOnly and timestampOnlyReason=="UNCHANGED"and HolyStorm.PlayerData:GetMetadata("Player-Local","equipment").version==2,"nested block snapshot timestamps and version metadata do not create an authoritative revision")
+local nestedSemanticA=HolyStorm.PlayerData:FingerprintSnapshot({value={updatedAt=1}});local nestedSemanticB=HolyStorm.PlayerData:FingerprintSnapshot({value={updatedAt=2}});assert(nestedSemanticA~=nestedSemanticB,"metadata filtering applies to the snapshot envelope while nested domain values remain semantic")
 ok=HolyStorm.PlayerData:AcceptRemoteBlock(foreign,"equipment",{equipment={slots={[1]="item"}},itemLevel=710},{owner=foreign,version=17,updatedAt=900,source="blizzard"},"Player-Relay","Relay-Realm");assert(ok)
 assert(HolyStorm.PlayerData:GetMetadata(foreign,"equipment").version==17)
 local stale,reason=HolyStorm.PlayerData:AcceptRemoteBlock(foreign,"equipment",{equipment={slots={}},itemLevel=600},{owner=foreign,version=16,updatedAt=950},"Player-Relay","Relay-Realm");assert(not stale and reason=="STALE_REVISION")
@@ -71,6 +75,7 @@ local protected,protectedReason=HolyStorm.PlayerData:AcceptRemoteBlock("Player-L
 local protectedDirect,protectedDirectReason=HolyStorm.PlayerData:AcceptRemoteBlock("Player-Local","equipment",{equipment={slots={}},itemLevel=999},{owner="Player-Local",version=99,updatedAt=999},"Player-Local","Local-Realm");assert(not protectedDirect and protectedDirectReason=="SELF_OWNED_REMOTE_REJECT","remote higher revisions never replace locally owned data, even with claimed direct provenance")
 local example="Player-Example";assert(HolyStorm.PlayerData:AcceptRemoteBlock(example,"stats",{primary={v=15}},{owner=example,version=15,updatedAt=800},example,"Example-Realm"));assert(HolyStorm.PlayerData:AcceptRemoteBlock(example,"stats",{primary={v=17}},{owner=example,version=17,updatedAt=850},"Player-Relay","Relay-Realm"));assert(HolyStorm.PlayerData:GetMetadata(example,"stats").version==17)
 assert(HolyStorm.PlayerData:GetMetadata("Player-Local","equipment").version==2)
+local equipmentDescriptor=HolyStorm.PlayerData:GetBlockDefinition("equipment");local equipmentEnvelope=HolyStorm.PlayerData:GetMetadata("Player-Local","equipment");assert(equipmentDescriptor.owner=="equipment"and equipmentDescriptor.schemaVersion==4 and equipmentDescriptor.snapshotVersion==4,"PlayerData exposes the central feature block descriptor");assert(equipmentEnvelope.block=="equipment"and equipmentEnvelope.guid=="Player-Local"and equipmentEnvelope.schemaVersion==4 and equipmentEnvelope.snapshotVersion==4,"block envelope exposes character identity and schema versions")
 assert(HolyStorm.PlayerData:GetForeignWatermark()==900)
 HolyStorm.Data.GuildStore={ResolveSenderGuid=function(_,sender)return sender=="Foreign-Realm"and foreign or sender=="Relay-Realm"and"Player-Relay"end,GetCurrent=function()return{roster={}}end}
 HolyStorm.Comms={available=true,Send=function(self,payload,channel,target,priority,diagnostics)self.lastPayload,self.lastChannel,self.lastTarget,self.lastPriority,self.lastDiagnostics=payload,channel,target,priority,diagnostics;return true,"tx-sync-test"end};HolyStorm.Tasks={types={},queued={},sequence=0}
@@ -80,6 +85,7 @@ function HolyStorm.Tasks:GetTask(id)for _,entry in ipairs(self.queued)do if entr
 function HolyStorm.Tasks:Cancel()return true end
 function HolyStorm.Tasks:ScheduleRecurring()error("Sync must not register an idle recurring cleanup")end
 assert(loadfile(root.."Sync/SyncManager.lua"))();HolyStorm.Sync:Initialize();assert(#timers==0,"Sync initialization must not schedule cleanup without expirable state")
+local syncQueueBeforeLocalOnly=#HolyStorm.Tasks.queued;assert(HolyStorm.PlayerData:WriteOwnedBlock("Player-Local","localOnly",{value=1},"test"));assert(#HolyStorm.Tasks.queued==syncQueueBeforeLocalOnly,"a block with sync disabled is never published after a local commit");assert(HolyStorm.Sync:GetDomain("character").export("Player-Local\031localOnly")==nil,"sync-disabled blocks are not exported");local disabledRemote,disabledRemoteReason=HolyStorm.PlayerData:AcceptRemoteBlock("Player-Disabled","localOnly",{value=2},{owner="Player-Disabled",version=1,updatedAt=900},"Player-Disabled","Disabled-Realm");assert(not disabledRemote and disabledRemoteReason=="SYNC_DISABLED","sync-disabled blocks reject remote imports")
 local raidPayload=HolyStorm.Sync:GetDomain("character").export("Player-Local\031raid");assert(raidPayload and raidPayload.data.lifetime.bosses[501].difficulties.NORMAL.statisticId==7001,"generic character Sync export retains nested Raid statistic provenance")
 local queuedBeforeRemote=#HolyStorm.Tasks.queued;assert(HolyStorm.PlayerData:AcceptRemoteBlock("Player-NoPingPong","stats",{primary={v=1}},{owner="Player-NoPingPong",version=1,updatedAt=clock},"Player-NoPingPong","NoPingPong-Realm"));assert(#HolyStorm.Tasks.queued==queuedBeforeRemote,"an incoming character payload does not emit the owned-update event or queue an outgoing sync")
 local eventsBeforeNoop=#HolyStorm.Events.emitted;local queuedBeforeNoop=#HolyStorm.Tasks.queued;local noChange,noChangeReason=HolyStorm.PlayerData:WriteOwnedBlock("Player-Local","equipment",{equipment={slots={[1]=true}},itemLevel=701},"blizzard");assert(not noChange and noChangeReason=="UNCHANGED"and#HolyStorm.Events.emitted==eventsBeforeNoop and#HolyStorm.Tasks.queued==queuedBeforeNoop,"a no-op owner write changes no revision, emits no owned update and queues no publish")
@@ -125,7 +131,7 @@ local originSnapshots={}
 HS_Player_DB={}
 activeGuid=noway;clock=50
 assert(loadfile(root.."Persistence/PlayerDataStore.lua"))()
-HolyStorm.PlayerData:RegisterBlock("equipment",{fields={"equipment","itemLevel"},event="HS_EQUIPMENT_UPDATED"})
+HolyStorm.PlayerData:RegisterBlock("equipment",{fields={"equipment","itemLevel"},event="HS_EQUIPMENT_UPDATED",owner="equipment",schemaVersion=4,snapshotVersion=4})
 HolyStorm.PlayerData:RegisterBlock("raid",{fields={"raidLockouts"},event="HS_RAIDLOCKS_UPDATED",staleAfter=100})
 HolyStorm.PlayerData:RegisterBlock("stats",{fields={"stats"},event="HS_STATS_UPDATED"})
 HolyStorm.PlayerData:RegisterBlock("mythicPlus",{fields={"mythicPlus"},event="HS_MYTHICPLUS_UPDATED"})
@@ -152,7 +158,7 @@ assert(queuedCommitted>=2,"committed blocks queue downstream Sync.Publish tasks"
 
 HS_Player_DB=receiverDB;activeGuid="Player-Local";clock=1000
 assert(loadfile(root.."Persistence/PlayerDataStore.lua"))()
-HolyStorm.PlayerData:RegisterBlock("equipment",{fields={"equipment","itemLevel"},event="HS_EQUIPMENT_UPDATED"})
+HolyStorm.PlayerData:RegisterBlock("equipment",{fields={"equipment","itemLevel"},event="HS_EQUIPMENT_UPDATED",owner="equipment",schemaVersion=4,snapshotVersion=4})
 HolyStorm.PlayerData:RegisterBlock("raid",{fields={"raidLockouts"},event="HS_RAIDLOCKS_UPDATED",staleAfter=100})
 HolyStorm.PlayerData:RegisterBlock("stats",{fields={"stats"},event="HS_STATS_UPDATED"})
 HolyStorm.PlayerData:RegisterBlock("mythicPlus",{fields={"mythicPlus"},event="HS_MYTHICPLUS_UPDATED"})

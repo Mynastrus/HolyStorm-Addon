@@ -22,9 +22,10 @@ function GetVersatilityBonus()return .3 end;function GetLifesteal()return 0 end;
 function GetSpecialization()return 1 end;function GetSpecializationInfo()return 102, "Balance", nil, 55, "DAMAGER" end
 C_UnitAuras={GetAuraDataByIndex=function(_,index,filter)return auraState[filter]and auraState[filter][index]or nil end}
 C_Timer={After=function(delay,callback)callbacks[#callbacks+1]={delay=delay,callback=callback}end}
-local HolyStorm={Events={},Utils={Now=function()return now end},PlayerData={},Snapshots={},CharacterScans={},Serializer={Serialize=function(_,value)
+local HolyStorm={Events={},Utils={Now=function()return now end},PlayerData={},Data={CharacterStore={}},Snapshots={},CharacterScans={},Serializer={Serialize=function(_,value)
  local function encode(v)if type(v)~="table"then return tostring(v)end;local keys={};for k in pairs(v)do keys[#keys+1]=k end;table.sort(keys,function(a,b)return tostring(a)<tostring(b)end);local out={};for _,k in ipairs(keys)do out[#out+1]=tostring(k)..":"..encode(v[k])end;return"{"..table.concat(out,",").."}"end;return encode(value)
 end}}
+function HolyStorm.Data.CharacterStore:GetBlock(guid,block)return HolyStorm.PlayerData:GetBlock(guid,block)end
 function HolyStorm:GetAddon()return self end
 function HolyStorm.Events:Register(event,owner,fn)listeners[event]=listeners[event]or{};listeners[event][owner]=fn end
 function HolyStorm.Events:UnregisterOwner(owner)for _,byOwner in pairs(listeners)do byOwner[owner]=nil end end

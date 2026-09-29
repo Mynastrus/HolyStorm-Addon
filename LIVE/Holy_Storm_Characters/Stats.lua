@@ -141,7 +141,7 @@ HolyStorm:RegisterModule(metadata,function(Module)
   for _,definition in ipairs(primaryStats)do local stat=snapshot.primary[definition.key];if type(stat)~="table"or not optionalNumber(stat.baseline)then return false,"INVALID_PRIMARY_STAT"end;if stat.baseline~=nil then count=count+1 end end
   if not optionalNumber(snapshot.armor.baseline)then return false,"INVALID_ARMOR_BASELINE"end;if snapshot.armor.baseline~=nil then count=count+1 end
   for _,definition in ipairs(secondaryStats)do local stat=snapshot.secondary[definition.key];if type(stat)~="table"or not optionalNumber(stat.rating)or not optionalNumber(stat.baseline)or not optionalNumber(stat.coefficient)then return false,"INVALID_SECONDARY_STAT"end;if stat.rating~=nil or stat.baseline~=nil then count=count+1 end end
-  local stored=HolyStorm.PlayerData:GetBlock(UnitGUID("player"),"stats")
+  local stored=HolyStorm.Data.CharacterStore:GetBlock(UnitGUID("player"),"stats")
   if type(stored)=="table"and stored.snapshotVersion==2 then
    local candidate={primary=snapshot.primary,secondary=snapshot.secondary,armor=snapshot.armor,spec=snapshot.spec}
    local previous={primary=stored.primary,secondary=stored.secondary,armor=stored.armor,spec=stored.spec}

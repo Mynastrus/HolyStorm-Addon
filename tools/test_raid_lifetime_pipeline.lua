@@ -11,7 +11,7 @@ local locale=setmetatable({
  RAID_STATUS_SUMMARY="Raid snapshot v%s, block revision %s (%s): catalog %d, weekly %d, lifetime bosses %d (%d positive), updated %s, validation %s.",
  RAID_STATUS_RAID="%s: catalog %d, lifetime mapped %d, best %s.",DIFFICULTY_NORMAL="Normal",DIFFICULTY_HEROIC="Heroic",
 },{__index=function(_,key)return key end})
-local HolyStorm={Utils={DeepCopy=copy,Now=function()return 123456 end},db={global={localPlayerId="fixture-owner",data={}}},Data={},Events={},Logger={},tabs=tabs}
+local HolyStorm={Utils={DeepCopy=copy,Now=function()return 123456 end,SafeCall=function(_,fn,...)return pcall(fn,...)end},db={global={localPlayerId="fixture-owner",data={}}},Data={},Events={},Logger={},tabs=tabs}
 function HolyStorm.Logger:Write(level,source,category,message,context)logs[#logs+1]={level=level,source=source,category=category,message=message,context=context}end
 function HolyStorm.Events:Emit()end
 function HolyStorm:RegisterModule(_,factory)module={};factory(module)end

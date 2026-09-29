@@ -13,6 +13,7 @@
 - Preserved the stable Raid and boss catalog beside lifetime statistics in the v3 snapshot, rejected empty Encounter Journal container entries by metadata, and added a reload regression fixture for lifetime Best.
 - Made character block imports idempotent at equal origin revisions, reject stale revisions and conflicting same-revision content, preserve origin timestamps separately from receiver timestamps, and log bounded block-specific freshness decisions.
 - Corrected Character Stats to use Retail's effective paper-doll values, version the persisted baseline, keep live aura changes transient, and show rating separately from effective percentages.
+- Unified the five character snapshot block descriptors and semantic comparison, made Equipment commit failures visible to the workflow, and preserved unavailable Delves API state instead of converting it to empty/false values.
 
 ### Deutsch
 
@@ -25,6 +26,7 @@
 - Der stabile Raid- und Bosskatalog bleibt zusammen mit den Lebenszeitstatistiken im v3-Snapshot gespeichert. Leere Abenteuerführer-Container werden anhand ihrer Metadaten ausgeschlossen; ein Reload-Regressionstest sichert den Bestwert.
 - Charakterblock-Importe behandeln identische Herkunftsrevisionen nun idempotent, verwerfen ältere Revisionen und widersprüchliche Inhalte deterministisch, trennen Ursprungs- und Empfangszeitstempel und protokollieren begrenzte blockbezogene Frischeentscheidungen.
 - Charakterwerte folgen nun Blizzards effektiven Retail-Werten. Gespeicherte Baselines sind versioniert, Live-Auraänderungen bleiben transient und Rating wird getrennt vom effektiven Prozentwert angezeigt.
+- Die Blockverträge und semantischen Vergleiche der fünf Character Snapshot Pipelines wurden vereinheitlicht. Equipment-Commitfehler werden im Workflow sichtbar; nicht verfügbare Delves-APIs bleiben unbekannt statt als leer oder false gespeichert zu werden.
 
 ## 5.9.0 — 27.09.2026
 

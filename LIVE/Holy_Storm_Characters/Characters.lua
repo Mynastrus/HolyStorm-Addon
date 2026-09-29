@@ -18,7 +18,7 @@ if HolyStorm.PlayerData then
   end
   return count>0,"STATS_UNAVAILABLE"
  end
- HolyStorm.PlayerData:RegisterBlock("stats",{fields={"stats"},event="HS_STATS_UPDATED",staleAfter=21600,validate=validStatsSnapshot})
+ HolyStorm.PlayerData:RegisterBlock("stats",{fields={"stats"},event="HS_STATS_UPDATED",staleAfter=21600,owner="CharacterStats",schemaVersion=2,snapshotVersion=2,capability="character.scan.stats",scanProvider="CharacterStats",validate=validStatsSnapshot})
  HolyStorm.PlayerData:RegisterBlock("profile",{fields={"profile"},event="HS_PROFILE_UPDATED",staleAfter=604800})
  HolyStorm.PlayerData:RegisterBlock("demands",{fields={"demands"},event="HS_CHARACTER_UPDATED",staleAfter=86400})
 end

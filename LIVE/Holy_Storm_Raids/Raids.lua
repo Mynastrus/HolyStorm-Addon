@@ -1,7 +1,18 @@
 local addonVersion="5.2.0"
 local HolyStorm=LibStub("AceAddon-3.0"):GetAddon("Holy_Storm");local L=LibStub("AceLocale-3.0"):GetLocale("Holy_Storm_Raids")
 if HolyStorm.PermissionRegistry then HolyStorm.PermissionRegistry:RegisterLegacyAlias("raids.read","raids-read")end
-if HolyStorm.PlayerData then HolyStorm.PlayerData:RegisterBlock("raid",{fields={"raidLockouts"},event="HS_RAIDLOCKS_UPDATED",staleAfter=21600})end
+local function validRaidBlock(s)
+ if type(s)~="table"or s.snapshotVersion~=3 or s.catalogReady~=true or type(s.raids)~="table"or type(s.lockouts)~="table"or type(s.lifetime)~="table"or type(s.lifetime.bosses)~="table"then return false,"INVALID_RAID_SNAPSHOT"end
+ if #s.raids==0 then return false,"EMPTY_RAID_CATALOG"end
+ for _,raid in ipairs(s.raids)do
+  if type(raid)~="table"or not tonumber(raid.id)or type(raid.name)~="string"or type(raid.bosses)~="table"or#raid.bosses==0 then return false,"INVALID_RAID_CATALOG"end
+  for index,boss in ipairs(raid.bosses)do if type(boss)~="table"or not tonumber(boss.id)or type(boss.name)~="string"or tonumber(boss.order)~=index then return false,"INVALID_RAID_BOSS_CATALOG"end end
+ end
+ for _,lockout in ipairs(s.lockouts)do if type(lockout)~="table"or type(lockout.name)~="string"or not tonumber(lockout.difficultyId)or type(lockout.bosses)~="table"then return false,"INVALID_RAID_LOCKOUT"end end
+ for _,boss in pairs(s.lifetime.bosses)do if type(boss)~="table"or type(boss.difficulties)~="table"then return false,"INVALID_RAID_LIFETIME"end end
+ return true
+end
+if HolyStorm.PlayerData then HolyStorm.PlayerData:RegisterBlock("raid",{fields={"raidLockouts"},event="HS_RAIDLOCKS_UPDATED",staleAfter=21600,owner="raids",schemaVersion=3,snapshotVersion=3,capability="character.scan.raids",scanProvider="Raids",validate=validRaidBlock})end
 local metadata={id="raids",name="Raids",displayName=L["DISPLAY_NAME"],description=L["DESCRIPTION"],version=addonVersion,moduleType="feature",category="feature",permissions={{id="raids-read",category="Raid",defaults={member=true}},"sync-send"},dependencies={"core","synchronization"},capabilities={"character.scan.raids"},ui={characterTab="raid"},data={block="raid",snapshotType="raids",schemaVersion=3,capability="character.scan.raids"},sync={domains={"character"}},enabledByDefault=true,ruleFields={{id="raid.progress",aliases={"raidProgress"},type="number",name=L["RULE_FIELD_PROGRESS"],nameKey="RULE_FIELD_PROGRESS",description=L["RULE_FIELD_PROGRESS_DESC"],descriptionKey="RULE_FIELD_PROGRESS_DESC",category=L["DISPLAY_NAME"],dependencies={"raid"},unit="bosses",resolver=function(context)local block=context.character and context.character.raid or HolyStorm.Data.CharacterStore:GetBlock(context.characterUUID,"raid");local progress=block and block.bestProgress;return progress and tonumber(progress.killed)or nil end}}}
 HolyStorm:RegisterModule(metadata,function(Module)
  HolyStorm:ApplyModuleMetadata(Module,metadata)
