@@ -10,6 +10,7 @@
 - Kept online Guild Roster versions current with jittered Sync Presence refreshes and removed them through the existing five-minute freshness policy.
 - Kept Mythic+ encounter-end events out of Raid scans, cached only complete lifetime statistic mappings, and split Statistics discovery into bounded central workflow chunks.
 - Corrected lifetime Raid Best to count against the full Encounter Journal boss catalog; Best tooltips now show every boss in encounter order, including those without confirmed kills.
+- Preserved the stable Raid and boss catalog beside lifetime statistics in the v3 snapshot, rejected empty Encounter Journal container entries by metadata, and added a reload regression fixture for lifetime Best.
 
 ### Deutsch
 
@@ -19,6 +20,7 @@
 - Versionsanzeigen für Online-Mitglieder bleiben durch zeitversetzte Sync-Presence-Aktualisierungen aktuell und folgen weiterhin der bestehenden Frischefrist von fünf Minuten.
 - Mythic+-Kampfende lösen keine Raid-Scans mehr aus. Vollständige Lebenszeit-Statistikzuordnungen werden zwischengespeichert und die Ermittlung läuft in begrenzten Workflow-Abschnitten.
 - Der Raid-Lebenszeitbestwert verwendet nun alle Bosse des Abenteuerführer-Katalogs als Gesamtzahl. Bestwert-Tooltips zeigen jeden Boss in Begegnungsreihenfolge, auch ohne bestätigte Siege.
+- Der stabile Raid- und Bosskatalog bleibt zusammen mit den Lebenszeitstatistiken im v3-Snapshot gespeichert. Leere Abenteuerführer-Container werden anhand ihrer Metadaten ausgeschlossen; ein Reload-Regressionstest sichert den Bestwert.
 
 ## 5.9.0 — 27.09.2026
 

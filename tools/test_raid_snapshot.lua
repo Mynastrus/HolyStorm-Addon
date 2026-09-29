@@ -27,7 +27,7 @@ local raidCatalogByTier={}
 function EJ_GetInstanceByIndex(index,isRaid)local catalog=raidCatalogByTier[selectedTier]or raidCatalog;local raid=isRaid and catalog[index];if raid then return raid.id,raid.name,nil,nil,raid.icon end end
 function EJ_SelectInstance(id)selectedInstance=id end
 function EJ_GetInstanceInfo()local catalog=raidCatalogByTier[selectedTier]or raidCatalog;for _,raid in ipairs(catalog)do if raid.id==selectedInstance then return nil,nil,nil,nil,nil,nil,nil,nil,raid.shouldDisplayDifficulty~=false end end end
-function EJ_GetEncounterInfoByIndex(index)if index==1 then return"Boss A",nil,501 elseif index==2 then return"Boss B",nil,502 end end
+function EJ_GetEncounterInfoByIndex(index,instanceId)if tonumber(instanceId)==777 then return nil end;if index==1 then return"Boss A",nil,501 elseif index==2 then return"Boss B",nil,502 end end
 
 local lockoutId=9001
 local lockoutName="Raid One"
@@ -58,9 +58,9 @@ local nextLockout=module:Collect()
 assert(next(nextLockout.lifetime.bosses)==nil,"a new lockout still does not increment a local lifetime count")
 assert(module:Validate(nextLockout))
 
-raidCatalog={{id=999,name="Outdoor collection",icon=99999,shouldDisplayDifficulty=false},{id=100,name="Raid One",icon=12345},{id=200,name="Raid Two",icon=23456}};lockoutName="Raid Two";instances={{difficultyId=14,difficultyName="Normal",kills={true,false}}};oldSnapshot=nil
+raidCatalog={{id=999,name="Outdoor collection",icon=99999,shouldDisplayDifficulty=false},{id=777,name="Midnight",icon=77777},{id=100,name="Raid One",icon=12345},{id=200,name="Raid Two",icon=23456}};lockoutName="Raid Two";instances={{difficultyId=14,difficultyName="Normal",kills={true,false}}};oldSnapshot=nil
 local secondCurrent=module:Collect()
-assert(#secondCurrent.raids==2 and secondCurrent.raids[1].id==100 and secondCurrent.raids[2].id==200 and secondCurrent.lockouts[1].isCurrent,"Encounter Journal outdoor collections are excluded by instance metadata without filtering real raids")
+assert(#secondCurrent.raids==2 and secondCurrent.raids[1].id==100 and secondCurrent.raids[2].id==200 and secondCurrent.lockouts[1].isCurrent,"Encounter Journal entries without difficulty metadata or encounters are excluded without name filters")
 assert(secondCurrent.lockouts[1].journalInstanceId==200,"lockout is linked to its encounter-journal raid")
 
 tierCount=2;currentTier=2;selectedTier=2;raidCatalogByTier={[1]={{id=300,name="Firelands",icon=34567}},[2]=raidCatalog};lockoutName="Firelands";instances={{difficultyId=33,difficultyName="Timewalking",kills={true,false}}};oldSnapshot=nil

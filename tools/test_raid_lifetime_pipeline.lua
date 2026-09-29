@@ -9,7 +9,7 @@ local logs={};local module;local tabs={}
 local locale=setmetatable({
  RAID_STATUS_NO_SNAPSHOT="Raid snapshot: absent.",RAID_STATUS_VALID="valid",RAID_STATUS_INVALID="invalid",
  RAID_STATUS_SUMMARY="Raid snapshot v%s, block revision %s (%s): catalog %d, weekly %d, lifetime bosses %d (%d positive), updated %s, validation %s.",
- RAID_STATUS_RAID="%s: catalog %d, lifetime mapped %d, best %s.",DIFFICULTY_NORMAL="Normal",
+ RAID_STATUS_RAID="%s: catalog %d, lifetime mapped %d, best %s.",DIFFICULTY_NORMAL="Normal",DIFFICULTY_HEROIC="Heroic",
 },{__index=function(_,key)return key end})
 local HolyStorm={Utils={DeepCopy=copy,Now=function()return 123456 end},db={global={localPlayerId="fixture-owner",data={}}},Data={},Events={},Logger={},tabs=tabs}
 function HolyStorm.Logger:Write(level,source,category,message,context)logs[#logs+1]={level=level,source=source,category=category,message=message,context=context}end
@@ -51,7 +51,10 @@ local bosses={
  {id=507,name="Der Gewundene Altar"},{id=508,name="Ula'tek"},
 }
 function EJ_GetEncounterInfoByIndex(index)local boss=bosses[index];if boss then return boss.name,nil,boss.id end end
-function GetNumSavedInstances()return 0 end
+local savedInstances={}
+function GetNumSavedInstances()return#savedInstances end
+function GetSavedInstanceInfo(index)local instance=savedInstances[index];return raidName,9000+index,3600,instance.difficultyId,true,false,nil,true,20,instance.difficultyName,#instance.kills end
+function GetSavedInstanceEncounterInfo(index,bossIndex)local instance=savedInstances[index];return bosses[bossIndex].name,bosses[bossIndex].id,instance.kills[bossIndex]end
 function GetDifficultyInfo(id)return({[17]="Raid Finder",[14]="Normal",[15]="Heroic",[16]="Mythic"})[id]end
 local statistics={
  {id=7001,name="Nek'zali die Seelenwinderin (Raid Finder: Der Giftige Abgrund)",value="1"},
@@ -63,7 +66,7 @@ local statistics={
  {id=7007,name="Die Zwillingsfänge (Raid Finder: Der Giftige Abgrund)",value="1"},
  {id=7008,name="Die Zwillingsfänge (Normal: Der Giftige Abgrund)",value="4"},
  {id=7009,name="Vashnik der Bösartige (Heroic: Der Giftige Abgrund)",value="--"},
- {id=7010,name="Nek'zali die Seelenwinderin (Heroic: Der Giftige Abgrund)",value=nil},
+ {id=7010,name="Nek'zali die Seelenwinderin (Heroic: Der Giftige Abgrund)",value="1"},
  {id=7011,name="Unknown boss (Normal: Der Giftige Abgrund)",value="5"},
  {id=7012,name="Vashnik der Bösartige (Normal Der Giftige Abgrund)",value="9"},
  {id=7013,name="Unrelated (Normal: Other Raid)",value="99"},
@@ -84,6 +87,10 @@ GetAchievementNumCriteria=nil;GetAchievementCriteriaInfo=nil
 local unavailable=module:Collect(true)
 assert(next(unavailable.lifetime.bosses)==nil,"unavailable category data must remain unknown")
 categoriesReady=true
+savedInstances={
+ {difficultyId=14,difficultyName="Normal",kills={true,true,true,true,true,true,false,false}},
+ {difficultyId=15,difficultyName="Heroic",kills={true,false,false,false,false,false,false,false}},
+}
 local snapshot=module:Collect(true)
 assert(categoryCalls==2,"manual scan must rediscover categories after earlier data was unavailable")
 assert(module:Validate(snapshot),"producer snapshot must pass Raid v3 validation")
@@ -91,11 +98,11 @@ local missingLifetime=copy(snapshot);missingLifetime.lifetime=nil;assert(not mod
 assert(#snapshot.raids[1].bosses==8,"the Retail raid fixture must contain all eight catalog bosses")
 for id=501,506 do assert(snapshot.lifetime.bosses[id].difficulties.NORMAL.kills==({6,6,6,7,6,4})[id-500],"each observed Normal statistic must become a numeric lifetime count")end
 assert(snapshot.lifetime.bosses[501].difficulties.LFR.kills==1 and snapshot.lifetime.bosses[506].difficulties.LFR.kills==1 and snapshot.lifetime.bosses[506].difficulties.NORMAL.kills==4,"multiple difficulties remain separate")
-assert(snapshot.lifetime.bosses[504].difficulties.HEROIC==nil and snapshot.lifetime.bosses[501].difficulties.HEROIC==nil,"-- and nil remain unknown")
+assert(snapshot.lifetime.bosses[504].difficulties.HEROIC==nil and snapshot.lifetime.bosses[501].difficulties.HEROIC.kills==1,"-- remains unknown while the positive Heroic lifetime value is retained")
 assert(snapshot.lifetime.bosses[507]==nil and snapshot.lifetime.bosses[508]==nil,"unobserved boss counts are not invented")
 local summary
 for _,entry in ipairs(logs)do if entry.message=="RAID_LIFETIME_SCAN_SUMMARY"then summary=entry.context end end
-assert(summary and summary.categories==1 and summary.relevantCategories==1 and summary.entries==15 and summary.candidates==14 and summary.discoveryRejected==1 and summary.unmapped==3 and summary.reads==8 and summary.positive==8 and summary.zero==0 and summary.unavailable==2 and summary.mappedBosses==6,"manual diagnostic counters must describe discovery and mapping")
+assert(summary and summary.categories==1 and summary.relevantCategories==1 and summary.entries==15 and summary.candidates==14 and summary.discoveryRejected==1 and summary.unmapped==3 and summary.reads==9 and summary.positive==9 and summary.zero==0 and summary.unavailable==1 and summary.mappedBosses==6,"manual diagnostic counters must describe discovery and mapping")
 local sawUnmapped,sawRejected,sawDifficulty,sawRaid=false,false,false,false
 for _,entry in ipairs(logs)do
  if entry.message=="RAID_LIFETIME_UNMAPPED"and entry.context.statisticId==7011 and entry.context.reason=="BOSS_NAME_NOT_FOUND"then sawUnmapped=true end
@@ -107,21 +114,44 @@ assert(sawUnmapped and sawRejected and sawDifficulty and sawRaid,"manual logs mu
 assert(module:Commit(snapshot),"validated snapshot must commit through PlayerData")
 local canonical=assert(HS_Player_DB.characters["Player-Fixture"].raidLockouts)
 assert(canonical.lifetime.bosses[506].difficulties.NORMAL.statisticId==7008,"canonical HS_Player_DB block must retain statistic provenance")
+assert(canonical.raids[1].id==100 and #canonical.raids[1].bosses==8 and canonical.raids[1].bosses[8].order==8,"the persisted v3 block must contain the stable ordered boss catalog")
 local stored,meta=HolyStorm.Data.CharacterStore:GetBlock("Player-Fixture","raid")
 assert(stored.lifetime.bosses[504].difficulties.NORMAL.kills==7 and meta.version==1,"CharacterStore must return lifetime and owner revision")
 local consumed=HolyStorm.CharacterUI:GetSnapshot("Player-Fixture","raid")
 local best=HolyStorm.CharacterUI:GetBestProgress(consumed,consumed.raids[1])
-assert(best and best.difficulty=="NORMAL"and best.killed==6 and best.total==8,"stored Raid data must reach the real Best calculation")
+assert(best and best.difficulty=="HEROIC"and best.killed==1 and best.total==8,"stored Raid data must reach the real Best calculation independently of Normal lifetime and weekly values")
 local rows=HolyStorm.CharacterUI:BuildRaidBestRows(consumed)
 local byName={};for _,row in ipairs(rows)do byName[row.bossName]=row end
-assert(#rows==8 and byName["Vashnik der Bösartige"].kills==7 and byName.Sszorak.kills==6 and byName["Die Zwillingsfänge"].kills==4 and byName["Die Zwillingsfänge"].difficulty=="NORMAL"and rows[7].difficulty==nil and rows[8].difficulty==nil,"Best tooltip rows must retain every catalog boss and stored normalized kills")
+assert(#rows==8 and rows[1].bossId==501 and rows[1].order==1 and byName["Nek'zali die Seelenwinderin"].kills==1 and byName["Nek'zali die Seelenwinderin"].difficulty=="HEROIC"and byName["Vashnik der Bösartige"].kills==7 and byName.Sszorak.kills==6 and byName["Die Zwillingsfänge"].kills==4 and byName["Die Zwillingsfänge"].difficulty=="NORMAL"and rows[7].difficulty==nil and rows[8].difficulty==nil,"Best tooltip rows must retain the ordered catalog and highest confirmed lifetime difficulty")
 local view={summary={SetText=function()end},table={SetEmptyText=function()end,SetData=function(self,items)self.rows=items end}}
 tabs.raid.refresh(view,{characterUUID="Player-Fixture"})
-assert(view.table.rows[1].best:find("N 6/8",1,true),"StoredFeatureTabs must render the persisted Best")
+assert(view.table.rows[1].normal:find("6/8",1,true)and view.table.rows[1].heroic:find("1/8",1,true)and view.table.rows[1].best:find("H 1/8",1,true),"weekly Normal 6/8 and Heroic 1/8 remain independent from the lifetime Best")
 local status=module:GetSnapshotStatus()
-assert(#status==2 and status[1]:find("lifetime bosses 6 (6 positive)",1,true)and status[2]:find("best Normal 6/8",1,true),"status command must inspect the stored snapshot and per-raid Best")
-module:Collect(true);assert(categoryCalls==2,"manual scans refresh mapped values without rediscovering a valid Statistics index")
-module:Collect();assert(categoryCalls==2,"automatic scans may reuse a complete same-catalog statistic index")
+assert(#status==2 and status[1]:find("lifetime bosses 6 (6 positive)",1,true)and status[2]:find("best Heroic 1/8",1,true),"status command must inspect the stored snapshot and per-raid Best")
+
+-- Recreate the data manager and raid registration over the same SavedVariables
+-- root. Blizzard APIs fail during UI rendering to prove reload needs no scan.
+local savedDatabase=HS_Player_DB;local blockedAPIs={}
+for _,name in ipairs({"EJ_GetNumTiers","EJ_SelectTier","EJ_GetInstanceByIndex","EJ_SelectInstance","EJ_GetInstanceInfo","EJ_GetEncounterInfoByIndex","GetStatisticsCategoryList","GetCategoryNumAchievements","GetStatistic","GetAchievementInfo"})do
+ blockedAPIs[name]=_G[name];_G[name]=function()error("Unexpected UI scan after reload: "..name)end
+end
+HolyStorm.PlayerData=nil
+assert(loadfile(root.."Holy_Storm/Persistence/PlayerDataStore.lua"))()
+assert(loadfile(root.."Holy_Storm_Raids/Raids.lua"))()
+assert(HolyStorm.PlayerData:Initialize()and HS_Player_DB==savedDatabase,"runtime restart reloads the existing HS_Player_DB root")
+assert(HolyStorm.Data.CharacterStore:Initialize(),"CharacterStore reinitializes over the persisted data manager")
+local afterReload=HolyStorm.CharacterUI:GetSnapshot("Player-Fixture","raid")
+local reloadBest=HolyStorm.CharacterUI:GetBestProgress(afterReload,afterReload.raids[1])
+local reloadRows=HolyStorm.CharacterUI:BuildRaidBestRows(afterReload,afterReload.raids[1])
+assert(reloadBest and reloadBest.difficulty=="HEROIC"and reloadBest.killed==1 and reloadBest.total==8,"lifetime Heroic 1/8 survives reload without Blizzard APIs")
+assert(#reloadRows==8 and reloadRows[1].bossId==501 and reloadRows[8].bossId==508 and reloadRows[1].kills==1 and reloadRows[1].difficulty=="HEROIC"and reloadRows[7].difficulty==nil and reloadRows[8].difficulty==nil,"ordered tooltip rows and lifetime kills survive reload")
+local reloadView={summary={SetText=function()end},table={SetEmptyText=function()end,SetData=function(self,items)self.rows=items end}}
+tabs.raid.refresh(reloadView,{characterUUID="Player-Fixture"})
+assert(reloadView.table.rows[1].normal:find("6/8",1,true)and reloadView.table.rows[1].heroic:find("1/8",1,true)and reloadView.table.rows[1].best:find("H 1/8",1,true),"weekly Normal 6/8 and Heroic 1/8 persist independently while Character Raids and Dashboard agree")
+for name,fn in pairs(blockedAPIs)do _G[name]=fn end
+
+module:Collect(true);assert(categoryCalls==3,"a manual post-reload scan rediscovers the runtime index once")
+module:Collect();assert(categoryCalls==3,"automatic scans may reuse a complete same-catalog statistic index")
 statistics[9].value="0";statistics[10].value=0
 local withZero=module:CaptureLifetime(snapshot.raids,nil,true,"Fixture Expansion")
 assert(withZero.bosses[504].difficulties.HEROIC.kills==0 and withZero.bosses[501].difficulties.HEROIC.kills==0,"string and numeric zero are known values")

@@ -29,7 +29,7 @@ HolyStorm:RegisterModule(metadata,function(Module)
  end
  local function readRaidTier(api,tier)
   api.EJ_SelectTier(tier);local raids={};local index=1
-  while true do local id,name,_,_,buttonImage=api.EJ_GetInstanceByIndex(index,true);if not id then break end;local raid={id=id,name=name,icon=buttonImage,tier=tier,order=index,bosses={}};api.EJ_SelectInstance(id);local shouldDisplayDifficulty=select(9,api.EJ_GetInstanceInfo());raid.shouldDisplayDifficulty=shouldDisplayDifficulty;if shouldDisplayDifficulty~=false then local encounterIndex=1;while true do local bossName,_,bossId=api.EJ_GetEncounterInfoByIndex(encounterIndex,id);if not bossName then break end;local boss={id=bossId or encounterIndex,name=bossName,order=encounterIndex,creatureIds={}};if api.EJ_GetCreatureInfo and bossId then local creatureIndex=1;while true do local creatureId=api.EJ_GetCreatureInfo(creatureIndex,bossId);if not creatureId then break end;boss.creatureIds[#boss.creatureIds+1]=creatureId;creatureIndex=creatureIndex+1 end end;raid.bosses[#raid.bosses+1]=boss;encounterIndex=encounterIndex+1 end;raids[#raids+1]=raid end;index=index+1 end
+  while true do local id,name,_,_,buttonImage=api.EJ_GetInstanceByIndex(index,true);if not id then break end;local raid={id=id,name=name,icon=buttonImage,tier=tier,order=index,bosses={}};api.EJ_SelectInstance(id);local shouldDisplayDifficulty=select(9,api.EJ_GetInstanceInfo());raid.shouldDisplayDifficulty=shouldDisplayDifficulty;if shouldDisplayDifficulty~=false then local encounterIndex=1;while true do local bossName,_,bossId=api.EJ_GetEncounterInfoByIndex(encounterIndex,id);if not bossName then break end;raid.bosses[#raid.bosses+1]={id=bossId or encounterIndex,name=bossName,order=encounterIndex};encounterIndex=encounterIndex+1 end;if #raid.bosses>0 then raids[#raids+1]=raid end end;index=index+1 end
   return raids
  end
  function Module:GetCurrentRaidCatalog()
@@ -54,6 +54,39 @@ HolyStorm:RegisterModule(metadata,function(Module)
   if not ok then reason="Raid catalog unavailable: Encounter Journal index scan failed";HolyStorm.Logger:Write("WARN","Raids","catalog",reason,{reason="ENCOUNTER_JOURNAL_INDEX_FAILED",error=tostring(result)});return nil,reason end
   if not next(result)then return nil,"Raid catalog unavailable: Encounter Journal index empty"end
   self.raidJournalIndex,self.raidJournalIndexKey=result,signature;return result
+ end
+ function Module:CollectRaidCatalogChunk(state,maxWork)
+  local api,reason=ensureEncounterJournal();if not api then return nil,reason end
+  if not state.journal then
+   local tierCount=tonumber(api.EJ_GetNumTiers())or 0;if tierCount<1 then return nil,"Raid catalog unavailable: Encounter Journal data pending"end
+   local currentTier=tierCount;local previousTier=api.EJ_GetCurrentTier and api.EJ_GetCurrentTier()or currentTier
+   state.journal={api=api,tierCount=tierCount,currentTier=currentTier,restoreTier=previousTier,tier=1,instance=1,encounter=1,allByName={},raidsByTier={},work=0}
+   api.EJ_SelectTier(1)
+  end
+  local journal=state.journal;local work=0;local budget=math.max(1,tonumber(maxWork)or 32)
+  while journal.tier<=journal.tierCount and work<budget do
+   if journal.pendingRaid then
+    local raid=journal.pendingRaid;local bossName,_,bossId=api.EJ_GetEncounterInfoByIndex(journal.encounter,raid.id);work=work+1;journal.work=journal.work+1
+    if bossName then raid.bosses[#raid.bosses+1]={id=bossId or journal.encounter,name=bossName,order=journal.encounter};journal.encounter=journal.encounter+1
+    else
+     if #raid.bosses>0 then local token=raidKey(raid.name);if token then journal.allByName[token]=raid end;journal.raidsByTier[journal.tier]=journal.raidsByTier[journal.tier]or{};journal.raidsByTier[journal.tier][#journal.raidsByTier[journal.tier]+1]=raid end
+     journal.pendingRaid=nil;journal.instance=journal.instance+1;journal.encounter=1
+    end
+   else
+    local id,name,_,_,icon=api.EJ_GetInstanceByIndex(journal.instance,true);work=work+1;journal.work=journal.work+1
+    if not id then journal.tier=journal.tier+1;journal.instance=1;if journal.tier<=journal.tierCount then api.EJ_SelectTier(journal.tier)end
+    else
+     api.EJ_SelectInstance(id);local shouldDisplayDifficulty=select(9,api.EJ_GetInstanceInfo())
+     if shouldDisplayDifficulty==false then journal.instance=journal.instance+1
+     else journal.pendingRaid={id=id,name=name,icon=icon,tier=journal.tier,order=journal.instance,bosses={}}end
+    end
+   end
+  end
+  if journal.tier<=journal.tierCount then return nil,"IN_PROGRESS",journal.work end
+  if journal.restoreTier then api.EJ_SelectTier(journal.restoreTier)end
+  local raids=journal.raidsByTier[journal.currentTier]or{};if #raids==0 or not next(journal.allByName)then return nil,"Raid catalog unavailable: Encounter Journal data pending",journal.work end
+  state.catalogData={raids=raids,tier=journal.currentTier,journalByName=journal.allByName,catalogReady=true,work=journal.work};state.journal=nil
+  return state.catalogData
  end
  local function statisticValue(raw)
   if type(raw)=="number"then return raw>=0 and raw or nil end;if type(raw)~="string"or raw==""or raw=="--"then return nil end
@@ -190,7 +223,7 @@ HolyStorm:RegisterModule(metadata,function(Module)
    -- a generically named category.
    state.scanCategories=state.categories;state.stage="statistics";state.categoryCursor=1;state.entryCursor=1;state.entryCount=nil
   end
-  while state.categoryCursor<=#state.scanCategories and rows<budget and categoryReads<budget do
+  while state.stage=="statistics"and state.categoryCursor<=#state.scanCategories and rows<budget and categoryReads<budget do
    local categoryId=state.scanCategories[state.categoryCursor]
    if state.entryCount==nil then
     local countOk,count=pcall(GetCategoryNumAchievements,categoryId);categoryReads=categoryReads+1;audit.categoriesEnumerated=audit.categoriesEnumerated+1;if not countOk then audit.apiFailures=audit.apiFailures+1 end
@@ -217,11 +250,34 @@ HolyStorm:RegisterModule(metadata,function(Module)
     end
    end
   end
-  if state.categoryCursor<=#state.scanCategories then return yieldIfNeeded()end
-  local relevantCategoryCount=0
-  for _,id in ipairs(state.scanCategories)do if state.categoryRelevant[id]or state.categoryHadRelevant[id]then relevantCategoryCount=relevantCategoryCount+1 end end
-  audit.relevantCategories=relevantCategoryCount;audit.categoryLogsTruncated=manual and math.max(0,audit.relevantCategories-state.categoryLogged)or 0
-  local lookup=makeLifetimeLookup(raids,state.result,difficultyNames);audit.slots=lookup.slots;audit.exactMappings=lookup.exactMappings;audit.mappingProbes=lookup.slots;audit.candidateComparisons=lookup.candidateComparisons
+  if state.stage=="statistics"and state.categoryCursor<=#state.scanCategories then return yieldIfNeeded()end
+  if state.stage=="statistics"then
+   local relevantCategoryCount=0;for _,id in ipairs(state.scanCategories)do if state.categoryRelevant[id]or state.categoryHadRelevant[id]then relevantCategoryCount=relevantCategoryCount+1 end end
+   audit.relevantCategories=relevantCategoryCount;audit.categoryLogsTruncated=manual and math.max(0,audit.relevantCategories-state.categoryLogged)or 0
+   state.lookup={bySlot={},raidTokens={},bossTokens={},difficultyTokens={},slots=0,candidateComparisons=0,indexCandidates=#state.result,exactMappings=0,mappedSlots={}}
+   for _,raid in ipairs(raids or{})do local token=raidKey(raid.name);if token then state.lookup.raidTokens[token]=true end end
+   for _,raid in ipairs(raids or{})do for _,boss in ipairs(raid.bosses or{})do local token=raidKey(boss.name);if token then state.lookup.bossTokens[token]=true end end end
+   for _,difficulty in ipairs(lifetimeDifficultyOrder)do local token=raidKey(difficultyNames[difficulty]);if token then state.lookup.difficultyTokens[token]=true end end
+   state.mapRaidCursor,state.mapBossCursor,state.mapDifficultyCursor,state.mapCandidateCursor=1,1,1,1;state.stage="mapping"
+  end
+  local lookup=state.lookup;local mappingWork=0
+  while state.mapRaidCursor<=#(raids or{})and mappingWork<budget do
+   local raid=raids[state.mapRaidCursor];local boss=(raid.bosses or{})[state.mapBossCursor]
+   if not boss then state.mapRaidCursor=state.mapRaidCursor+1;state.mapBossCursor,state.mapDifficultyCursor=1,1
+   else
+    lookup.slots=lookup.slots+1;mappingWork=mappingWork+1
+    local raidToken,bossToken=raidKey(raid.name),raidKey(boss.name);local difficulty=lifetimeDifficultyOrder[state.mapDifficultyCursor];local difficultyToken=raidKey(difficultyNames[difficulty])
+    if raidToken and bossToken and difficultyToken then local key=slotKey(raidToken,bossToken,difficultyToken);lookup.bySlot[key]=lookup.bySlot[key]or{}end
+    state.mapDifficultyCursor=state.mapDifficultyCursor+1;if state.mapDifficultyCursor>#lifetimeDifficultyOrder then state.mapDifficultyCursor=1;state.mapBossCursor=state.mapBossCursor+1 end
+   end
+  end
+  if state.mapRaidCursor>#(raids or{})then while state.mapCandidateCursor<=#state.result and mappingWork<budget do
+   local candidate=state.result[state.mapCandidateCursor];state.mapCandidateCursor=state.mapCandidateCursor+1;mappingWork=mappingWork+1
+   local key=slotKey(candidate.raidToken,candidate.bossToken,candidate.difficultyToken);local matches=lookup.bySlot[key]
+   if matches then matches[#matches+1]=candidate;lookup.candidateComparisons=lookup.candidateComparisons+1;if not lookup.mappedSlots[key]then lookup.mappedSlots[key]=true;lookup.exactMappings=lookup.exactMappings+1 end end
+  end end
+  if state.mapRaidCursor<=#(raids or{})or state.mapCandidateCursor<=#state.result then return yieldIfNeeded()end
+  lookup.mappedSlots=nil;audit.slots=lookup.slots;audit.exactMappings=lookup.exactMappings;audit.mappingProbes=lookup.slots;audit.candidateComparisons=lookup.candidateComparisons
   local complete=audit.apiFailures==0 and #state.result>0 and lookup.exactMappings>0;audit.cacheable=complete
   local completed={key=cacheKey,candidates=state.result,audit=HolyStorm.Utils.DeepCopy(audit),difficultyNames=difficultyNames,lookup=lookup}
   if complete then self.lifetimeStatisticCache=completed end
@@ -316,8 +372,15 @@ HolyStorm:RegisterModule(metadata,function(Module)
   workState=workState or{};local generation=tonumber(self.raidScanGeneration)or 0
   if workState.initialized and workState.generation~=generation then for key in pairs(workState)do workState[key]=nil end end
   if not workState.initialized then
-   local raids,tier,catalogReady,reason=self:GetCurrentRaidCatalog();if not catalogReady then return{pending=true,pendingReason=reason or"raid catalog pending"}end
-   local journalByName,indexReason=self:GetRaidJournalIndex(raids,tier);if not journalByName then return{pending=true,pendingReason=indexReason or"raid catalog pending"}end
+   local raids,tier,journalByName,catalogReady,reason
+   if workState.chunked then
+    local data,status=self:CollectRaidCatalogChunk(workState,32);if status=="IN_PROGRESS"then return nil,"IN_PROGRESS"end
+    if not data then return{pending=true,pendingReason=status or"raid catalog pending"}end
+    raids,tier,journalByName,catalogReady=data.raids,data.tier,data.journalByName,data.catalogReady
+   else
+    raids,tier,catalogReady,reason=self:GetCurrentRaidCatalog();if not catalogReady then return{pending=true,pendingReason=reason or"raid catalog pending"}end
+    local indexReason;journalByName,indexReason=self:GetRaidJournalIndex(raids,tier);if not journalByName then return{pending=true,pendingReason=indexReason or"raid catalog pending"}end
+   end
    local tierName;if type(EJ_GetTierInfo)=="function"then local ok,name=pcall(EJ_GetTierInfo,tier);if ok and type(name)=="string"then tierName=name end end
    local old=self:GetCharacterSnapshot(UnitGUID("player"));workState.initialized=true;workState.generation=generation;workState.raids=raids;workState.tier=tier;workState.tierName=tierName;workState.old=old;workState.journalByName=journalByName;workState.catalogReady=catalogReady
   end
@@ -352,7 +415,7 @@ HolyStorm:RegisterModule(metadata,function(Module)
   if manual then local records,positive=countLifetime(s.lifetime);HolyStorm.Logger:Write("INFO","Raids","lifetime","RAID_LIFETIME_SNAPSHOT",{schema=s.snapshotVersion,raids=#s.raids,lockouts=#s.lockouts,lifetimeBosses=records,positiveBosses=positive,updatedAt=s.updatedAt,valid=self:Validate(s)})end
   return s
  end
- function Module:Validate(s)if type(s)=="table"and s.pending then return false,s.pendingReason or"raid catalog pending"end;if type(s)~="table"or type(s.lockouts)~="table"or type(s.raids)~="table"or type(s.lifetime)~="table"or type(s.lifetime.bosses)~="table"then return false,"instance data unavailable"end;for _,r in ipairs(s.lockouts)do if type(r)~="table"or not r.name or not r.difficultyId or type(r.bosses)~="table"then return false,"lockout incomplete"end end;if not s.catalogReady then return false,"raid catalog pending"end;return true end
+ function Module:Validate(s)if type(s)=="table"and s.pending then return false,s.pendingReason or"raid catalog pending"end;if type(s)~="table"or type(s.lockouts)~="table"or type(s.raids)~="table"or type(s.lifetime)~="table"or type(s.lifetime.bosses)~="table"then return false,"instance data unavailable"end;for _,r in ipairs(s.lockouts)do if type(r)~="table"or not r.name or not r.difficultyId or type(r.bosses)~="table"then return false,"lockout incomplete"end end;for _,raid in ipairs(s.raids)do if type(raid)~="table"or not tonumber(raid.id)or type(raid.name)~="string"or type(raid.bosses)~="table"or #raid.bosses==0 then return false,"raid catalog incomplete"end;local seen={};for index,boss in ipairs(raid.bosses)do if type(boss)~="table"then return false,"raid boss catalog incomplete"end;local order=tonumber(boss.order);if not tonumber(boss.id)or type(boss.name)~="string"or not order or order<1 or order%1~=0 or seen[order]then return false,"raid boss catalog incomplete"end;seen[order]=true;if order~=index then return false,"raid boss order incomplete"end end end;if not s.catalogReady then return false,"raid catalog pending"end;return true end
  function Module:Commit(s)
   local guid=UnitGUID("player");local ok,reason=HolyStorm.PlayerData:WriteOwnedBlock(guid,"raid",s,"blizzard")
   local stored,meta=self:GetCharacterSnapshot(guid);local records,positive=countLifetime(stored and stored.lifetime)
