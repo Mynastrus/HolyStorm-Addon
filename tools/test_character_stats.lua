@@ -18,7 +18,7 @@ function GetRangedCritChance()return 23 end;function GetCritChance()return 22 en
 function GetHaste()return 20 end;function GetMasteryEffect()return 22,1.15 end
 function GetCombatRating(rating)if rating==CR_CRIT_SPELL then return 936 elseif rating==CR_HASTE_MELEE then return 813 elseif rating==CR_MASTERY then return 690 elseif rating==CR_VERSATILITY_DAMAGE_DONE then return 148 elseif rating==CR_LIFESTEAL then return 0 else return 0 end end
 function GetCombatRatingBonus(rating)if rating==CR_CRIT_SPELL then return 20.3 elseif rating==CR_HASTE_MELEE then return 18.5 elseif rating==CR_MASTERY then return 15 elseif rating==CR_VERSATILITY_DAMAGE_DONE then return 2.7 else return 0 end end
-function GetVersatilityBonus()return 0 end;function GetLifesteal()return 0 end;function GetAvoidance()return 5 end;function GetSpeed()return 0 end
+function GetVersatilityBonus()return .3 end;function GetLifesteal()return 0 end;function GetAvoidance()return 5 end;function GetSpeed()return 0 end
 function GetSpecialization()return 1 end;function GetSpecializationInfo()return 102, "Balance", nil, 55, "DAMAGER" end
 C_UnitAuras={GetAuraDataByIndex=function(_,index,filter)return auraState[filter]and auraState[filter][index]or nil end}
 C_Timer={After=function(delay,callback)callbacks[#callbacks+1]={delay=delay,callback=callback}end}
@@ -51,7 +51,7 @@ assert(clean.primary.strength.baseline==95 and clean.primary.strength.baseline~=
 assert(clean.armor.baseline==2390,"effective equipped armor becomes the character baseline instead of UnitArmor's zero raw base")
 assert(clean.secondary.criticalStrike.rating==936 and clean.secondary.criticalStrike.baseline==25,"Blizzard-selected spell crit percentage and its matching rating are both kept")
 assert(clean.secondary.haste.baseline==20 and clean.secondary.mastery.baseline==22 and clean.secondary.mastery.coefficient==1.15,"effective haste and spec-scaled mastery are used instead of rating bonus")
-assert(clean.secondary.versatility.baseline==2.7 and clean.secondary.leech.baseline==0 and clean.secondary.speed.baseline==0,"Versatility, Leech and Speed preserve effective and confirmed-zero values")
+assert(clean.secondary.versatility.baseline==3 and clean.secondary.leech.baseline==0 and clean.secondary.speed.baseline==0,"Versatility includes the separate bonus, while Leech and Speed preserve confirmed zero values")
 assert(Stats:Validate(clean));assert(Stats:Commit(clean));assert(#writes==1 and writes[1].source=="blizzard")
 local malformed={snapshotVersion=2,schemaVersion=2,primary={},armor=clean.armor,secondary=clean.secondary,capture=clean.capture};for key,value in pairs(clean.primary)do malformed.primary[key]=value end;malformed.primary.strength={baseline="95"};assert(not Stats:Validate(malformed),"snapshot validation rejects malformed numeric fields")
 
