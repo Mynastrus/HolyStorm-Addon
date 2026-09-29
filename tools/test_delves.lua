@@ -16,36 +16,50 @@ function HolyStorm:RegisterCapability(_,id,callback)capabilities[id]=callback en
 local locale=setmetatable({DISPLAY_NAME="Delves",DESCRIPTION="Delves",RULE_FIELD_STATUS="Status",RULE_FIELD_STATUS_DESC="Status"},{__index=function(_,key)return key end})
 function LibStub(name)if name=="AceAddon-3.0"then return{GetAddon=function()return HolyStorm end}elseif name=="AceLocale-3.0"then return{GetLocale=function()return locale end}end end
 function UnitGUID()return"Player-Local"end
-function date()return"2026-W40"end
-local weeklyActivities={{id=10,index=1,type=6,progress=0,threshold=3,level=0},{id=11,index=2,type=6,progress=3,threshold=3,level=1}}
 Enum={WeeklyRewardChestThresholdType={World=6}}
-C_WeeklyRewards={GetActivities=function(kind)assert(kind==6);return weeklyActivities end,HasAvailableRewards=function()return false end}
-C_DelvesUI={GetCurrentDelvesSeasonNumber=function()return 4 end,GetCompanionInfoForActivePlayer=function()return 7 end,GetFactionForCompanion=function()return 3 end,GetTraitTreeForCompanion=function()return 12 end}
+local activities={{id=10,index=1,type=6,progress=0,threshold=3,level=0},{id=11,index=2,type=6,progress=3,threshold=3,level=1}}
+C_WeeklyRewards={GetActivities=function(kind)assert(kind==6);return activities end,AreRewardsForCurrentRewardPeriod=function()return true end,HasAvailableRewards=function()return false end}
+C_DelvesUI={GetCurrentDelvesSeasonNumber=function()return 4 end,GetCompanionInfoForActivePlayer=function()error("incomplete companion IDs are not scanned")end}
+C_DateAndTime={GetWeeklyResetStartTime=function()return 1790812800 end}
 assert(loadfile(root.."Delves.lua"))()
-assert(blockDefinition and blockDefinition.schemaVersion==2 and blockDefinition.snapshotVersion==2 and type(blockDefinition.validate)=="function","Delves PlayerData block declares its snapshot contract")
+assert(blockDefinition and blockDefinition.schemaVersion==3 and blockDefinition.snapshotVersion==3 and type(blockDefinition.validate)=="function","Delves PlayerData block declares v3 snapshot contract")
+assert(#HolyStorm.metadata.permissions==1 and HolyStorm.metadata.permissions[1]=="sync-send","Delves has no view permission")
 Module:OnInitialize();Module:OnEnable()
-assert(events.WEEKLY_REWARDS_UPDATE and events.DELVES_ACCOUNT_DATA_ELEMENT_CHANGED and events.ACTIVE_DELVE_DATA_UPDATE,"Delves listens to weekly and active Delves update triggers")
-events.WEEKLY_REWARDS_UPDATE.callback("WEEKLY_REWARDS_UPDATE")
+assert(events.WEEKLY_REWARDS_UPDATE and not events.DELVES_ACCOUNT_DATA_ELEMENT_CHANGED and not events.ACTIVE_DELVE_DATA_UPDATE,"only the weekly reward update triggers persisted data scans")
+events.WEEKLY_REWARDS_UPDATE.callback()
 assert(HolyStorm.CharacterScans.lastRequest.block=="delves" and HolyStorm.CharacterScans.lastRequest.reason=="WEEKLY_REWARDS_UPDATE","automatic updates use CharacterScanManager")
-local provider=providers.delves.definition;local workflowId=provider.request(true,"MANUAL_COMMAND")
-assert(workflowId=="delves-wf" and HolyStorm.Snapshots.options.priority==6,"manual provider enters the same SnapshotManager workflow")
-local snapshot=HolyStorm.Snapshots.scanner();assert(HolyStorm.Snapshots.validator(snapshot),"available Delves data validates")
-assert(snapshot.snapshotVersion==2 and snapshot.seasonNumber==4 and snapshot.weeklyProgress==1 and snapshot.weeklyRewardAvailable==false,"known zero activity and unavailable reward are represented distinctly")
-assert(snapshot.activities[1].progress==0 and snapshot.activities[1].threshold==3 and snapshot.companion.id==7,"weekly activity and confirmed companion identity are retained")
-assert(snapshot.bountiful.status=="unknown" and snapshot.companion.level.status=="unknown","unsupported Delves fields remain explicitly unknown")
-assert(HolyStorm.Snapshots.commit(snapshot) and #commits==1,"valid Delves snapshot commits through PlayerData")
-
+local provider=providers.delves.definition;assert(provider.request(true,"MANUAL_COMMAND")=="delves-wf" and HolyStorm.Snapshots.options.priority==6,"manual provider enters the normal SnapshotManager workflow")
+local snapshot=HolyStorm.Snapshots.scanner();assert(HolyStorm.Snapshots.validator(snapshot),"available current data validates")
+assert(provider.needsRefresh(snapshot)==false,"current complete v3 snapshot passes bootstrap readiness")
+local staleSeason={snapshotVersion=3,schemaVersion=3,seasonNumber=3,weeklyIdentity=1790812800,greatVaultWorld={currentPeriod=true}}
+local staleWeek={snapshotVersion=3,schemaVersion=3,seasonNumber=4,weeklyIdentity=1790812799,greatVaultWorld={currentPeriod=true}}
+assert(provider.needsRefresh(staleSeason)==true and provider.needsRefresh(staleWeek)==true and provider.needsRefresh({snapshotVersion=2})==true,"bootstrap requests stale season, stale week, and incomplete snapshots")
+assert(snapshot.snapshotVersion==3 and snapshot.schemaVersion==3 and snapshot.seasonNumber==4 and snapshot.weeklyIdentity==1790812800,"season and authoritative weekly reset identity are stored")
+assert(snapshot.greatVaultWorld.progress==1 and snapshot.greatVaultWorld.activities[1].progress==0 and snapshot.greatVaultWorld.activities[1].threshold==3,"Great Vault World activity progress is kept distinct from Delves progression")
+assert(snapshot.greatVault.rewardAvailable==false and snapshot.greatVault.currentPeriod==true,"reward availability is Great Vault-wide state for the current period")
+assert(snapshot.companion==nil and snapshot.bountiful==nil and snapshot.nemesis==nil and snapshot.treasureMap==nil and snapshot.flute==nil,"unsupported fields are omitted instead of persisted as placeholder values")
+assert(HolyStorm.Snapshots.commit(snapshot) and #commits==1,"valid data commits through PlayerData")
 local lastValid=commits[1].snapshot
-C_WeeklyRewards.GetActivities=function()return nil end
-assert(HolyStorm.Snapshots.scanner()==nil,"unavailable activity data does not become an empty table")
-local unavailableValid=HolyStorm.Snapshots.validator(nil);assert(not unavailableValid,"unavailable API result fails validation")
-assert(#commits==1 and commits[1].snapshot==lastValid,"unavailable scan preserves the last committed snapshot")
-C_WeeklyRewards.GetActivities=function()error("API unavailable")end
-assert(HolyStorm.Snapshots.scanner()==nil and #commits==1,"API failure cannot publish or replace the last valid snapshot")
 C_WeeklyRewards.GetActivities=function()return{}end
-C_WeeklyRewards.HasAvailableRewards=nil
-snapshot=HolyStorm.Snapshots.scanner();assert(HolyStorm.Snapshots.validator(snapshot),"confirmed empty activity results remain valid")
-assert(snapshot.weeklyProgress==0 and snapshot.weeklyRewardAvailable.status=="unknown","known empty progression differs from unknown reward availability")
+snapshot=HolyStorm.Snapshots.scanner();assert(HolyStorm.Snapshots.validator(snapshot),"API-confirmed empty activity list is valid")
+assert(snapshot.greatVaultWorld.progress==0 and#snapshot.greatVaultWorld.activities==0,"known empty World activities remain a valid zero")
+C_WeeklyRewards.GetActivities=function()return nil end
+assert(HolyStorm.Snapshots.scanner()==nil,"unavailable activity data does not become empty")
+C_WeeklyRewards.GetActivities=function()error("API unavailable")end
+assert(HolyStorm.Snapshots.scanner()==nil,"API errors do not create a snapshot")
+C_WeeklyRewards.GetActivities=function()return activities end
+C_WeeklyRewards.AreRewardsForCurrentRewardPeriod=function()return false end
+assert(HolyStorm.Snapshots.scanner()==nil,"previous-period Great Vault data is not committed as current")
+C_WeeklyRewards.AreRewardsForCurrentRewardPeriod=function()return true end
+C_DateAndTime.GetWeeklyResetStartTime=nil
+assert(HolyStorm.Snapshots.scanner()==nil,"missing reset identity is unknown, not inferred from local calendar")
+C_DateAndTime.GetWeeklyResetStartTime=function()return 1790812800 end
+C_DelvesUI.GetCurrentDelvesSeasonNumber=function()return nil end
+assert(HolyStorm.Snapshots.scanner()==nil,"season not ready cannot overwrite current snapshot")
+assert(#commits==1 and commits[1].snapshot==lastValid,"unknown results preserve last valid committed snapshot")
+C_DelvesUI.GetCurrentDelvesSeasonNumber=function()return 4 end
+local invalid={snapshotVersion=3,schemaVersion=3,seasonNumber=4,weeklyIdentity=1790812800,greatVault={currentPeriod=true,rewardAvailable=false},greatVaultWorld={progress=0,activities={},completed={1}}}
+assert(not HolyStorm.Snapshots.validator(invalid),"inconsistent completion list fails validation")
 local handler=capabilities["character.scan.additional"];assert(type(handler)=="function");handler(Module,true,"CAPABILITY");assert(HolyStorm.CharacterScans.lastRequest.block=="delves","capability requests use the central scan manager")
 Module:OnDisable();assert(not events.WEEKLY_REWARDS_UPDATE,"feature event handlers are removed on disable")
-print("Delves unknown/empty, last-valid, trigger and lifecycle tests passed")
+print("Delves API readiness, known-empty, reset identity, last-valid and lifecycle tests passed")

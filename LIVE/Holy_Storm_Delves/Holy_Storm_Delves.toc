@@ -11,6 +11,7 @@
 ## X-HolyStorm-CharacterBlock: delves
 ## X-HolyStorm-CharacterCapability: character.scan.delves
 ## X-HolyStorm-CharacterOrder: 40
+## X-HolyStorm-CharacterInspectFresh: true
 
 Locales\enUS.lua
 Locales\deDE.lua

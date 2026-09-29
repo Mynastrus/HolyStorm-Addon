@@ -131,8 +131,31 @@ end
 do
  local L=locale("DELVES_")
  local function field(value,seen)local C=HolyStorm.CharacterUI;if type(value)=="boolean"then return value and L["YES"]or L["NO"]end;if type(value)~="table"then return C:FormatState(value)end;if value.status=="unknown"then return C:FormatState(nil)end;seen=seen or{};if seen[value]then return C:FormatState(nil)end;seen[value]=true;for _,key in ipairs({"value","count","level","name","progress","threshold","rewardLevel","role","abilities"})do if value[key]~=nil then return field(value[key],seen)end end;if value.id~=nil then return L["PRESENT"]end;return C:FormatState(nil)end
- local function refresh(view,context)local C=HolyStorm.CharacterUI;local snapshot=C:GetSnapshot(context.characterUUID,"delves");if not snapshot then C:SetTableView(view,{}, {emptyText=L["NO_DELVES"]});return end;local activities=type(snapshot.activities)=="table"and snapshot.activities or{};local weeklyProgress=field(snapshot.weeklyProgress);if snapshot.weeklyProgress~=nil and#activities>0 then weeklyProgress=string.format(L["GREAT_VAULT_PROGRESS"],weeklyProgress,field(#activities))end;local companion=type(snapshot.companion)=="table"and snapshot.companion or{};local rows={{group=L["GROUP_OVERVIEW"],metric=L["GREAT_VAULT"],value=weeklyProgress,details=""},{group=L["GROUP_OVERVIEW"],metric=L["WEEKLY_REWARD"],value=field(snapshot.weeklyRewardAvailable),details=""},{group=L["GROUP_OVERVIEW"],metric=L["BOUNTIFUL"],value=field(snapshot.bountiful),details=""},{group=L["GROUP_OVERVIEW"],metric=L["NEMESIS"],value=field(snapshot.nemesis),details=""},{group=L["GROUP_RESOURCES"],metric=L["TREASURE_MAP"],value=field(snapshot.treasureMap),details=""},{group=L["GROUP_RESOURCES"],metric=L["CREST_PROGRESS"],value=field(snapshot.crestProgress),details=""},{group=L["GROUP_RESOURCES"],metric=L["LIMITED_REWARDS"],value=field(snapshot.limitedRewards),details=""},{group=L["GROUP_COMPANION"],metric=L["COMPANION_LEVEL"],value=field(companion.level),details=""},{group=L["GROUP_COMPANION"],metric=L["COMPANION_ROLE"],value=field(companion.role),details=""},{group=L["GROUP_COMPANION"],metric=L["COMPANION_ABILITIES"],value=field(companion.abilities),details=""},{group=L["GROUP_COMPANION"],metric=L["FLUTE"],value=field(snapshot.flute),details=""}};for index,activity in ipairs(activities)do rows[#rows+1]={group=L["GROUP_ACTIVITIES"],metric=string.format(L["ACTIVITY"],activity.index or index),value=field(activity.progress),details=string.format(L["ACTIVITY_DETAILS"],field(activity.threshold),field(activity.level),field(activity.rewardLevel))}end;C:SetTableView(view,rows,{summary=string.format(L["SEASON"],field(snapshot.seasonNumber)),emptyText=L["NO_DELVES"]})end
+ local function currentContext()
+  local week
+  if C_DateAndTime and type(C_DateAndTime.GetWeeklyResetStartTime)=="function"then local ok,value=pcall(C_DateAndTime.GetWeeklyResetStartTime);if ok and type(value)=="number"then week=value end end
+  return week
+ end
+ local function refresh(view,context)
+  local C=HolyStorm.CharacterUI;local snapshot=C:GetSnapshot(context.characterUUID,"delves")
+  if not snapshot then C:SetTableView(view,{}, {emptyText=L["NO_DELVES"]});return end
+  local vault=type(snapshot.greatVaultWorld)=="table"and snapshot.greatVaultWorld or{}
+  local rewardState=type(snapshot.greatVault)=="table"and snapshot.greatVault or{}
+  local currentWeek=currentContext()
+  local weekCurrent=currentWeek~=nil and snapshot.weeklyIdentity==currentWeek and rewardState.currentPeriod==true and snapshot.snapshotVersion==3
+  local weeklyValue,weeklyReward=C:FormatState(nil),C:FormatState(nil)
+  local activities={}
+  if weekCurrent then
+   weeklyValue=field(vault.progress);if#(vault.activities or{})>0 then weeklyValue=string.format(L["GREAT_VAULT_PROGRESS"],weeklyValue,field(#vault.activities))end
+   weeklyReward=field(rewardState.rewardAvailable);activities=type(vault.activities)=="table"and vault.activities or{}
+  end
+  local summary=string.format(L["SEASON_STORED"],field(snapshot.seasonNumber))
+  if not weekCurrent then summary=summary.." ("..L["WEEKLY_STALE"]..")"end
+  local rows={{group=L["GROUP_OVERVIEW"],metric=L["GREAT_VAULT"],value=weeklyValue,details=""},{group=L["GROUP_OVERVIEW"],metric=L["WEEKLY_REWARD"],value=weeklyReward,details=""}}
+  for index,activity in ipairs(activities)do rows[#rows+1]={group=L["GROUP_ACTIVITIES"],metric=string.format(L["ACTIVITY"],activity.index or index),value=field(activity.progress),details=string.format(L["ACTIVITY_DETAILS"],field(activity.threshold),field(activity.level),field(activity.rewardLevel))}end
+  C:SetTableView(view,rows,{summary=summary,emptyText=L["NO_DELVES"]})
+ end
  local function build(parent)return HolyStorm.CharacterUI:CreateTableView(parent,{columns={{id="group",title=L["COLUMN_GROUP"],width=135},{id="metric",title=L["COLUMN_METRIC"],weight=1,minWidth=190},{id="value",title=L["COLUMN_VALUE"],width=130,align="RIGHT"},{id="details",title=L["COLUMN_DETAILS"],weight=.8,minWidth=160}},rowHeight=26,headerHeight=26,columnGap=1,emptyText=L["NO_DELVES"]})end
  HolyStorm:RegisterCharacterTab("characters",{id="delves",order=50,label=L["DISPLAY_NAME"],labelKey="DELVES_DISPLAY_NAME",icon="Interface\\Icons\\INV_Misc_Map_01",blocks={"delves"},events={"HS_DELVES_UPDATED"},build=build,refresh=refresh})
- HolyStorm:RegisterCharacterSummarySection("characters",{id="delves",order=50,render=function(context)local snapshot=HolyStorm.CharacterUI:GetSnapshot(context.characterUUID,"delves");return{label=L["DISPLAY_NAME"],tabId="delves",value=snapshot and(L["GREAT_VAULT"]..": "..field(snapshot.weeklyProgress))or L["NO_DELVES"]}end})
+ HolyStorm:RegisterCharacterSummarySection("characters",{id="delves",order=50,render=function(context)local snapshot=HolyStorm.CharacterUI:GetSnapshot(context.characterUUID,"delves");if not snapshot then return{label=L["DISPLAY_NAME"],tabId="delves",value=L["NO_DELVES"]}end;local week=currentContext();local vault=snapshot.greatVaultWorld;local rewardState=snapshot.greatVault;local value=HolyStorm.CharacterUI:FormatState(nil);if type(vault)=="table"and type(rewardState)=="table"and week and snapshot.weeklyIdentity==week and rewardState.currentPeriod==true and snapshot.snapshotVersion==3 then value=field(vault.progress)end;return{label=L["DISPLAY_NAME"],tabId="delves",value=string.format(L["SEASON_STORED"],field(snapshot.seasonNumber)).." / "..value}end})
 end

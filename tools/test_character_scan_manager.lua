@@ -65,7 +65,8 @@ local eventContracts={
  {path="LIVE/Holy_Storm_Equipment/Equipment.lua",events={"PLAYER_EQUIPMENT_CHANGED","UNIT_INVENTORY_CHANGED","SOCKET_INFO_UPDATE"}},
  {path="LIVE/Holy_Storm_Raids/Raids.lua",events={"UPDATE_INSTANCE_INFO","ENCOUNTER_END"}},
  {path="LIVE/Holy_Storm_MythicPlus/MythicPlus.lua",events={"CHALLENGE_MODE_COMPLETED","CHALLENGE_MODE_MAPS_UPDATE","MYTHIC_PLUS_CURRENT_AFFIX_UPDATE","MYTHIC_PLUS_NEW_WEEKLY_RECORD"}},
- {path="LIVE/Holy_Storm_Delves/Delves.lua",events={"WEEKLY_REWARDS_UPDATE","DELVES_ACCOUNT_DATA_ELEMENT_CHANGED","ACTIVE_DELVE_DATA_UPDATE"}},
+ {path="LIVE/Holy_Storm_Delves/Delves.lua",events={"WEEKLY_REWARDS_UPDATE"}},
 }
 for _,contract in ipairs(eventContracts)do local file=assert(io.open(projectRoot..contract.path,"rb"));local source=file:read("*a");file:close();assert(not source:find("PLAYER_ENTERING_WORLD",1,true),contract.path.." must not scan on PLAYER_ENTERING_WORLD");assert(source:find("CharacterScans:Request",1,true),contract.path.." routes events through the central scan queue");for _,event in ipairs(contract.events)do assert(source:find(event,1,true),contract.path.." keeps event "..event)end;if contract.path=="LIVE/Holy_Storm_Raids/Raids.lua"then assert(not source:find("\"BOSS_KILL\"",1,true),"Raid scans do not subscribe to the generic BOSS_KILL event")end end
+local delvesToc=assert(io.open(projectRoot.."LIVE/Holy_Storm_Delves/Holy_Storm_Delves.toc","rb"));local delvesMetadata=delvesToc:read("*a");delvesToc:close();assert(delvesMetadata:find("X%-HolyStorm%-CharacterInspectFresh: true"),"Delves bootstrap inspects completeness, season and reset identity for stored snapshots")
 print("Central missing/stale bootstrap, serialization and dirty-event merge tests passed")

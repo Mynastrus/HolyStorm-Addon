@@ -9,10 +9,10 @@ L["GREAT_VAULT"]="Große Schatzkammer";L["BOUNTIFUL"]="Opulent / ermächtigt";L[
 L["GROUP_OVERVIEW"]="Wöchentlich";L["GROUP_RESOURCES"]="Ressourcen";L["GROUP_COMPANION"]="Begleiter";L["GROUP_ACTIVITIES"]="Schatzkammer-Aktivitäten";L["COLUMN_GROUP"]="Bereich";L["COLUMN_METRIC"]="Fortschritt";L["COLUMN_VALUE"]="Wert";L["COLUMN_DETAILS"]="Details";L["ACTIVITY_DETAILS"]="Schwelle %s  •  Stufe %s"
 L["YES"]="Ja";L["NO"]="Nein"
 
-L["RULE_FIELD_STATUS"] = "Wöchentlicher Tiefenfortschritt"
-L["RULE_FIELD_STATUS_DESC"] = "Der im Tiefen-Snapshot gespeicherte wöchentliche Fortschrittswert."
+L["RULE_FIELD_STATUS"] = "Abgeschlossene Weltaktivit\195\164ten der Gro\195\159en Schatzkammer"
+L["RULE_FIELD_STATUS_DESC"] = "Abgeschlossene Aktivit\195\164tsschwellen im aktuellen Welt-Belohnungspfad der Gro\195\159en Schatzkammer."
 
 L["DISPLAY_NAME"] = "Tiefen"
-L["DESCRIPTION"] = "Stellt tiefenbezogene Funktionen bereit."
+L["DESCRIPTION"] = "Speichert die aktuelle Tiefensaison und Weltaktivit\195\164ten der Gro\195\159en Schatzkammer."
 L["ACTIVITY_FORMAT"] = "%d / %d (Stufe %d)"
 L["NO_DATA"] = "Kein Tiefenfortschritt verfügbar."

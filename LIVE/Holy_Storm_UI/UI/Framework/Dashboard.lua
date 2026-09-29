@@ -92,14 +92,7 @@ function UI:BuildDashboardModel()
  -- C_MythicPlus.GetCurrentSeason exposes Blizzard's internal season ID, not a stable display number.
  local mythicSubtitle=L["DASHBOARD_MYTHIC_CURRENT"]
  local delve=summary and summary.delves;local delveValue=unknown();local delveSubtitle=""
- if type(delve)=="table"then
-  local progress=delve.weeklyProgress
-  if type(progress)=="table"then progress=progress.value or progress.count or progress.progress or progress.level end
-  if type(progress)=="number"or type(progress)=="string"then delveValue=tostring(progress)
-  elseif tonumber(delve.seasonNumber)then delveValue=string.format(L["DASHBOARD_SEASON"],tonumber(delve.seasonNumber))end
-  local activityCount=type(delve.activities)=="table"and#delve.activities or 0
-  if activityCount>0 then delveSubtitle=string.format(L["DASHBOARD_DELVE_ACTIVITIES"],activityCount)elseif delve.weeklyRewardAvailable==true then delveSubtitle=L["DASHBOARD_DELVE_REWARD"]end
- end
+ if type(delve)=="table"and tonumber(delve.seasonNumber)then delveValue=string.format(L["DASHBOARD_DELVE_STORED_SEASON"],tonumber(delve.seasonNumber));delveSubtitle=L["DASHBOARD_DELVE_SEASON"]end
  local achievementValue=unknown();local achievementSubtitle=L["DASHBOARD_ACHIEVEMENTS"]
  local achievementService=HolyStorm.Achievements
  local achievementModule=HolyStorm:GetModule("AchievementsUI",true);local achievementAvailable=achievementService and achievementService.GetDefinitions and achievementService.IsEarned and achievementModule and achievementModule.IsEnabled and achievementModule:IsEnabled()and characterUI and characterUI.GetTab and characterUI:GetTab("achievements")~=nil

@@ -14,8 +14,11 @@
 - Made character block imports idempotent at equal origin revisions, reject stale revisions and conflicting same-revision content, preserve origin timestamps separately from receiver timestamps, and log bounded block-specific freshness decisions.
 - Corrected Character Stats to use Retail's effective paper-doll values, version the persisted baseline, keep live aura changes transient, and show rating separately from effective percentages.
 - Unified the five character snapshot block descriptors and semantic comparison, made Equipment commit failures visible to the workflow, and preserved unavailable Delves API state instead of converting it to empty/false values.
+- Reframed Delves snapshots around the documented current season and Great Vault World reward data, added weekly reset identity and readiness validation, and removed unsupported placeholders and unrelated scan triggers.
 
 ### Deutsch
+
+- Delves-Snapshots bilden nun die dokumentierte aktuelle Saison und Weltfortschritte der Großen Schatzkammer ab, nutzen eine Wochenreset-Identität mit Readiness-Prüfung und entfernen unbelegte Platzhalter sowie irrelevante Scan-Trigger.
 
 - Abstände, kompakte Profilgröße und Höhe dynamischer Widgets in der Charakterübersicht wurden verbessert. Mythic+-Karten zeigen nun eine neutrale Bezeichnung für die aktuelle Saison statt Blizzards interner Saison-ID.
 - Dynamische Anbieter verwenden nun ein zweispaltiges, inhaltsabhängiges Raster. Wochentage und kompakte Kartenbeschreibungen sind lokalisiert; ein leerer Erfolgskatalog zeigt einen eindeutigen Nullwert.

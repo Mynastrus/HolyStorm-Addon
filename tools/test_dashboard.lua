@@ -37,7 +37,7 @@ local latestSnapshot={
  coloredName="|cff70c0ffTestdruid|r",name="Testdruid",className="Druid",classFile="DRUID",specName="Balance",specIcon=12345,level=90,realm="Norgannon",guildRank="Council",
  itemLevel=312.6,mythicPlusRating=2009,mythicPlusSeasonId=18,equipment={slots={head={itemLevel=312},chest={itemLevel=310},legs=false}},
  bestRaid={difficulty="NORMAL",killed=6,total=8,raidName="The Poisonous Abyss",raidInstanceId=500},bestRaidRows={{bossName="Current Boss",difficulty="NORMAL",kills=5,raidInstanceId=500},{bossName="Old Boss",difficulty="MYTHIC",kills=8,raidInstanceId=100}},
- delves={weeklyProgress=4,activities={{},{}}},stats={primary={strength={effective=10},agility={effective=20}},secondary={haste={rating=30}}},
+ delves={snapshotVersion=3,seasonNumber=4,greatVaultWorld={progress=4,activities={{},{}}}},stats={primary={strength={effective=10},agility={effective=20}},secondary={haste={rating=30}}},
 }
 local context={characterUUID="Player-Local",accountUUID="Account-1",name="Testdruid",classFile="DRUID",record={profile={preferredRole="HEALER"}},guild={}}
 HolyStorm.CharacterUI={
@@ -66,7 +66,7 @@ assert(model.name==latestSnapshot.coloredName and model.specification=="Balance 
 assert(model.itemLevel=="312.6"and model.equippedCount==2,"equipment value and slot summary come from the stored Equipment block")
 assert(model.mythicPlusRating=="2009"and model.mythicPlusSubtitle==locale.DASHBOARD_MYTHIC_CURRENT,"Mythic+ rating uses the stored current-season score without exposing Blizzard's internal season ID")
 assert(model.raidValue:find("Normal 6/8",1,true)and model.raidSubtitle=="The Poisonous Abyss","Raid card shows catalog-scoped lifetime progress, not weekly lockouts")
-assert(model.delvesValue=="4"and model.delvesSubtitle=="2 activities this week","Delves card reflects stored weekly progress")
+assert(model.delvesValue=="DASHBOARD_DELVE_STORED_SEASON"and model.delvesSubtitle=="DASHBOARD_DELVE_SEASON","Delves card identifies the stored season without mislabeling Vault activity as Delves progress")
 assert(model.statsValue=="3"and model.twinksValue=="2","Stats and additional-character counts are based on their existing data APIs")
 assert(model.profileAvailable and#model.profileRows==3 and model.profileRows[1].text=="Richard"and model.profileRows[3].text=="Preferred role: Healer","only configured local profile fields are displayed")
 assert(not model.achievementsAvailable,"optional Achievements tab stays hidden while its feature module is disabled")
