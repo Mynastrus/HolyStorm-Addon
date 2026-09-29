@@ -39,13 +39,26 @@ end
 local function refreshSummary(view,context)C:SetTableView(view,summaryRows(context),{emptyText=L["NO_DATA"]})end
 
 local statKeys={"strength","agility","stamina","intellect"}
-local secondaryKeys={"criticalStrike","haste","mastery","versatility"}
-local function statTotal(value)
- if type(value)~="table"then return display(nil)end
- local rating=tonumber(value.rating);local percent=tonumber(value.percent)
- if rating==nil and percent==nil then return display(nil)end
- if percent~=nil then return string.format("%s  (%.1f%%)",display(rating),percent)end
- return display(rating)
+local secondaryKeys={"criticalStrike","haste","mastery","versatility","leech","avoidance","speed"}
+local function number(value)return type(value)=="number"and value==value and value~=math.huge and value~=-math.huge and value or nil end
+local function percent(value)local n=number(value);return n~=nil and string.format("%.1f%%",n)or display(nil)end
+local function delta(value,suffix)
+ local n=number(value);if n==nil then return display(nil)end
+ local color=n>0 and"|cff20ff20"or n<0 and"|cffff4040"or""
+ return color..(n>0 and"+"or"")..string.format(suffix and"%.1f"or"%.0f",n)..(suffix or"")..(color~=""and"|r"or"")
+end
+local function statTotal(rating,effective)
+ local ratingValue=number(rating);local effectiveValue=number(effective)
+ if ratingValue==nil and effectiveValue==nil then return display(nil)end
+ return(ratingValue~=nil and string.format("%.0f",ratingValue)or display(nil)).."  ("..(effectiveValue~=nil and string.format("%.1f%%",effectiveValue)or display(nil))..")"
+end
+local function statTooltip(row)
+ local lines={row.stat}
+ if row.rating~=nil then lines[#lines+1]=string.format(L["STATS_TOOLTIP_RATING"],string.format("%.0f",row.rating))end
+ lines[#lines+1]=string.format(L["STATS_TOOLTIP_EFFECTIVE"],row.effectiveText or display(nil))
+ lines[#lines+1]=string.format(L["STATS_TOOLTIP_BASELINE"],row.baseText or display(nil))
+ lines[#lines+1]=string.format(L["STATS_TOOLTIP_TEMPORARY"],row.additionalText or display(nil))
+ return table.concat(lines,"\n")
 end
 local function buildStats(parent)
  return C:CreateTableView(parent,{summaryHeight=1,columns={
@@ -53,17 +66,39 @@ local function buildStats(parent)
   {id="base",title=L["COLUMN_BASE"],width=130,align="RIGHT"},
   {id="additional",title=L["COLUMN_ADDITIONAL"],width=130,align="RIGHT"},
   {id="total",title=L["COLUMN_TOTAL"],width=180,align="RIGHT"},
- },rowHeight=26,headerHeight=26,columnGap=1,emptyText=L["NO_STATS"]})
+ },rowHeight=26,headerHeight=26,columnGap=1,emptyText=L["NO_STATS"],rowTooltip=statTooltip})
 end
 local function refreshStats(view,context,definition)
  local snapshot=C:GetSnapshot(context.characterUUID,"stats");if not snapshot then C:SetTableView(view,{}, {emptyText=L["NO_STATS"]});return end
- local rows={};local function primary(label,value)
-  local baseValue=type(value)=="table"and tonumber(value.base)or nil;local totalValue=type(value)=="table"and tonumber(value.effective)or nil;local additional=baseValue~=nil and totalValue~=nil and totalValue-baseValue or nil
-  rows[#rows+1]={stat=label,base=display(baseValue),additional=HolyStorm.UI.Components:FormatDelta(additional),total=display(totalValue)}
+ local isOwnCharacter=context.characterUUID==UnitGUID("player");local live=isOwnCharacter and C:GetLiveStats(context.characterUUID)or nil
+ local baselineReady=live and live.baselineReady==true
+ local version=tonumber(snapshot.snapshotVersion)or 1;local rows={}
+ local function primary(label,key,value)
+  local baseValue=version>=2 and type(value)=="table"and number(value.baseline)or type(value)=="table"and number(value.base)or nil
+  if key=="armor"and version<2 and type(value)=="table"then baseValue=number(value.effective)end
+  local liveValue=live and(key=="armor"and live.armor or live.primary and live.primary[key])
+  local totalValue
+  if isOwnCharacter then totalValue=liveValue and number(liveValue.effective)or nil
+  elseif version>=2 then totalValue=type(value)=="table"and number(value.baseline)or nil
+  elseif key=="armor"then totalValue=type(value)=="table"and number(value.effective)or nil
+  else totalValue=type(value)=="table"and(number(value.effective)or number(value.base))or nil end
+  local additional=baselineReady and baseValue~=nil and totalValue~=nil and totalValue-baseValue or nil
+  local baseText=display(baseValue);local totalText=display(totalValue);local additionalText=delta(additional)
+  rows[#rows+1]={stat=label,base=baseText,additional=additionalText,total=totalText,baseText=baseText,effectiveText=totalText,additionalText=additionalText}
  end
- for _,key in ipairs(statKeys)do primary(L["STAT_"..key:upper()],snapshot.primary and snapshot.primary[key])end
- primary(L["STAT_ARMOR"],snapshot.armor)
- for _,key in ipairs(secondaryKeys)do rows[#rows+1]={stat=L["STAT_"..key:upper()],base=display(nil),additional=display(nil),total=statTotal(snapshot.secondary and snapshot.secondary[key])}end
+ for _,key in ipairs(statKeys)do primary(L["STAT_"..key:upper()],key,snapshot.primary and snapshot.primary[key])end
+ primary(L["STAT_ARMOR"],"armor",snapshot.armor)
+ for _,key in ipairs(secondaryKeys)do
+  local value=snapshot.secondary and snapshot.secondary[key]or{}
+  local baseline=version>=2 and number(value.baseline)or nil
+  local liveValue=live and live.secondary and live.secondary[key]
+  local effective;if isOwnCharacter then effective=liveValue and number(liveValue.effective)or nil else effective=baseline end
+  local rating=liveValue and number(liveValue.rating)or number(value.rating)
+  local additional=baselineReady and baseline~=nil and effective~=nil and effective-baseline or nil
+  local baseText=baseline~=nil and percent(baseline)or display(nil)
+  local totalText=statTotal(rating,effective);local additionalText=delta(additional,"%")
+  rows[#rows+1]={stat=L["STAT_"..key:upper()],base=baseText,additional=additionalText,total=totalText,rating=rating,baseText=baseText,effectiveText=effective~=nil and percent(effective)or display(nil),additionalText=additionalText}
+ end
  C:SetTableView(view,rows,{emptyText=L["NO_STATS"]})
 end
 
@@ -95,6 +130,7 @@ local standardTabs={
 for _,definition in ipairs(standardTabs)do assert(C:RegisterTab(definition))end
 C:RegisterSummarySection({id="twinks",order=90,render=function(context)local account=context.accountUUID and HolyStorm.TwinkCore:GetAccount(context.accountUUID);local count=account and HolyStorm.Utils.TableCount(account.characters)or 0;return{label=L["SUMMARY_TWINKS"],tabId="twinks",value=count>0 and string.format(L["CHARACTER_COUNT"],count)or""}end})
 HolyStorm:RegisterCapability("CharacterOverview","character.open",function(_,characterUUID,tabId)return C:OpenCharacter(characterUUID,tabId or"summary")end)
+HolyStorm.Events:Register("HS_CHARACTER_LIVE_STATS_UPDATED","character-overview-live-stats",function(_,guid)if Page.ScheduleRefresh then Page:ScheduleRefresh("stats",guid)end end)
 
 function Page:UpdateTabVisuals()if self.tabGroup and self.tabGroup.SelectTab and C.activeTab then self.tabGroup:SelectTab(C.activeTab,true)end end
 function Page:LayoutTabs()if self.pageLayout then self.pageLayout:Relayout()end;if self.tabGroup and self.tabGroup.LayoutTabs then self.tabGroup:LayoutTabs()end;if C.activeTab and self.views and self.views[C.activeTab]then C:LayoutTabView(self.views[C.activeTab])end end
@@ -131,7 +167,7 @@ function C:SelectTab(id)
  for tabId,view in pairs(Page.views)do view.frame:SetShown(tabId==id)end;Page:UpdateTabVisuals();if not Page.views[id]then self:RefreshTab(id)end;self:LayoutTabView(Page.views[id]);Page.views[id].frame:Show();if Page.dirty[id]then self:RefreshTab(id)end;self:RefreshHeader();return true
 end
 function C:OpenCharacter(characterUUID,optionalTab,addHistory)
- local context=self:SetContext(characterUUID,addHistory);if not context then return false end;for _,definition in ipairs(self:GetTabs())do Page.dirty[definition.id]=true end;if HolyStorm.UI.ShowView then HolyStorm.UI:ShowView("character")else HolyStorm.UI:ShowPage("character")end;self:RefreshHeader();self:SelectTab(optionalTab or self.activeTab or"summary");self:RequestRefresh(characterUUID,(self:GetTab(optionalTab or self.activeTab or"summary")or{}).blocks,"CHARACTER_OPEN");return true
+ local context=self:SetContext(characterUUID,addHistory);if not context then return false end;if characterUUID==UnitGUID("player")then HolyStorm.Events:Emit("HS_STATS_LIVE_REQUESTED",characterUUID)end;for _,definition in ipairs(self:GetTabs())do Page.dirty[definition.id]=true end;if HolyStorm.UI.ShowView then HolyStorm.UI:ShowView("character")else HolyStorm.UI:ShowPage("character")end;self:RefreshHeader();self:SelectTab(optionalTab or self.activeTab or"summary");self:RequestRefresh(characterUUID,(self:GetTab(optionalTab or self.activeTab or"summary")or{}).blocks,"CHARACTER_OPEN");return true
 end
 function Page:ScheduleRefresh(tabId,guid)
  if guid and C.context and guid~=C.context.characterUUID then return end;self.dirty[tabId]=true;self.dirty.summary=true;if self.refreshScheduled then return end;local token=C.contextToken;self.refreshScheduled=true;C_Timer.After(.05,function()Page.refreshScheduled=nil;if token~=C.contextToken then return end;C:RefreshHeader();if C.activeTab and Page.dirty[C.activeTab]then C:RefreshTab(C.activeTab)end end)

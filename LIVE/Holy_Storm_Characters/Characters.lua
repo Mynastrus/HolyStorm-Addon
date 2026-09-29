@@ -3,7 +3,22 @@ local HolyStorm = LibStub("AceAddon-3.0"):GetAddon("Holy_Storm")
 local L = LibStub("AceLocale-3.0"):GetLocale("Holy_Storm_Twinks")
 if HolyStorm.PermissionRegistry then HolyStorm.PermissionRegistry:RegisterLegacyAlias("twinks.assign","twinks-assign");HolyStorm.PermissionRegistry:RegisterLegacyAlias("twinks.remove","twinks-remove")end
 if HolyStorm.PlayerData then
- HolyStorm.PlayerData:RegisterBlock("stats",{fields={"stats"},event="HS_STATS_UPDATED",staleAfter=21600})
+ local function validStatsSnapshot(snapshot)
+  if type(snapshot)~="table"then return false,"INVALID_STATS_SNAPSHOT"end
+  local version=tonumber(snapshot.snapshotVersion)
+  if version==1 then return type(snapshot.primary)=="table"and type(snapshot.secondary)=="table","INVALID_LEGACY_STATS_SNAPSHOT"end
+  if version~=2 or tonumber(snapshot.schemaVersion)~=2 or type(snapshot.primary)~="table"or type(snapshot.secondary)~="table"or type(snapshot.armor)~="table"or type(snapshot.capture)~="table"or snapshot.capture.eligible~=true then return false,"STATS_SCHEMA_MISMATCH"end
+  local function number(value)return type(value)=="number"and value==value and value~=math.huge and value~=-math.huge end
+  local count=0
+  for _,stat in pairs(snapshot.primary)do if type(stat)=="table"and(stat.baseline==nil or number(stat.baseline))then if stat.baseline~=nil then count=count+1 end else return false,"INVALID_PRIMARY_STAT"end end
+  if snapshot.armor.baseline~=nil then if not number(snapshot.armor.baseline)then return false,"INVALID_ARMOR_BASELINE"end;count=count+1 end
+  for _,stat in pairs(snapshot.secondary)do
+   if type(stat)~="table"or stat.rating~=nil and not number(stat.rating)or stat.baseline~=nil and not number(stat.baseline)or stat.coefficient~=nil and not number(stat.coefficient)then return false,"INVALID_SECONDARY_STAT"end
+   if stat.rating~=nil or stat.baseline~=nil then count=count+1 end
+  end
+  return count>0,"STATS_UNAVAILABLE"
+ end
+ HolyStorm.PlayerData:RegisterBlock("stats",{fields={"stats"},event="HS_STATS_UPDATED",staleAfter=21600,validate=validStatsSnapshot})
  HolyStorm.PlayerData:RegisterBlock("profile",{fields={"profile"},event="HS_PROFILE_UPDATED",staleAfter=604800})
  HolyStorm.PlayerData:RegisterBlock("demands",{fields={"demands"},event="HS_CHARACTER_UPDATED",staleAfter=86400})
 end

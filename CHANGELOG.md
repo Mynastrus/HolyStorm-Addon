@@ -12,6 +12,7 @@
 - Corrected lifetime Raid Best to count against the full Encounter Journal boss catalog; Best tooltips now show every boss in encounter order, including those without confirmed kills.
 - Preserved the stable Raid and boss catalog beside lifetime statistics in the v3 snapshot, rejected empty Encounter Journal container entries by metadata, and added a reload regression fixture for lifetime Best.
 - Made character block imports idempotent at equal origin revisions, reject stale revisions and conflicting same-revision content, preserve origin timestamps separately from receiver timestamps, and log bounded block-specific freshness decisions.
+- Corrected Character Stats to use Retail's effective paper-doll values, version the persisted baseline, keep live aura changes transient, and show rating separately from effective percentages.
 
 ### Deutsch
 
@@ -23,6 +24,7 @@
 - Der Raid-Lebenszeitbestwert verwendet nun alle Bosse des Abenteuerführer-Katalogs als Gesamtzahl. Bestwert-Tooltips zeigen jeden Boss in Begegnungsreihenfolge, auch ohne bestätigte Siege.
 - Der stabile Raid- und Bosskatalog bleibt zusammen mit den Lebenszeitstatistiken im v3-Snapshot gespeichert. Leere Abenteuerführer-Container werden anhand ihrer Metadaten ausgeschlossen; ein Reload-Regressionstest sichert den Bestwert.
 - Charakterblock-Importe behandeln identische Herkunftsrevisionen nun idempotent, verwerfen ältere Revisionen und widersprüchliche Inhalte deterministisch, trennen Ursprungs- und Empfangszeitstempel und protokollieren begrenzte blockbezogene Frischeentscheidungen.
+- Charakterwerte folgen nun Blizzards effektiven Retail-Werten. Gespeicherte Baselines sind versioniert, Live-Auraänderungen bleiben transient und Rating wird getrennt vom effektiven Prozentwert angezeigt.
 
 ## 5.9.0 — 27.09.2026
 

@@ -2,7 +2,7 @@ local addonVersion="2.0.0"
 local HolyStorm=LibStub("AceAddon-3.0"):GetAddon("Holy_Storm")
 local localeLibrary=LibStub("AceLocale-3.0",true)
 local L=localeLibrary and localeLibrary.GetLocale and localeLibrary:GetLocale("Holy_Storm_CharacterUI")or setmetatable({},{__index=function(_,key)return key end})
-local CharacterUI={version=addonVersion,tabs={},tabOrder={},summarySections={},summaryOrder={},context=nil,contextToken=0,history={},maxHistory=20,pendingRefreshBlocks={}}
+local CharacterUI={version=addonVersion,tabs={},tabOrder={},summarySections={},summaryOrder={},context=nil,contextToken=0,history={},maxHistory=20,pendingRefreshBlocks={},liveStats={}}
 
 CharacterUI.raidDifficulties={
  LFR={id="LFR",order=1,color={r=1,g=.82,b=0},difficultyIds={[7]=true,[17]=true}},
@@ -104,6 +104,14 @@ function CharacterUI:GetSnapshot(characterUUID,blockId)
  if data==nil then return nil,meta end
  if blockId=="equipment"and type(data)=="table"and data.equipment~=nil then return data.equipment,meta end
  return data,meta
+end
+function CharacterUI:GetLiveStats(characterUUID)
+ if not UnitGUID or characterUUID~=UnitGUID("player")then return nil end
+ return self.liveStats[characterUUID]
+end
+function CharacterUI:SetLiveStats(characterUUID,snapshot)
+ if not validId(characterUUID)or type(snapshot)~="table"or not UnitGUID or characterUUID~=UnitGUID("player")then return false end
+ self.liveStats[characterUUID]=snapshot;return true
 end
 function CharacterUI:GetDataStatus(characterUUID,blockId)
  local data,meta=self:GetSnapshot(characterUUID,blockId);if not data then return"MISSING",nil end
@@ -219,4 +227,5 @@ function CharacterUI:ConsumeRefresh(characterUUID)
 end
 
 HolyStorm.CharacterUI=CharacterUI
+if HolyStorm.Events and type(HolyStorm.Events.Register)=="function"then HolyStorm.Events:Register("HS_STATS_LIVE_UPDATED","character-ui-live-stats",function(_,guid,snapshot)if CharacterUI:SetLiveStats(guid,snapshot)then HolyStorm.Events:Emit("HS_CHARACTER_LIVE_STATS_UPDATED",guid)end end)end
 if HolyStorm.FlushCharacterExtensions then HolyStorm:FlushCharacterExtensions()end
