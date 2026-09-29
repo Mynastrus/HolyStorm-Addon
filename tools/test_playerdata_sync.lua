@@ -3,7 +3,8 @@ local root=(arg[0]:gsub("tools[/\\]test_playerdata_sync.lua$","")).."LIVE/Holy_S
 local clock=1000
 local timers={}
 unpack=unpack or table.unpack
-function time()return clock end;function GetTime()return clock end;function UnitGUID()return"Player-Local"end;function GetUnitName()return"Local-Realm"end;function IsInGuild()return true end
+local activeGuid="Player-Local"
+function time()return clock end;function GetTime()return clock end;function UnitGUID()return activeGuid end;function GetUnitName()return"Local-Realm"end;function IsInGuild()return true end
 C_Timer={NewTimer=function(delay,callback)local timer={delay=delay,callback=callback,cancelled=false};function timer:Cancel()self.cancelled=true end;timers[#timers+1]=timer;return timer end}
 local HolyStorm={db={global={localPlayerId="account-local",installId="install",data={characters={},players={},characterOwners={}}}},Data={},State={Set=function()end}}
 function HolyStorm:GetAddon()return self end
@@ -21,6 +22,8 @@ HolyStorm.PlayerData:RegisterBlock("equipment",{fields={"equipment","itemLevel"}
 HolyStorm.PlayerData:RegisterBlock("raid",{fields={"raidLockouts"},event="HS_RAIDLOCKS_UPDATED",staleAfter=100})
 HolyStorm.PlayerData:RegisterBlock("stats",{fields={"stats"},event="HS_STATS_UPDATED"})
 HolyStorm.PlayerData:RegisterBlock("mythicPlus",{fields={"mythicPlus"},event="HS_MYTHICPLUS_UPDATED",validate=function(data)if type(data)~="table"then return false,"INVALID_MYTHICPLUS_DATA"end;if data.dungeons~=nil and type(data.dungeons)~="table"then return false,"INVALID_MYTHICPLUS_DUNGEONS"end;local count=0;for _,dungeon in pairs(type(data.dungeons)=="table"and data.dungeons or{})do if type(dungeon)~="table"then return false,"INVALID_MYTHICPLUS_DUNGEON"end;count=count+1 end;if data.seasonId==nil and data.overallScore==nil and data.ownedKey==nil and count==0 then return false,"EMPTY_MYTHICPLUS_DATA"end;return true end})
+local function validDelves(data)return type(data)=="table"and type(data.runs)=="table","INVALID_DELVES_DATA"end
+HolyStorm.PlayerData:RegisterBlock("delves",{fields={"delves"},event="HS_DELVES_UPDATED",validate=validDelves})
 HolyStorm.PlayerData:Initialize()
 assert(HS_Player_DB.schemaVersion==2 and HS_Player_DB.characters["Player-Legacy"])
 assert(HS_Player_DB.normalizationVersion==1 and HS_Player_DB.normalizedBlocks.mythicPlus==true,"player data migration work is persistently marked after the combined normalization pass")
@@ -35,6 +38,8 @@ local localIdentityTimestamp=localIdentityMeta.updatedAt
 local foreign="Player-Foreign"
 local foreignIdentity={name="Foreign-Realm",realm="Realm",class="Priest",classFile="PRIEST",level=80,guild="Guild"}
 assert(HolyStorm.PlayerData:AcceptRemoteBlock(foreign,"identity",foreignIdentity,{owner=foreign,version=7,updatedAt=900,source="blizzard"},foreign,"Foreign-Realm"),"foreign owner identity accepted")
+local foreignLegacyMeta=HolyStorm.PlayerData:GetCharacter(foreign).blockMeta.identity;foreignLegacyMeta.receivedAt=nil
+local unknownForeignFreshness=HolyStorm.PlayerData:GetBlockFreshness(foreign,"identity");assert(unknownForeignFreshness.state=="UNKNOWN"and unknownForeignFreshness.stale and unknownForeignFreshness.age==nil,"legacy foreign snapshots without receiver-clock metadata are unknown and eligible for refresh")
 local foreignIdentityBefore,foreignIdentityMetaBefore=HolyStorm.PlayerData:GetBlock(foreign,"identity")
 local emittedBefore=#HolyStorm.Events.emitted
 assert(not HolyStorm.PlayerData:ObserveIdentity(foreign,{name="Observed-Realm",level=81},"blizzard"),"foreign observation must not mutate identity")
@@ -60,12 +65,13 @@ clock=1010;ok,meta=HolyStorm.PlayerData:WriteOwnedBlock("Player-Local","equipmen
 local unchanged,unchangedReason=HolyStorm.PlayerData:WriteOwnedBlock("Player-Local","equipment",{equipment={slots={[1]=true}},itemLevel=701},"blizzard");assert(not unchanged and unchangedReason=="UNCHANGED");assert(HolyStorm.PlayerData:GetMetadata("Player-Local","equipment").version==2)
 ok=HolyStorm.PlayerData:AcceptRemoteBlock(foreign,"equipment",{equipment={slots={[1]="item"}},itemLevel=710},{owner=foreign,version=17,updatedAt=900,source="blizzard"},"Player-Relay","Relay-Realm");assert(ok)
 assert(HolyStorm.PlayerData:GetMetadata(foreign,"equipment").version==17)
-local stale,reason=HolyStorm.PlayerData:AcceptRemoteBlock(foreign,"equipment",{equipment={slots={}},itemLevel=600},{owner=foreign,version=16,updatedAt=950},"Player-Relay","Relay-Realm");assert(not stale and reason=="STALE_VERSION")
-local direct=HolyStorm.PlayerData:AcceptRemoteBlock(foreign,"equipment",{equipment={slots={[1]="owner"}},itemLevel=711},{owner=foreign,version=17,updatedAt=901},foreign,"Foreign-Realm");assert(direct)
-local protected,protectedReason=HolyStorm.PlayerData:AcceptRemoteBlock("Player-Local","equipment",{equipment={slots={}},itemLevel=999},{owner="Player-Local",version=99,updatedAt=999},"Player-Relay","Relay-Realm");assert(not protected and protectedReason=="LOCAL_OWNER_PROTECTED")
+local stale,reason=HolyStorm.PlayerData:AcceptRemoteBlock(foreign,"equipment",{equipment={slots={}},itemLevel=600},{owner=foreign,version=16,updatedAt=950},"Player-Relay","Relay-Realm");assert(not stale and reason=="STALE_REVISION")
+local direct=HolyStorm.PlayerData:AcceptRemoteBlock(foreign,"equipment",{equipment={slots={[1]="item"}},itemLevel=710},{owner=foreign,version=17,updatedAt=900},foreign,"Foreign-Realm");assert(direct and HolyStorm.PlayerData:GetMetadata(foreign,"equipment").direct,"same-revision identical direct copy upgrades relay authority as a no-op")
+local protected,protectedReason=HolyStorm.PlayerData:AcceptRemoteBlock("Player-Local","equipment",{equipment={slots={}},itemLevel=999},{owner="Player-Local",version=99,updatedAt=999},"Player-Relay","Relay-Realm");assert(not protected and protectedReason=="SELF_OWNED_REMOTE_REJECT")
+local protectedDirect,protectedDirectReason=HolyStorm.PlayerData:AcceptRemoteBlock("Player-Local","equipment",{equipment={slots={}},itemLevel=999},{owner="Player-Local",version=99,updatedAt=999},"Player-Local","Local-Realm");assert(not protectedDirect and protectedDirectReason=="SELF_OWNED_REMOTE_REJECT","remote higher revisions never replace locally owned data, even with claimed direct provenance")
 local example="Player-Example";assert(HolyStorm.PlayerData:AcceptRemoteBlock(example,"stats",{primary={v=15}},{owner=example,version=15,updatedAt=800},example,"Example-Realm"));assert(HolyStorm.PlayerData:AcceptRemoteBlock(example,"stats",{primary={v=17}},{owner=example,version=17,updatedAt=850},"Player-Relay","Relay-Realm"));assert(HolyStorm.PlayerData:GetMetadata(example,"stats").version==17)
 assert(HolyStorm.PlayerData:GetMetadata("Player-Local","equipment").version==2)
-assert(HolyStorm.PlayerData:GetForeignWatermark()==901)
+assert(HolyStorm.PlayerData:GetForeignWatermark()==900)
 HolyStorm.Data.GuildStore={ResolveSenderGuid=function(_,sender)return sender=="Foreign-Realm"and foreign or sender=="Relay-Realm"and"Player-Relay"end,GetCurrent=function()return{roster={}}end}
 HolyStorm.Comms={available=true,Send=function(self,payload,channel,target,priority,diagnostics)self.lastPayload,self.lastChannel,self.lastTarget,self.lastPriority,self.lastDiagnostics=payload,channel,target,priority,diagnostics;return true,"tx-sync-test"end};HolyStorm.Tasks={types={},queued={},sequence=0}
 function HolyStorm.Tasks:RegisterTaskType(id,d)self.types[id]=d;return true end
@@ -109,5 +115,98 @@ local duplicateId,duplicateState=HolyStorm.Sync:QueueFetch("character",offeredOb
 local selectionLog;for _,entry in ipairs(HolyStorm.Logger.history)do if entry.message=="Selecting payload source"and entry.context.objectId==offeredObjects[2]then selectionLog=entry end end;assert(selectionLog and selectionLog.context.domain=="character"and selectionLog.context.characterUUID==foreign and selectionLog.context.block=="equipment"and selectionLog.context.version==18 and selectionLog.context.selectedSource=="Foreign-Realm"and selectionLog.context.reason=="LOGIN_CATCHUP","source-selection logging identifies object, block, revision, source and reason")
 assert(HolyStorm.PlayerData:AcceptRemoteBlock(foreign,"identity",{name="Foreign-Newer",realm="Realm",class="Priest",classFile="PRIEST",level=81,guild="Guild"},{owner=foreign,version=8,updatedAt=950,source="blizzard"},foreign,"Foreign-Realm"),"newer owner identity accepted")
 local newerIdentity,newerIdentityMeta=HolyStorm.PlayerData:GetBlock(foreign,"identity");assert(newerIdentity.name=="Foreign-Newer" and newerIdentityMeta.version==8 and newerIdentityMeta.updatedAt==950,"newer owner identity replaces the older version")
-local staleIdentity,staleIdentityReason=HolyStorm.PlayerData:AcceptRemoteBlock(foreign,"identity",{name="Foreign-Old",realm="Realm",class="Priest",classFile="PRIEST",level=79,guild="Guild"},{owner=foreign,version=7,updatedAt=999},"Player-Relay","Relay-Realm");assert(not staleIdentity and staleIdentityReason=="STALE_VERSION","older relayed identity is rejected")
+local staleIdentity,staleIdentityReason=HolyStorm.PlayerData:AcceptRemoteBlock(foreign,"identity",{name="Foreign-Old",realm="Realm",class="Priest",classFile="PRIEST",level=79,guild="Guild"},{owner=foreign,version=7,updatedAt=999},"Player-Relay","Relay-Realm");assert(not staleIdentity and staleIdentityReason=="STALE_REVISION","older relayed identity is rejected")
+
+-- Simulate origin commits produced after /hs scan all, then restore the receiver
+-- database and deliver real serialized Sync envelopes through Sync:Receive.
+local receiverDB=HS_Player_DB
+local noway="Player-Nowaynowak"
+local originSnapshots={}
+HS_Player_DB={}
+activeGuid=noway;clock=50
+assert(loadfile(root.."Persistence/PlayerDataStore.lua"))()
+HolyStorm.PlayerData:RegisterBlock("equipment",{fields={"equipment","itemLevel"},event="HS_EQUIPMENT_UPDATED"})
+HolyStorm.PlayerData:RegisterBlock("raid",{fields={"raidLockouts"},event="HS_RAIDLOCKS_UPDATED",staleAfter=100})
+HolyStorm.PlayerData:RegisterBlock("stats",{fields={"stats"},event="HS_STATS_UPDATED"})
+HolyStorm.PlayerData:RegisterBlock("mythicPlus",{fields={"mythicPlus"},event="HS_MYTHICPLUS_UPDATED"})
+HolyStorm.PlayerData:RegisterBlock("delves",{fields={"delves"},event="HS_DELVES_UPDATED",validate=validDelves})
+HolyStorm.PlayerData:Initialize()
+local sawCommittedBeforePublish=false
+HolyStorm.Events:Register("HS_PLAYERDATA_OWNED_UPDATED","freshness-test",function(_,guid,block,metadata)
+ if guid==noway then local persisted=HolyStorm.PlayerData:GetMetadata(guid,block);sawCommittedBeforePublish=persisted and persisted.version==metadata.version and persisted.originCreatedAt==metadata.originCreatedAt end
+end)
+assert(HolyStorm.PlayerData:WriteOwnedBlock(noway,"equipment",{equipment={slots={[1]="old"}},itemLevel=700},"blizzard"))
+clock=60
+assert(HolyStorm.PlayerData:WriteOwnedBlock(noway,"equipment",{equipment={slots={[1]="new"}},itemLevel=710},"blizzard"))
+assert(HolyStorm.PlayerData:WriteOwnedBlock(noway,"stats",{primary={strength=1234},snapshotVersion=2},"blizzard"))
+assert(HolyStorm.PlayerData:WriteOwnedBlock(noway,"delves",{runs={{level=10}},snapshotVersion=1},"blizzard"))
+assert(sawCommittedBeforePublish,"owned sync event fires only after revision and snapshot metadata are committed")
+for _,block in ipairs({"equipment","stats","delves"})do
+ local objectId=noway.."\031"..block
+ originSnapshots[block]={metadata=HolyStorm.PlayerData:GetMetadata(noway,block),payload=HolyStorm.Sync:GetDomain("character").export(objectId)}
+ assert(originSnapshots[block].metadata.version==(block=="equipment"and 2 or 1))
+end
+local queuedCommitted=0
+for _,task in ipairs(HolyStorm.Tasks.queued)do if task.id=="Sync.Publish"then queuedCommitted=queuedCommitted+1 end end
+assert(queuedCommitted>=2,"committed blocks queue downstream Sync.Publish tasks")
+
+HS_Player_DB=receiverDB;activeGuid="Player-Local";clock=1000
+assert(loadfile(root.."Persistence/PlayerDataStore.lua"))()
+HolyStorm.PlayerData:RegisterBlock("equipment",{fields={"equipment","itemLevel"},event="HS_EQUIPMENT_UPDATED"})
+HolyStorm.PlayerData:RegisterBlock("raid",{fields={"raidLockouts"},event="HS_RAIDLOCKS_UPDATED",staleAfter=100})
+HolyStorm.PlayerData:RegisterBlock("stats",{fields={"stats"},event="HS_STATS_UPDATED"})
+HolyStorm.PlayerData:RegisterBlock("mythicPlus",{fields={"mythicPlus"},event="HS_MYTHICPLUS_UPDATED"})
+HolyStorm.PlayerData:RegisterBlock("delves",{fields={"delves"},event="HS_DELVES_UPDATED",validate=validDelves})
+HolyStorm.PlayerData:Initialize()
+assert(HolyStorm.PlayerData:AcceptRemoteBlock(noway,"equipment",{equipment={slots={[1]="relay-old"}},itemLevel=690},{owner=noway,version=1,updatedAt=999999,source="blizzard"},"Player-Relay","Relay-Realm"))
+HolyStorm.Data.GuildStore.ResolveSenderGuid=function(_,sender)if sender=="Nowaynowak-Blackmoore"then return noway elseif sender=="RelayCopy-Realm"then return"Player-RelayCopy"elseif sender=="Relay-Realm"then return"Player-Relay"elseif sender=="Foreign-Realm"then return foreign end end
+local function receiveOriginBlock(block)
+ local snapshot=originSnapshots[block];local objectId=noway.."\031"..block
+ local envelope={protocol=3,kind="PAYLOAD",domain="character",sender=noway,data={objectId=objectId,metadata=snapshot.metadata,payload=snapshot.payload}}
+ local wire=assert(HolyStorm.Serializer:Serialize(envelope))
+ return HolyStorm.Sync:Receive(wire,"Nowaynowak-Blackmoore","GUILD",{transmissionId="retail-freshness-"..block,packetTotal=19,bytes=#wire})
+end
+assert(receiveOriginBlock("equipment"),"a direct current origin revision imports over an older relayed block despite differing clock values")
+assert(receiveOriginBlock("stats"),"a second independently committed character block imports through the same envelope path")
+assert(receiveOriginBlock("delves"),"a third independently committed character block imports through the same envelope path")
+local newEquipment,newEquipmentMeta=HolyStorm.PlayerData:GetBlock(noway,"equipment")
+assert(newEquipment.itemLevel==710 and newEquipmentMeta.version==2 and newEquipmentMeta.owner==noway and newEquipmentMeta.receivedFrom=="Nowaynowak-Blackmoore" and newEquipmentMeta.originCreatedAt==60 and newEquipmentMeta.receivedAt==clock,"accepted origin metadata stays separate from receiver time and relay provenance")
+local newStats,newStatsMeta=HolyStorm.PlayerData:GetBlock(noway,"stats")
+assert(newStats.primary.strength==1234 and newStatsMeta.version==1 and newStatsMeta.originCreatedAt==60 and newStatsMeta.receivedAt==clock,"multiple post-scan block snapshots retain their own revisions and origin timestamps")
+local newDelves,newDelvesMeta=HolyStorm.PlayerData:GetBlock(noway,"delves");assert(#newDelves.runs==1 and newDelvesMeta.version==1,"optional Delves snapshot is independently accepted")
+local invalidOptionalWire=assert(HolyStorm.Serializer:Serialize({protocol=3,kind="PAYLOAD",domain="character",sender=noway,data={objectId=noway.."\031delves",metadata=originSnapshots.delves.metadata,payload={guid=noway,block="delves",data={runs="malformed"}}}}))
+assert(not HolyStorm.Sync:Receive(invalidOptionalWire,"Nowaynowak-Blackmoore","GUILD"),"invalid optional block envelope is rejected")
+assert(HolyStorm.PlayerData:GetBlock(noway,"equipment").itemLevel==710 and HolyStorm.PlayerData:GetBlock(noway,"stats").primary.strength==1234,"one invalid block does not roll back independently committed character blocks")
+
+-- Equal revision and identical content is an idempotent successful receive;
+-- direct provenance upgrades a relayed copy without changing origin metadata.
+local relayGuid="Player-RelayCopy"
+local relayData={equipment={slots={[1]="same"}},itemLevel=720}
+assert(HolyStorm.PlayerData:AcceptRemoteBlock(relayGuid,"equipment",relayData,{owner=relayGuid,version=42,updatedAt=400,source="blizzard"},"Player-Relay","Relay-Realm"))
+local directWire=assert(HolyStorm.Serializer:Serialize({protocol=3,kind="PAYLOAD",domain="character",sender=relayGuid,data={objectId=relayGuid.."\031equipment",metadata={owner=relayGuid,version=42,updatedAt=400,source="blizzard"},payload={guid=relayGuid,block="equipment",data=relayData}}}))
+assert(HolyStorm.Sync:Receive(directWire,"RelayCopy-Realm","GUILD"),"same revision direct copy succeeds as an idempotent no-op after relay")
+local relayDirectMeta=HolyStorm.PlayerData:GetMetadata(relayGuid,"equipment");assert(relayDirectMeta.version==42 and relayDirectMeta.direct and relayDirectMeta.receivedFrom=="RelayCopy-Realm" and relayDirectMeta.updatedAt==400,"direct provenance upgrades without rewriting origin revision or timestamp: "..HolyStorm.Serializer:Serialize(relayDirectMeta))
+local conflictOk,conflictReason=HolyStorm.PlayerData:AcceptRemoteBlock(relayGuid,"equipment",{equipment={slots={[1]="conflict"}},itemLevel=721},{owner=relayGuid,version=42,updatedAt=500},relayGuid,"RelayCopy-Realm")
+assert(not conflictOk and conflictReason=="SAME_REVISION_CONFLICT","same revision with different content is rejected deterministically")
+local staleRelayOk,staleRelayReason=HolyStorm.PlayerData:AcceptRemoteBlock(relayGuid,"equipment",{equipment={slots={}},itemLevel=700},{owner=relayGuid,version=41,updatedAt=999999},"Player-Relay","Relay-Realm")
+assert(not staleRelayOk and staleRelayReason=="STALE_REVISION","later received stale relay cannot replace a newer origin revision")
+local conflictLogged=false
+for _,entry in ipairs(HolyStorm.Logger.history)do local c=entry.context or{};if entry.source=="PlayerData"and c.reason=="SAME_REVISION_CONFLICT"and c.character==relayGuid and c.block=="equipment"then conflictLogged=c.decision=="REJECT"and c.incomingRevision==42 and c.storedRevision==42 and c.incomingOriginCreatedAt==500 and c.validationStatus=="PASSED"end end
+assert(conflictLogged,"same-revision conflicts produce bounded block-specific structured diagnostics")
+
+local noopWire=assert(HolyStorm.Serializer:Serialize({protocol=3,kind="PAYLOAD",domain="character",sender=relayGuid,data={objectId=relayGuid.."\031equipment",metadata={owner=relayGuid,version=42,updatedAt=400,source="blizzard"},payload={guid=relayGuid,block="equipment",data=relayData}}}))
+assert(HolyStorm.Sync:Receive(noopWire,"RelayCopy-Realm","GUILD"),"identical same-revision envelope is not surfaced as an import failure")
+local persistedRevision=HolyStorm.PlayerData:GetMetadata(noway,"equipment").version
+assert(loadfile(root.."Persistence/PlayerDataStore.lua"))()
+for _,definition in ipairs({
+ {"equipment",{fields={"equipment","itemLevel"},event="HS_EQUIPMENT_UPDATED"}},
+ {"raid",{fields={"raidLockouts"},event="HS_RAIDLOCKS_UPDATED",staleAfter=100}},
+ {"stats",{fields={"stats"},event="HS_STATS_UPDATED"}},
+ {"mythicPlus",{fields={"mythicPlus"},event="HS_MYTHICPLUS_UPDATED"}},
+ {"delves",{fields={"delves"},event="HS_DELVES_UPDATED",validate=validDelves}}
+})do HolyStorm.PlayerData:RegisterBlock(definition[1],definition[2])end
+HolyStorm.PlayerData:Initialize()
+local reloadedMeta=HolyStorm.PlayerData:GetMetadata(noway,"equipment")
+assert(reloadedMeta.version==persistedRevision and reloadedMeta.originCreatedAt==60 and reloadedMeta.receivedFrom=="Nowaynowak-Blackmoore" and reloadedMeta.receivedAt==1000,"revision, origin and receiver metadata survive PlayerData reload")
+print("PlayerData/sync freshness regressions passed")
 print("PlayerData/sync tests passed")

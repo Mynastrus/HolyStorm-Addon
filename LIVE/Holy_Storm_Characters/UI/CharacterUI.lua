@@ -107,6 +107,7 @@ function CharacterUI:GetSnapshot(characterUUID,blockId)
 end
 function CharacterUI:GetDataStatus(characterUUID,blockId)
  local data,meta=self:GetSnapshot(characterUUID,blockId);if not data then return"MISSING",nil end
+ if HolyStorm.PlayerData.GetBlockFreshness then local freshness=HolyStorm.PlayerData:GetBlockFreshness(characterUUID,blockId);return freshness.state or(freshness.stale and"STALE"or"CURRENT"),meta end
  return HolyStorm.PlayerData:IsStale(characterUUID,blockId)and"STALE"or"CURRENT",meta
 end
 function CharacterUI:GetDifficultyById(difficultyId)

@@ -140,20 +140,40 @@ function PlayerData:ValidateBlock(blockId,data)
     return true
 end
 function PlayerData:ApplyBlock(guid,blockId,data,meta,mode)
-    if self.futureSchema then return false,"FUTURE_SCHEMA_READ_ONLY"end
-    if not validId(guid)or type(meta)~="table"then return false,"INVALID_IDENTITY"end;local valid,reason=self:ValidateBlock(blockId,data);if not valid then return false,reason end
-    local record=self:GetOrCreateCharacter(guid);local definition=self.blocks[blockId];local current=record.blockMeta[blockId]
+    if self.futureSchema then return false,"FUTURE_SCHEMA_READ_ONLY",false end
+    if not validId(guid)or type(meta)~="table"then return false,"INVALID_IDENTITY",false end
+    local definition=self.blocks[blockId];if not definition then return false,"INVALID_BLOCK_DATA",false end
+    local valid,reason=self:ValidateBlock(blockId,data);if not valid then return false,reason or"INVALID_BLOCK_DATA",false end
+    local record=self:GetOrCreateCharacter(guid);local current=record.blockMeta[blockId]
     if mode=="remote"then
-        if meta.owner~=guid then return false,"OWNER_MISMATCH"end
-        local decision,why=self:CompareMetadata(current,meta);if decision<=0 then return false,why end
-        if self:IsLocallyOwned(guid)and meta.direct~=true then return false,"LOCAL_OWNER_PROTECTED"end
-    elseif not self:IsLocallyOwned(guid)then return false,"NOT_LOCAL_OWNER" end
-    local clean=copy(data);if mode~="remote"and#definition.fields>1 then for _,field in ipairs(definition.fields)do if clean[field]==nil then clean[field]=copy(record[field])end end end;local version=mode=="remote"and tonumber(meta.version)or((tonumber(current and current.version)or 0)+1);local updatedAt=mode=="remote"and(tonumber(meta.updatedAt)or 0)or now()
-    if mode~="remote"and current then local existing;if#definition.fields==1 then existing=record[definition.fields[1]]else existing={};for _,field in ipairs(definition.fields)do existing[field]=record[field]end end;if same(existing,clean)then return false,"UNCHANGED"end end
+        if meta.owner~=guid then return false,"INVALID_OWNER",true end
+        local incomingVersion=tonumber(meta.version);if not incomingVersion or incomingVersion<1 or incomingVersion%1~=0 then return false,"MISSING_REQUIRED_METADATA",true end
+        local originCreatedAt=tonumber(meta.originCreatedAt or meta.updatedAt);if not originCreatedAt or originCreatedAt<=0 or originCreatedAt~=originCreatedAt or originCreatedAt==math.huge then return false,"MISSING_REQUIRED_METADATA",true end
+        local storedVersion=tonumber(current and current.version)or 0;local identical=false
+        if current and storedVersion==incomingVersion then
+            local existing;if#definition.fields==1 then existing=record[definition.fields[1]]else existing={};for _,field in ipairs(definition.fields)do existing[field]=record[field]end end
+            identical=same(existing,data)
+        end
+        local locallyOwned=self:IsLocallyOwned(guid)
+        if incomingVersion<storedVersion then return false,"STALE_REVISION",true end
+        if incomingVersion==storedVersion then
+            if identical then
+                if not locallyOwned and meta.direct==true and current.direct~=true then current.direct=true;current.receivedFrom=meta.receivedFrom;current.receivedAt=now();current.originCreatedAt=current.originCreatedAt or current.updatedAt end
+                return true,"NOOP",true
+            end
+            return false,locallyOwned and"SELF_OWNED_REMOTE_REJECT"or"SAME_REVISION_CONFLICT",true
+        end
+        if locallyOwned then return false,"SELF_OWNED_REMOTE_REJECT",true end
+    elseif not self:IsLocallyOwned(guid)then return false,"NOT_LOCAL_OWNER",true end
+    local clean=copy(data)
+    if mode~="remote"and#definition.fields>1 then for _,field in ipairs(definition.fields)do if clean[field]==nil then clean[field]=copy(record[field])end end end
+    local version=mode=="remote"and tonumber(meta.version)or((tonumber(current and current.version)or 0)+1)
+    local updatedAt=mode=="remote"and tonumber(meta.originCreatedAt or meta.updatedAt)or now()
+    if mode~="remote"and current then local existing;if#definition.fields==1 then existing=record[definition.fields[1]]else existing={};for _,field in ipairs(definition.fields)do existing[field]=record[field]end end;if same(existing,clean)then return false,"UNCHANGED",true end end
     if #definition.fields==1 then record[definition.fields[1]]=clean else for _,field in ipairs(definition.fields)do record[field]=clean[field]end end
     -- Keep block-local metadata visible to compatible readers without making it authoritative.
     for _,field in ipairs(definition.fields)do if type(record[field])=="table"then record[field].version=version;record[field].updatedAt=updatedAt end end
-    record.blockMeta[blockId]={owner=guid,version=version,updatedAt=updatedAt,source=meta.source or(mode=="remote"and"sync"or"local"),receivedFrom=meta.receivedFrom,direct=mode~="remote"or meta.direct==true}
+    record.blockMeta[blockId]={owner=guid,version=version,updatedAt=updatedAt,originCreatedAt=mode=="remote"and tonumber(meta.originCreatedAt or meta.updatedAt)or updatedAt,committedAt=mode=="remote"and tonumber(meta.committedAt or meta.originCreatedAt or meta.updatedAt)or updatedAt,receivedAt=mode=="remote"and now()or nil,source=meta.source or(mode=="remote"and"sync"or"local"),receivedFrom=mode=="remote"and meta.receivedFrom or nil,direct=mode~="remote"or meta.direct==true}
     record.version=math.max(tonumber(record.version)or 0,version);record.updatedAt=math.max(tonumber(record.updatedAt)or 0,updatedAt);record.updatedBy=guid
     if mode=="remote"then self:AdvanceForeignWatermark(guid,updatedAt,"character")end
     HolyStorm.Events:Emit("HS_PLAYERDATA_UPDATED",guid,blockId,copy(record.blockMeta[blockId]),mode)
@@ -162,10 +182,44 @@ function PlayerData:ApplyBlock(guid,blockId,data,meta,mode)
     return true,copy(record.blockMeta[blockId])
 end
 function PlayerData:WriteOwnedBlock(guid,blockId,data,source) return self:ApplyBlock(guid,blockId,data,{source=source or"local"},"owned")end
+local function snapshotVersion(data)
+    if type(data)~="table"then return nil end
+    return tonumber(data.snapshotVersion or data.schemaVersion)
+end
+function PlayerData:GetBlockHeader(guid,blockId)
+    local record=self:GetCharacter(guid);local definition=self.blocks[blockId];if not record or not definition then return nil end
+    local result={};for _,field in ipairs(definition.fields)do local value=record[field];if type(value)=="table"then if value.snapshotVersion~=nil then result.snapshotVersion=value.snapshotVersion end;if value.schemaVersion~=nil then result.schemaVersion=value.schemaVersion end end end;return result
+end
+function PlayerData:LogRemoteBlockDecision(decision,reason,guid,blockId,incoming,stored,incomingData,storedData,validationStatus)
+    local incomingVersion=tonumber(incoming and incoming.version);local storedVersion=tonumber(stored and stored.version)
+    HolyStorm.Logger:Write(decision=="REJECT"and"WARN"or"DEBUG","PlayerData","freshness","Character block sync decision",{
+        decision=decision,reason=reason,character=guid,block=blockId,origin=incoming and incoming.owner,storedOrigin=stored and stored.owner,
+        incomingRevision=incomingVersion,storedRevision=storedVersion,
+        incomingOriginCreatedAt=tonumber(incoming and(incoming.originCreatedAt or incoming.updatedAt)),storedOriginCreatedAt=tonumber(stored and(stored.originCreatedAt or stored.updatedAt)),
+        incomingCommittedAt=tonumber(incoming and incoming.committedAt),storedCommittedAt=tonumber(stored and stored.committedAt),
+        incomingReceivedAt=tonumber(incoming and incoming.receivedAt),storedReceivedAt=tonumber(stored and stored.receivedAt),
+        incomingSource=incoming and incoming.source,storedSource=stored and stored.source,
+        incomingReceivedFrom=incoming and incoming.receivedFrom,storedReceivedFrom=stored and stored.receivedFrom,
+        authority=incoming and(incoming.direct==true and"DIRECT_ORIGIN"or"RELAY"),
+        incomingSchemaVersion=type(incomingData)=="table"and tonumber(incomingData.schemaVersion),storedSchemaVersion=type(storedData)=="table"and tonumber(storedData.schemaVersion),
+        incomingSnapshotVersion=snapshotVersion(incomingData),storedSnapshotVersion=snapshotVersion(storedData),
+        validationStatus=validationStatus or"PASSED"
+    })
+end
 function PlayerData:AcceptRemoteBlock(guid,blockId,data,meta,senderGuid,sender)
-    meta=copy(meta or{});meta.receivedFrom=sender or senderGuid;meta.direct=senderGuid~=nil and senderGuid==guid
-    local ok,reason=self:ApplyBlock(guid,blockId,data,meta,"remote")
-    HolyStorm.Logger:Write(ok and"DEBUG"or(reason=="STALE_VERSION"or reason=="SAME_VERSION")and"DEBUG"or"WARN","PlayerData","freshness",ok and"Character block accepted"or"Character block rejected",{guid=guid,block=blockId,owner=meta.owner,version=meta.version,receivedFrom=meta.receivedFrom,direct=meta.direct,reason=reason})
+    meta=copy(meta or{});meta.receivedFrom=sender or senderGuid;meta.direct=senderGuid~=nil and senderGuid==guid;meta.receivedAt=now()
+    local stored=self:GetMetadata(guid,blockId);local storedData=self:GetBlockHeader(guid,blockId)
+    local ok,reason,validated=self:ApplyBlock(guid,blockId,data,meta,"remote")
+    local localOwner=self:IsLocallyOwned(guid);local returnValue
+    if ok and type(reason)=="table"then
+        returnValue=reason
+        local incomingRevision=tonumber(meta.version);local previousRevision=tonumber(stored and stored.version)or 0
+        reason=incomingRevision and incomingRevision>previousRevision+1 and"REVISION_GAP_ACCEPTED"or"ACCEPTED"
+    end
+    local decision=ok and(reason=="NOOP"and"NOOP"or"ACCEPT")or"REJECT"
+    self:LogRemoteBlockDecision(decision,reason,guid,blockId,meta,stored,data,storedData,validated and"PASSED"or"FAILED")
+    if ok and reason=="NOOP"then return true,"NOOP"end
+    if ok then return true,returnValue or"ACCEPTED"end
     return ok,reason
 end
 function PlayerData:ObserveIdentity(guid,data,source)
@@ -174,8 +228,9 @@ function PlayerData:ObserveIdentity(guid,data,source)
 end
 function PlayerData:GetBlockFreshness(guid,blockId)
     local definition=self.blocks[blockId];local meta=self:GetMetadata(guid,blockId);local staleAfter=definition and definition.staleAfter or 21600
-    local updatedAt=meta and(tonumber(meta.updatedAt)or 0)or nil;local age=updatedAt and now()-updatedAt or nil
-    return{metadata=meta,metadataExists=meta~=nil,stale=not meta or age>staleAfter,updatedAt=updatedAt,staleAfter=staleAfter,age=age}
+    local localOwner=meta and self:IsLocallyOwned(guid);local updatedAt=meta and(tonumber(localOwner and(meta.committedAt or meta.updatedAt)or(meta.receivedAt))or nil)or nil;local age=updatedAt and now()-updatedAt or nil
+    local state=not meta and"MISSING"or age==nil and"UNKNOWN"or age>staleAfter and"STALE"or"CURRENT"
+    return{metadata=meta,metadataExists=meta~=nil,stale=state~="CURRENT",state=state,clockDomain=localOwner and"LOCAL_COMMIT"or"LOCAL_RECEIVE",updatedAt=tonumber(meta and(meta.originCreatedAt or meta.updatedAt)),freshnessAt=updatedAt,staleAfter=staleAfter,age=age}
 end
 function PlayerData:IsStale(guid,blockId)return self:GetBlockFreshness(guid,blockId).stale end
 function PlayerData:RequestRefresh(guid,blocks)
