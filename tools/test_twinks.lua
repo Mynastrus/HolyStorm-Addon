@@ -86,4 +86,24 @@ characterData[repeatGuid].guild="Another Character Guild";guild.id="Different In
 assert(countEvent("HS_CHARACTER_RELATIONSHIP_UPDATED")==repeatEvents+1 and publishCount==repeatPublishes+1,"100 identical confirmations caused relationship events or publishes")
 local switchGuid="Switched-Character";characterData[switchGuid]={guid=switchGuid,name="Switched",realm="Realm",classFile="MAGE",level=80};local otherAccount="account-previous-owner";core.accounts[otherAccount]={accountUUID=otherAccount,characters={[switchGuid]=core:CompactIdentity(switchGuid,core.sources.OWNER,{id="old",roster={}})},visibility=core.visibility.ALL,ownerVersion=1,version=1};core.relationships[switchGuid]=otherAccount;currentGuid=switchGuid;local switchVersion=core:GetAccount(accountUUID).ownerVersion;local _,switchChanged=core:ConfirmLocalCharacter(switchGuid);assert(switchChanged and core.relationships[switchGuid]==accountUUID and not core.accounts[otherAccount].characters[switchGuid],"real character-to-account switch was not revised")
 HolyStorm.Sync.Publish=originalPublish
-print("TwinkCore scenarios A-J passed")
+
+-- L: manual assignments are a fallback, move atomically, and yield to AUTO.
+local manualA,manualB,autoC="account-manual-a","account-manual-b","account-auto-c"
+local x,y,z="Manual-X","Manual-Y","Auto-Z"
+for guid,name in pairs({[x]="X",[y]="Y",[z]="Z"})do characterData[guid]={guid=guid,name=name,realm="Other"}end
+assert(core:AssignCharacterAdministrative(manualB,y));assert(core:AssignCharacterAdministrative(manualB,x));assert(core:GetAccountUUIDForCharacter(x)==manualB)
+assert(core:AssignCharacterAdministrative(manualA,x));assert(core:GetAccountUUIDForCharacter(x)==manualA and not core:GetCharactersForAccount(manualB)[x]);assert(core:GetCharactersForAccount(manualB)[y],"manual move removed unrelated group member")
+local movedTombstone=core.adminTombstones[manualB.."\031"..x];assert(movedTombstone and movedTombstone.operation=="REMOVE","manual move must tombstone old relationship")
+assert(core:AssignCharacterAdministrative(autoC,z));assert(core:AssignCharacterAdministrative(autoC,x));assert(core:GetRelationshipSource(x)==core.sources.ADMIN)
+clock=1025;local oldAutoAccount="account-older-auto";local oldAutoOwner="Auto-Old";characterData[oldAutoOwner]={guid=oldAutoOwner,name="Old",realm="Other"};local oldX=ownerEntry(x);oldX.relationship.confirmedAt=clock;local payloadOld={accountUUID=oldAutoAccount,characters={[oldAutoOwner]=ownerEntry(oldAutoOwner),[x]=oldX},visibility=core.visibility.ALL,ownerVersion=1,updatedAt=clock,issuedBy=oldAutoOwner}
+assert(core:MergeOwnerSnapshot(oldAutoAccount,payloadOld,{owner=oldAutoOwner,version=1,updatedAt=clock}));assert(core:GetAccountUUIDForCharacter(x)==oldAutoAccount and core:IsOwnerConfirmed(x))
+clock=1030;local payloadL={accountUUID=autoC,characters={[z]=ownerEntry(z),[x]=ownerEntry(x)},visibility=core.visibility.ALL,ownerVersion=1,updatedAt=clock,issuedBy=z}
+assert(core:MergeOwnerSnapshot(autoC,payloadL,{owner=z,version=1,updatedAt=clock}));assert(core:GetAccountUUIDForCharacter(x)==autoC and core:IsOwnerConfirmed(x));assert(not core:GetCharactersForAccount(manualA)[x]);assert(core:GetCharactersForAccount(manualB)[y],"AUTO reconciliation merged or split unrelated group members")
+assert(core:MergeOwnerSnapshot(oldAutoAccount,payloadOld,{owner=oldAutoOwner,version=2,updatedAt=clock+100}));assert(core:GetAccountUUIDForCharacter(x)==autoC,"stale AUTO relay reverted the newer owner proof")
+local staleManual={accountUUID=manualA,characterUUID=x,operation="ASSIGN",entry={characterUUID=x,relationship={source=core.sources.ADMIN}},source=core.sources.ADMIN,assignedBy="Officer",assignedAt=clock+500,version=999}
+assert(core:ApplyAdministrativePayload(manualA.."\031"..x,staleManual)==false,"stale manual relay overrode AUTO")
+assert(core:GetAccountUUIDForCharacter(x)==autoC and core:IsOwnerConfirmed(x))
+-- Manual relationships never leak into the owner-authoritative account payload.
+assert(not core:ExportOwnerSnapshot(manualB).characters[y] and not core:ExportOwnerSnapshot(manualB).characters[x])
+local sourceFile=io.open(featureRoot.."TwinkCore.lua","r");local sourceText=sourceFile:read("*a");sourceFile:close();assert(not sourceText:find("PlayerData:GetRoot",1,true),"TwinkCore must use the PlayerData relationship API")
+print("TwinkCore scenarios A-L passed")

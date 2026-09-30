@@ -112,7 +112,7 @@ local function buildTwinks(parent)
  },rowHeight=26,headerHeight=26,columnGap=1,emptyText=L["NO_TWINKS"],onRowClick=function(row)C:OpenCharacter(row.characterUUID,"summary")end})
 end
 local function refreshTwinks(view,context,definition)
- local core,accountUUID=HolyStorm.TwinkCore,context.accountUUID;if not accountUUID then C:SetTableView(view,{}, {emptyText=L["NO_TWINKS"]});return end
+ local core=HolyStorm.TwinkCore;local accountUUID=core:GetAccountUUIDForCharacter(context.characterUUID)or context.accountUUID;if not accountUUID then C:SetTableView(view,{}, {emptyText=L["NO_TWINKS"]});return end
  local guild=context.guild;local accountMain=core:GetAccountMain(accountUUID,guild);local guildMain,isShadow=core:GetGuildMain(accountUUID,guild);local characters=core:GetVisibleCharactersForViewer(accountUUID,guild);local rows={}
  for _,character in ipairs(characters)do
   local labels={};if character.characterUUID==accountMain then labels[#labels+1]=L["ACCOUNT_MAIN"]end;if character.characterUUID==guildMain then labels[#labels+1]=L[isShadow and"SHADOW_MAIN"or"GUILD_MAIN"]end
@@ -128,7 +128,7 @@ local standardTabs={
  {id="twinks",order=70,labelKey="TAB_TWINKS",icon=tabVisuals.twinks.icon,blocks={"identity"},events={"HS_TWINKS_UPDATED","HS_ACCOUNT_MAIN_CHANGED","HS_GUILD_MAIN_CHANGED","HS_TWINK_VISIBILITY_CHANGED"},characterScopedEvents=false,build=buildTwinks,refresh=refreshTwinks},
 }
 for _,definition in ipairs(standardTabs)do assert(C:RegisterTab(definition))end
-C:RegisterSummarySection({id="twinks",order=90,render=function(context)local account=context.accountUUID and HolyStorm.TwinkCore:GetAccount(context.accountUUID);local count=account and HolyStorm.Utils.TableCount(account.characters)or 0;return{label=L["SUMMARY_TWINKS"],tabId="twinks",value=count>0 and string.format(L["CHARACTER_COUNT"],count)or""}end})
+C:RegisterSummarySection({id="twinks",order=90,render=function(context)local accountUUID=HolyStorm.TwinkCore:GetAccountUUIDForCharacter(context.characterUUID)or context.accountUUID;local account=accountUUID and HolyStorm.TwinkCore:GetAccount(accountUUID);local count=account and HolyStorm.Utils.TableCount(account.characters)or 0;return{label=L["SUMMARY_TWINKS"],tabId="twinks",value=count>0 and string.format(L["CHARACTER_COUNT"],count)or""}end})
 HolyStorm:RegisterCapability("CharacterOverview","character.open",function(_,characterUUID,tabId)return C:OpenCharacter(characterUUID,tabId or"summary")end)
 HolyStorm.Events:Register("HS_CHARACTER_LIVE_STATS_UPDATED","character-overview-live-stats",function(_,guid)if Page.ScheduleRefresh then Page:ScheduleRefresh("stats",guid)end end)
 

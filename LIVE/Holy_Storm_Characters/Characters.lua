@@ -1,7 +1,7 @@
 local addonVersion = "2.2.0"
 local HolyStorm = LibStub("AceAddon-3.0"):GetAddon("Holy_Storm")
 local L = LibStub("AceLocale-3.0"):GetLocale("Holy_Storm_Twinks")
-if HolyStorm.PermissionRegistry then HolyStorm.PermissionRegistry:RegisterLegacyAlias("twinks.assign","twinks-assign");HolyStorm.PermissionRegistry:RegisterLegacyAlias("twinks.remove","twinks-remove")end
+if HolyStorm.PermissionRegistry then HolyStorm.PermissionRegistry:RegisterLegacyAlias("twinks.assign","twinks-manage-manual-assignments");HolyStorm.PermissionRegistry:RegisterLegacyAlias("twinks.remove","twinks-manage-manual-assignments");HolyStorm.PermissionRegistry:RegisterLegacyAlias("twinks-assign","twinks-manage-manual-assignments");HolyStorm.PermissionRegistry:RegisterLegacyAlias("twinks-remove","twinks-manage-manual-assignments")end
 if HolyStorm.PlayerData then
  local function validStatsSnapshot(snapshot)
   if type(snapshot)~="table"then return false,"INVALID_STATS_SNAPSHOT"end
@@ -34,7 +34,7 @@ end
 HolyStorm:RegisterModule({
  id="Twinks",name="Twinks",displayName=L["DISPLAY_NAME"],internalName="twinks",version=addonVersion,
  moduleType="feature",category="feature",description=L["DESCRIPTION"],
- permissions={"player-read","savedvariables-write",{id="twinks-assign",category="Characters"},{id="twinks-remove",category="Characters"}},dependencies={"core"},
+ permissions={"player-read","savedvariables-write",{id="twinks-manage-manual-assignments",category="Characters",labelKey="PERMISSION_TWINKS_MANAGE_MANUAL_ASSIGNMENTS",descriptionKey="PERMISSION_TWINKS_MANAGE_MANUAL_ASSIGNMENTS_DESC",defaults={leadership=true,officers=true}}},dependencies={"core"},
  ui={page="twinks",navigation=true},data={stores={"PlayerDataStore","CharacterStore","GuildStore"}},
  sync={domains={"twinks","twinkAdmin"}},enabledByDefault=true,
  ruleFields={
@@ -73,7 +73,14 @@ function Twinks:InitializeUI()
  self.page,self.count,self.content,self.rows=page,count,content,{};HolyStorm.UI:RegisterPage("twinks",page,L["WINDOW_TITLE"],function()Twinks:Refresh()end,{"HS_CHARACTER_UPDATED","HS_ROSTER_UPDATED","HS_TWINKS_UPDATED","HS_ACCOUNT_MAIN_CHANGED","HS_GUILD_MAIN_CHANGED","HS_TWINK_VISIBILITY_CHANGED"});HolyStorm.UI:AddNavigation("twinks",5,"Interface\\Icons\\INV_Misc_GroupLooking",L["NAVIGATION_TITLE"],L["NAVIGATION_DESCRIPTION"],function()Twinks:RequestAndRefresh();HolyStorm.UI:ShowPage("twinks")end)
 end
 function Twinks:OnInitialize()
- HolyStorm.TwinkCore:Initialize();HolyStorm.CharacterActions:Initialize();registerRichLinkTypes();HolyStorm.CharacterDirectory:Initialize("Twinks")
+ HolyStorm.TwinkCore:Initialize();HolyStorm.CharacterActions:Initialize();HolyStorm.CharacterActions:RegisterProvider("twink-assignment",function(characterUUID,data)
+  local core=HolyStorm.TwinkCore;local source=data.main and data.main.relationshipSource;local actions={}
+  if source==core.sources.OWNER then actions[#actions+1]={text=L["AUTOMATIC_ASSIGNMENT"],enabled=false};return actions end
+  local current=core:GetAccountUUIDForCharacter(characterUUID);local canAssign=core:CanAdmin("twinks-manage-manual-assignments");local targets=canAssign and core:GetManualAssignmentTargets()or{}
+  for _,target in ipairs(targets)do if target.accountUUID~=current then local selected=target.accountUUID;actions[#actions+1]={text=(source==core.sources.ADMIN and L["CHANGE_CHARACTER_ASSIGNMENT"]or L["ASSIGN_CHARACTER"]).." — "..target.label,callback=function(guid,actionData)core:AssignCharacterAdministrative(selected,guid,actionData.context.member or actionData.context.character)end}end end
+  if source==core.sources.ADMIN and core:CanAdmin("twinks-manage-manual-assignments")then actions[#actions+1]={text=L["REMOVE_CHARACTER_ASSIGNMENT"],callback=function(guid)core:RemoveAdministrativeAssignment(current,guid)end}end
+  return actions
+ end);registerRichLinkTypes();HolyStorm.CharacterDirectory:Initialize("Twinks")
  HolyStorm:RegisterUIExtension("Twinks",{id="characters.twinks",order=5,initialize=function()Twinks:InitializeUI()end})
 end
 function Twinks:QueueCollection(trigger)

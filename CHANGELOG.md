@@ -15,8 +15,13 @@
 - Corrected Character Stats to use Retail's effective paper-doll values, version the persisted baseline, keep live aura changes transient, and show rating separately from effective percentages.
 - Unified the five character snapshot block descriptors and semantic comparison, made Equipment commit failures visible to the workflow, and preserved unavailable Delves API state instead of converting it to empty/false values.
 - Reframed Delves snapshots around the documented current season and Great Vault World reward data, added weekly reset identity and readiness validation, and removed unsupported placeholders and unrelated scan triggers.
+- Consolidated Twink relationships around owner-confirmed AUTO and administrative MANUAL authority, prevented manual relays from replacing AUTO, tombstoned manual moves, and moved TwinkCore onto PlayerData's relationship API.
+- Added reusable character context actions for manual assignment, reassignment and removal, with officer and guild-leadership defaults and localized source explanations.
 
 ### Deutsch
+
+- Twink-Beziehungen unterscheiden nun klar zwischen owner-bestätigter AUTO- und administrativer MANUAL-Autorität. Veraltete manuelle Relays können AUTO nicht überschreiben; manuelle Wechsel werden tombstoniert und TwinkCore verwendet die PlayerData-Beziehungs-API.
+- Wiederverwendbare Charakter-Kontextaktionen ermöglichen manuelles Zuordnen, Wechseln und Entfernen. Gildenleitung und Offiziere erhalten die Verwaltungsberechtigung standardmäßig; Quellhinweise sind lokalisiert.
 
 - Delves-Snapshots bilden nun die dokumentierte aktuelle Saison und Weltfortschritte der Großen Schatzkammer ab, nutzen eine Wochenreset-Identität mit Readiness-Prüfung und entfernen unbelegte Platzhalter sowie irrelevante Scan-Trigger.
 

@@ -114,6 +114,30 @@ function PlayerData:Initialize()
 end
 
 function PlayerData:GetRoot() return self.root end
+-- TwinkCore owns the relationship rules; PlayerData owns their persistence.
+-- Keep the legacy fields in this store so existing SavedVariables migrate in
+-- place, while callers no longer need to inspect the PlayerData root.
+function PlayerData:GetTwinkState()
+    local root=self.root
+    root.accounts=type(root.accounts)=="table"and root.accounts or root.players or{}
+    root.players=root.accounts
+    root.characterAccounts=type(root.characterAccounts)=="table"and root.characterAccounts or root.characterOwners or{}
+    root.characterOwners=root.characterAccounts
+    root.adminTwinkTombstones=type(root.adminTwinkTombstones)=="table"and root.adminTwinkTombstones or{}
+    return{accounts=root.accounts,relationships=root.characterAccounts,tombstones=root.adminTwinkTombstones,localAccountUUID=root.localAccountUUID}
+end
+function PlayerData:SetLocalAccountUUID(accountUUID)
+    if not validId(accountUUID)then return false,"INVALID_ACCOUNT_UUID"end
+    self.root.localAccountUUID=accountUUID
+    return true
+end
+function PlayerData:SetCharacterOwner(guid,accountUUID)
+    if not validId(guid)or accountUUID~=nil and not validId(accountUUID)then return false,"INVALID_IDENTITY"end
+    self.root.characterOwners[guid]=accountUUID
+    local character=self.root.characters[guid]
+    if character then character.playerId=accountUUID end
+    return true
+end
 function PlayerData:GetCharacters() return self.root.characters end
 function PlayerData:GetCharacter(guid) return validId(guid)and self.root.characters[guid]or nil end
 function PlayerData:GetOrCreateCharacter(guid)

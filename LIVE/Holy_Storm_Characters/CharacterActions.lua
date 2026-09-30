@@ -5,7 +5,7 @@ local Actions={version=addonVersion,providers={}}
 local function enabled(item,value)if item and item.SetEnabled then item:SetEnabled(not not value)end;return item end
 
 function Actions:Resolve(characterUUID)
- local context=HolyStorm.CharacterUI and HolyStorm.CharacterUI:ResolveContext(characterUUID);if not context then return nil end;local member=context.member;local account=context.accountUUID;local main=HolyStorm.TwinkCore and HolyStorm.TwinkCore:GetRosterIdentity(characterUUID,context.guild);return{characterUUID=characterUUID,name=context.fullName or context.name or characterUUID,online=member and member.online==true,context=context,main=main,accountUUID=account}
+ local context=HolyStorm.CharacterUI and HolyStorm.CharacterUI:ResolveContext(characterUUID);if not context then return nil end;local member=context.member;local core=HolyStorm.TwinkCore;local account=core and type(core.GetAccountUUIDForCharacter)=="function"and core:GetAccountUUIDForCharacter(characterUUID)or context.accountUUID;local main=core and core:GetRosterIdentity(characterUUID,context.guild);return{characterUUID=characterUUID,name=context.fullName or context.name or characterUUID,online=member and member.online==true,context=context,main=main,accountUUID=account}
 end
 function Actions:Open(characterUUID)return HolyStorm:CallCapability("character.open",characterUUID,"summary")end
 function Actions:OpenMain(characterUUID)local data=self:Resolve(characterUUID);local target=data and data.main and(data.main.accountMain or data.main.guildMain);return target and self:Open(target)or false end
