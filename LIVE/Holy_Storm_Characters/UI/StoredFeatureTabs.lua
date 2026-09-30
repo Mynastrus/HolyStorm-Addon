@@ -36,15 +36,15 @@ end
 
 do
  local L=locale("MYTHICPLUS_")
- local function scoreText(value)local score=tonumber(value);if score==nil then return HolyStorm.CharacterUI:FormatState(nil)end;local text=score%1==0 and tostring(score)or string.format("%.1f",score);local color=C_ChallengeMode and C_ChallengeMode.GetDungeonScoreRarityColor and C_ChallengeMode.GetDungeonScoreRarityColor(score);if color then if color.WrapTextInColorCode then return color:WrapTextInColorCode(text)end;if color.r then return string.format("|cff%02x%02x%02x%s|r",math.floor(color.r*255+.5),math.floor(color.g*255+.5),math.floor(color.b*255+.5),text)end end;return text end
+ local function safeNumber(value)if issecretvalue then local safe,secret=pcall(issecretvalue,value);if not safe or secret then return nil end end;local ok,number=pcall(tonumber,value);return ok and number or nil end
+ local function scoreText(value)local score=tonumber(value);if score==nil then return HolyStorm.CharacterUI:FormatState(nil)end;local text=score%1==0 and tostring(score)or string.format("%.1f",score);local api=C_ChallengeMode;local color;if api and type(api.GetDungeonScoreRarityColor)=="function"then local ok,result=pcall(api.GetDungeonScoreRarityColor,score);if ok then color=result end end;if color then if color.WrapTextInColorCode then return color:WrapTextInColorCode(text)end;if color.r then return string.format("|cff%02x%02x%02x%s|r",math.floor(color.r*255+.5),math.floor(color.g*255+.5),math.floor(color.b*255+.5),text)end end;return text end
  local function durationText(value)local seconds=tonumber(value);if not seconds or seconds<0 then return nil end;seconds=math.floor(seconds+.5);local hours=math.floor(seconds/3600);local minutes=math.floor((seconds%3600)/60);local remainder=seconds%60;if hours>0 then return string.format("%d:%02d:%02d",hours,minutes,remainder)end;return string.format("%d:%02d",minutes,remainder)end
  local function levelText(value)local level=tonumber(value);return level and level>0 and("+"..tostring(level))or nil end
  local function timedText(overTime)if type(overTime)~="boolean"then return HolyStorm.CharacterUI:FormatState(nil)end;return overTime and L["NOT_TIMED"]or L["TIMED"]end
  local function timedCell(cell,_,row)
   if not cell.statusIcon then cell.statusIcon=cell.frame:CreateTexture(nil,"ARTWORK");cell.statusIcon:SetSize(18,18);cell.statusIcon:SetPoint("CENTER")end
-  local overtime=row.bestRun and row.bestRun.overTime
-  if overtime==false then cell.statusIcon:SetTexture("Interface\\RaidFrame\\ReadyCheck-Ready");cell.statusIcon:SetVertexColor(.2,1,.2,1);cell.statusIcon:Show();cell:SetDisplay("")
-  elseif overtime==true then cell.statusIcon:SetTexture("Interface\\RaidFrame\\ReadyCheck-NotReady");cell.statusIcon:SetVertexColor(1,.25,.25,1);cell.statusIcon:Show();cell:SetDisplay("")
+  if row.displayBestTimed==true then cell.statusIcon:SetTexture("Interface\\RaidFrame\\ReadyCheck-Ready");cell.statusIcon:SetVertexColor(.2,1,.2,1);cell.statusIcon:Show();cell:SetDisplay("")
+  elseif row.displayBestTimed==false then cell.statusIcon:SetTexture("Interface\\RaidFrame\\ReadyCheck-NotReady");cell.statusIcon:SetVertexColor(1,.25,.25,1);cell.statusIcon:Show();cell:SetDisplay("")
   else cell.statusIcon:Hide();cell:SetDisplay(HolyStorm.CharacterUI:FormatState(nil))end
  end
  local function dungeonCell(cell,_,row)
@@ -64,10 +64,11 @@ do
  local function bestRunTooltip(row,_,_,_,owner)
   if type(row)~="table"then return false end
   local C=HolyStorm.CharacterUI;local unknown=C:FormatState(nil);local rows={}
-  appendRun(rows,L["BEST_RUN"],row.bestRun)
+  appendRun(rows,L["TIMED"],row.bestInTime)
+  appendRun(rows,L["NOT_TIMED"],row.bestOverTime)
   local affixes={};for _,entry in pairs(type(row.affixScores)=="table"and row.affixScores or{})do if type(entry)=="table"and runHasData(entry)then affixes[#affixes+1]=entry end end
-  local rank={TYRANNICAL=1,FORTIFIED=2};table.sort(affixes,function(a,b)local ar,br=rank[a.category]or 3,rank[b.category]or 3;if ar~=br then return ar<br end;return tostring(a.name or a.category or"")<tostring(b.name or b.category or"")end)
-  for _,entry in ipairs(affixes)do local label=entry.category and L[entry.category]or entry.name;if type(label)=="string"and label~=""then appendRun(rows,label,entry)end end
+  table.sort(affixes,function(a,b)return tostring(a.name or"")<tostring(b.name or"")end)
+  for _,entry in ipairs(affixes)do if type(entry.name)=="string"and entry.name~=""then appendRun(rows,entry.name,entry)end end
   local timer=durationText(row.timeLimit);if timer then rows[#rows+1]={cells={L["DUNGEON_TIMER"],unknown,unknown,timer,unknown},colors={[5]={r=.55,g=.55,b=.55}}}end
   if #rows==0 then return false end
   local tooltips=HolyStorm.Tooltips
@@ -75,10 +76,11 @@ do
  end
  local function currentSeasonId()
   local api=C_MythicPlus;if not api or type(api.GetCurrentSeason)~="function"then return nil end
-  local ok,value=pcall(api.GetCurrentSeason);return ok and tonumber(value)or nil
+  local ok,value=pcall(api.GetCurrentSeason);return ok and safeNumber(value)or nil
  end
  local function isCurrentSeason(snapshot)
-  local stored=type(snapshot)=="table"and tonumber(snapshot.seasonId);local current=currentSeasonId()
+  if type(snapshot)~="table"or snapshot.schemaVersion~=4 or snapshot.snapshotVersion~=4 then return false end
+  local stored=safeNumber(snapshot.seasonId);local current=currentSeasonId()
   return stored~=nil and stored>0 and current~=nil and stored==current
  end
  local function refresh(view,context)
@@ -86,11 +88,21 @@ do
   if not snapshot or next(snapshot)==nil or not isCurrentSeason(snapshot)then C:SetTableView(view,{}, {summary="",emptyText=L["NO_MYTHICPLUS"]});return end
   local rows={}
   for _,dungeon in pairs(type(snapshot.dungeons)=="table"and snapshot.dungeons or{})do if type(dungeon)=="table"then
-   local best=type(dungeon.bestRun)=="table"and dungeon.bestRun or nil
-   rows[#rows+1]={name=dungeon.name or C:FormatState(nil),instanceId=dungeon.instanceId,challengeMapId=dungeon.challengeMapId,texture=dungeon.texture,bestRun=best,affixScores=dungeon.affixScores,timeLimit=dungeon.timeLimit,bestLevel=best and levelText(best.level)or C:FormatState(nil),rating=snapshot.scoreDataReady==false and C:FormatState(nil)or scoreText(dungeon.score),time=best and durationText(best.durationSec)or C:FormatState(nil)}
+   local timed=type(dungeon.bestInTime)=="table"and dungeon.bestInTime or nil
+   local overtime=type(dungeon.bestOverTime)=="table"and dungeon.bestOverTime or nil
+   local shown,shownTimed
+   if timed and overtime then shownTimed=timed.score>overtime.score;shown=shownTimed and timed or overtime
+   elseif timed then shown,shownTimed=timed,true
+   elseif overtime then shown,shownTimed=overtime,false end
+   rows[#rows+1]={name=dungeon.name or C:FormatState(nil),instanceId=dungeon.instanceId,challengeMapId=dungeon.challengeMapId,texture=dungeon.texture,bestInTime=timed,bestOverTime=overtime,displayBestTimed=shownTimed,affixScores=dungeon.affixScores,timeLimit=dungeon.timeLimit,bestLevel=shown and levelText(shown.level)or L["NO_COMPLETION"],rating=scoreText(dungeon.score),time=shown and durationText(shown.durationSec)or L["NO_COMPLETION"]}
   end end
-  table.sort(rows,function(a,b)if a.name==b.name then return(tonumber(a.challengeMapId)or 0)<(tonumber(b.challengeMapId)or 0)end;return tostring(a.name)<tostring(b.name)end)
-  C:SetTableView(view,rows,{summary=string.format(L["SEASON_SUMMARY"],C:FormatState(snapshot.seasonId),scoreText(snapshot.overallScore)),emptyText=L["NO_MYTHICPLUS"]})
+  table.sort(rows,function(a,b)return(tonumber(a.challengeMapId)or 0)<(tonumber(b.challengeMapId)or 0)end)
+  local summary=string.format(L["SEASON_SUMMARY"],C:FormatState(snapshot.seasonId),scoreText(snapshot.overallScore))
+  local vault=snapshot.greatVaultMythicPlus;local week;local vaultProgress=C:FormatState(nil)
+  if C_DateAndTime and type(C_DateAndTime.GetWeeklyResetStartTime)=="function"then local ok,value=pcall(C_DateAndTime.GetWeeklyResetStartTime);if ok then week=safeNumber(value)end end
+  if type(vault)=="table"and snapshot.weeklyIdentity==week and vault.currentPeriod==true and type(vault.activities)=="table"then vaultProgress=string.format(L["GREAT_VAULT_PROGRESS"],vault.progress,#vault.activities)end
+  summary=summary.."  •  "..string.format(L["GREAT_VAULT_SUMMARY"],vaultProgress)
+  C:SetTableView(view,rows,{summary=summary,emptyText=L["NO_MYTHICPLUS"]})
  end
  local function build(parent)return HolyStorm.CharacterUI:CreateTableView(parent,{columns={{id="name",title=L["COLUMN_DUNGEON"],weight=1,minWidth=180,compactWidth=140,truncate=true,renderCell=dungeonCell,onClick=openJournal,tooltip=function(row,_,_,tooltip)tooltip:SetText(row.name);tooltip:AddLine(L["OPEN_JOURNAL"],1,1,1,true);return true end},{id="bestLevel",title=L["COLUMN_BEST_LEVEL"],width=95,compactWidth=74,align="CENTER",tooltip=bestRunTooltip},{id="rating",title=L["COLUMN_DUNGEON_RATING"],width=112,compactWidth=85,align="RIGHT",tooltip=bestRunTooltip},{id="time",title=L["COLUMN_TIME"],width=86,compactWidth=70,align="RIGHT",tooltip=bestRunTooltip},{id="timed",title=L["COLUMN_IN_TIME"],width=72,compactWidth=56,align="CENTER",renderCell=timedCell,tooltip=bestRunTooltip}},rowHeight=28,headerHeight=26,columnGap=1,emptyText=L["NO_MYTHICPLUS"]})end
  HolyStorm:RegisterCharacterTab("characters",{id="mythicPlus",order=30,label=L["DISPLAY_NAME"],labelKey="MYTHICPLUS_DISPLAY_NAME",icon="Interface\\Icons\\Achievement_ChallengeMode_Gold",blocks={"mythicPlus"},events={"HS_MYTHICPLUS_UPDATED"},build=build,refresh=refresh})

@@ -4,6 +4,8 @@
 
 ### English
 
+- Audited current Retail Mythic+ APIs and moved Character snapshots to v4 with complete dynamic map-pool validation, direct season/rating data, Blizzard-selected timed and overtime records, current-period Mythic+ Great Vault thresholds, and no persisted volatile keystone or inferred Fortified/Tyrannical categories.
+- Updated stored Mythic+ views to use stable map IDs, separate timed/overtime records, current-season gating, Blizzard rating colors and correctly labeled Great Vault thresholds; documented the API contract and in-client acceptance checklist.
 - Audited Retail Equipment item APIs, preserved complete item links, separated equipped and overall character item level, rejected unknown slots and unloaded item data instead of storing them as empty, and kept uncertain gems/tier facts unknown in stored Character views.
 - Refined Character Overview spacing, compact profile sizing, and dynamic widget height; Mythic+ cards now use a neutral current-season label instead of exposing Blizzard's internal season ID.
 - Dynamic providers now form a two-column content-sized grid. Event weekdays and compact card descriptions use localized labels, and an empty achievement catalog has a clear zero state.
@@ -21,6 +23,8 @@
 
 ### Deutsch
 
+- Die aktuellen Retail-Mythic+-APIs wurden geprüft. Character-Snapshots verwenden nun Schema v4 mit vollständigem dynamischem Dungeonpool, direkter Saison und Gesamtwertung, getrennten Blizzard-Bestläufen (In Time/Over Time) und aktuellen Mythisch+-Schatzkammer-Schwellen. Veränderliche Schlüssel sowie abgeleitete Tyrannisch-/Verstärkt-Kategorien werden nicht mehr gespeichert.
+- Gespeicherte Mythisch+-Ansichten verwenden stabile Karten-IDs, getrennte Laufrekorde, eine aktuelle Saisonprüfung, Blizzards Wertungsfarben und korrekt bezeichnete Schatzkammer-Schwellen. API-Vertrag und In-Game-Abnahmecheckliste sind dokumentiert.
 - Die Retail-Equipment-APIs wurden geprüft. Vollständige ItemLinks bleiben erhalten; angelegte und allgemeine Gegenstandsstufe sind getrennt. Unbekannte Plätze und ungeladene Itemdaten werden nicht als leer gespeichert; unsichere Sockel- und Setdaten bleiben in gespeicherten Charakteransichten unbekannt.
 - Twink-Beziehungen unterscheiden nun klar zwischen owner-bestätigter AUTO- und administrativer MANUAL-Autorität. Veraltete manuelle Relays können AUTO nicht überschreiben; manuelle Wechsel werden tombstoniert und TwinkCore verwendet die PlayerData-Beziehungs-API.
 - Wiederverwendbare Charakter-Kontextaktionen ermöglichen manuelles Zuordnen, Wechseln und Entfernen. Gildenleitung und Offiziere erhalten die Verwaltungsberechtigung standardmäßig; Quellhinweise sind lokalisiert.
