@@ -1,7 +1,7 @@
 local root=(arg[0]:gsub("tools[/\\]test_character_ui.lua$","")).."LIVE/Holy_Storm/"
 local featureRoot=(arg[0]:gsub("tools[/\\]test_character_ui.lua$","")).."LIVE/Holy_Storm_Characters/"
 local function deepCopy(value,seen)if type(value)~="table"then return value end;seen=seen or{};if seen[value]then return seen[value]end;local out={};seen[value]=out;for key,child in pairs(value)do out[deepCopy(key,seen)]=deepCopy(child,seen)end;return out end
-local records={A={guid="A",name="Alpha",realm="Realm",classFile="PALADIN",level=80,equipment={itemLevel=710,slots={}},itemLevel=710,stats={spec={id=70,name="Retribution",icon=98765,index=3,role="DAMAGER"}}},B={guid="B",name="Beta-OtherRealm",classFile="MAGE",class="Mage",level=75,faction="Horde"},C={guid="C",name="Gamma",stats={primary={}}},D={guid="D",name="Delta",realm="Realm",classFile="DRUID",level=70}}
+local records={A={guid="A",name="Alpha",realm="Realm",classFile="PALADIN",level=80,equipment={snapshotVersion=4,equippedItemLevel=710,itemLevel=710,slots={}},itemLevel=710,stats={spec={id=70,name="Retribution",icon=98765,index=3,role="DAMAGER"}}},B={guid="B",name="Beta-OtherRealm",classFile="MAGE",class="Mage",level=75,faction="Horde"},C={guid="C",name="Gamma",stats={snapshotVersion=2,schemaVersion=2,primary={},secondary={},armor={}}},D={guid="D",name="Delta",realm="Realm",classFile="DRUID",level=70}}
 local metas={A={equipment={version=2,updatedAt=100}}}
 local refreshes={}
 local HolyStorm={Utils={DeepCopy=deepCopy},Data={CharacterStore={},GuildStore={},PlayerStore={}},PlayerData={},Tasks={registry={},queued={}},Policy={}}
@@ -80,9 +80,9 @@ assert(C:GetBestProgress(identityRaid,{instanceId=300,name="Raid Three"})==nil,"
 assert(C:GetDifficultyById(7).id=="LFR"and C:GetDifficultyById(14).id=="NORMAL"and C:GetDifficultyById(15).id=="HEROIC"and C:GetDifficultyById(16).id=="MYTHIC"and C:GetDifficultyById(33).id=="TIMEWALKING")
 assert(C:GetDifficultyColor("LFR").r==1 and C:GetDifficultyColor("NORMAL").g==1 and C:GetDifficultyColor("HEROIC").b==1 and C:GetDifficultyColor("MYTHIC").r==.70)
 
-records.A.mythicPlus={seasonId=18,overallScore=2500,scoreDataReady=true}
+records.A.mythicPlus={snapshotVersion=4,schemaVersion=4,seasonId=18,overallScore=2500,scoreDataReady=true}
  C_MythicPlus={GetCurrentSeason=function()return 18 end}
-records.A.raid={catalogReady=true,raids={{id=100,name="Current One",order=1,bosses={{id=1,name="Current Boss One"},{id=11,name="Second Boss"}}},{id=200,name="Current Two",order=2,bosses={{id=2,name="Current Boss Two"},{id=21,name="Second Boss"},{id=22,name="Third Boss"}}}},lifetime={bosses={
+records.A.raid={snapshotVersion=3,catalogReady=true,raids={{id=100,name="Current One",order=1,bosses={{id=1,name="Current Boss One"},{id=11,name="Second Boss"}}},{id=200,name="Current Two",order=2,bosses={{id=2,name="Current Boss Two"},{id=21,name="Second Boss"},{id=22,name="Third Boss"}}}},lifetime={bosses={
  currentOne={id=1,name="Current Boss One",raidInstanceId=100,raidName="Current One",difficulties={NORMAL={kills=2,source="blizzard-statistic",statisticId=21}}},
  currentTwo={id=2,name="Current Boss Two",raidInstanceId=200,raidName="Current Two",difficulties={HEROIC={kills=1,source="blizzard-statistic",statisticId=22}}},
  oldRaid={id=3,name="Old Boss",raidInstanceId=999,raidName="Old Expansion",difficulties={MYTHIC={kills=10,source="blizzard-statistic",statisticId=23}}},

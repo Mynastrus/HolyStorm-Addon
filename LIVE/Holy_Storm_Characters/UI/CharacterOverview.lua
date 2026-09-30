@@ -41,6 +41,17 @@ local function refreshSummary(view,context)C:SetTableView(view,summaryRows(conte
 local statKeys={"strength","agility","stamina","intellect"}
 local secondaryKeys={"criticalStrike","haste","mastery","versatility","leech","avoidance","speed"}
 local function number(value)return type(value)=="number"and value==value and value~=math.huge and value~=-math.huge and value or nil end
+local function orderedKeys(values,preferred)
+ local result,seen={},{}
+ for _,key in ipairs(preferred)do if type(values) == "table" and values[key]~=nil then result[#result+1]=key;seen[key]=true end end
+ local extra={};for key in pairs(type(values)=="table"and values or{})do if type(key)=="string"and not seen[key]then extra[#extra+1]=key end end
+ table.sort(extra);for _,key in ipairs(extra)do result[#result+1]=key end;return result
+end
+local function statLabel(key)
+ local token="STAT_"..string.upper(key);local label=L[token]
+ if label==nil or label==token then for _,known in ipairs(statKeys)do if key==known then return token end end;for _,known in ipairs(secondaryKeys)do if key==known then return token end end;if key=="armor"then return token end;return string.format(L["STAT_OTHER"],key)end
+ return label
+end
 local function percent(value)local n=number(value);return n~=nil and string.format("%.1f%%",n)or display(nil)end
 local function delta(value,suffix)
  local n=number(value);if n==nil then return display(nil)end
@@ -70,34 +81,36 @@ local function buildStats(parent)
 end
 local function refreshStats(view,context,definition)
  local snapshot=C:GetSnapshot(context.characterUUID,"stats");if not snapshot then C:SetTableView(view,{}, {emptyText=L["NO_STATS"]});return end
+ local version=tonumber(snapshot.snapshotVersion);local isV2=version==2 and tonumber(snapshot.schemaVersion)==2;local isLegacyV1=version==1
+ if not isV2 and not isLegacyV1 then C:SetTableView(view,{}, {emptyText=L["NO_STATS"]});return end
  local isOwnCharacter=context.characterUUID==UnitGUID("player");local live=isOwnCharacter and C:GetLiveStats(context.characterUUID)or nil
  local baselineReady=live and live.baselineReady==true
- local version=tonumber(snapshot.snapshotVersion)or 1;local rows={}
+ local rows={}
  local function primary(label,key,value)
-  local baseValue=version>=2 and type(value)=="table"and number(value.baseline)or type(value)=="table"and number(value.base)or nil
-  if key=="armor"and version<2 and type(value)=="table"then baseValue=number(value.effective)end
+  local baseValue=isV2 and type(value)=="table"and number(value.baseline)or isLegacyV1 and type(value)=="table"and number(value.base)or nil
+  if key=="armor"and isLegacyV1 and type(value)=="table"then baseValue=number(value.effective)end
   local liveValue=live and(key=="armor"and live.armor or live.primary and live.primary[key])
   local totalValue
   if isOwnCharacter then totalValue=liveValue and number(liveValue.effective)or nil
-  elseif version>=2 then totalValue=type(value)=="table"and number(value.baseline)or nil
+  elseif isV2 then totalValue=type(value)=="table"and number(value.baseline)or nil
   elseif key=="armor"then totalValue=type(value)=="table"and number(value.effective)or nil
   else totalValue=type(value)=="table"and(number(value.effective)or number(value.base))or nil end
   local additional=baselineReady and baseValue~=nil and totalValue~=nil and totalValue-baseValue or nil
   local baseText=display(baseValue);local totalText=display(totalValue);local additionalText=delta(additional)
   rows[#rows+1]={stat=label,base=baseText,additional=additionalText,total=totalText,baseText=baseText,effectiveText=totalText,additionalText=additionalText}
  end
- for _,key in ipairs(statKeys)do primary(L["STAT_"..key:upper()],key,snapshot.primary and snapshot.primary[key])end
+ for _,key in ipairs(orderedKeys(snapshot.primary,statKeys))do primary(statLabel(key),key,snapshot.primary[key])end
  primary(L["STAT_ARMOR"],"armor",snapshot.armor)
- for _,key in ipairs(secondaryKeys)do
-  local value=snapshot.secondary and snapshot.secondary[key]or{}
-  local baseline=version>=2 and number(value.baseline)or nil
-  local liveValue=live and live.secondary and live.secondary[key]
-  local effective;if isOwnCharacter then effective=liveValue and number(liveValue.effective)or nil else effective=baseline end
-  local rating=liveValue and number(liveValue.rating)or number(value.rating)
+ for _,key in ipairs(orderedKeys(snapshot.secondary,secondaryKeys))do
+   local value=snapshot.secondary and snapshot.secondary[key]or{}
+   local baseline=isV2 and number(value.baseline)or nil
+   local liveValue=live and live.secondary and live.secondary[key]
+   local effective;if isOwnCharacter then effective=liveValue and number(liveValue.effective)or nil else effective=baseline end
+   local rating=liveValue and number(liveValue.rating)or number(value.rating)
   local additional=baselineReady and baseline~=nil and effective~=nil and effective-baseline or nil
   local baseText=baseline~=nil and percent(baseline)or display(nil)
   local totalText=statTotal(rating,effective);local additionalText=delta(additional,"%")
-  rows[#rows+1]={stat=L["STAT_"..key:upper()],base=baseText,additional=additionalText,total=totalText,rating=rating,baseText=baseText,effectiveText=effective~=nil and percent(effective)or display(nil),additionalText=additionalText}
+   rows[#rows+1]={stat=statLabel(key),base=baseText,additional=additionalText,total=totalText,rating=rating,baseText=baseText,effectiveText=effective~=nil and percent(effective)or display(nil),additionalText=additionalText}
  end
  C:SetTableView(view,rows,{emptyText=L["NO_STATS"]})
 end
@@ -143,7 +156,7 @@ function C:LayoutTabView(view)
  if view.layout then view.layout:Relayout()elseif view.table and view.table.Relayout then view.table:Relayout()end
 end
 function C:RefreshHeader()
- local context=self.context;if not context or not Page.headerName then return end;context=self:ResolveContext(context.characterUUID);context.token=self.contextToken;self.context=context;local color=classColor(context.classFile);Page.headerName:SetText(context.name or context.characterUUID);Page.headerName:SetTextColor(color.r,color.g,color.b);local rank=context.member and context.member.rank or context.record and context.record.guildRank;local parts={context.realm,context.className,context.spec and context.spec.name,context.level and(L["LEVEL"].." "..context.level),rank};local clean={};for _,part in ipairs(parts)do if part and part~=""then clean[#clean+1]=part end end;Page.headerInfo:SetText(table.concat(clean,"  •  "))
+ local context=self.context;if not context or not Page.headerName then return end;context=self:ResolveContext(context.characterUUID);context.token=self.contextToken;self.context=context;local color=classColor(context.classFile);Page.headerName:SetText(context.name or context.characterUUID);Page.headerName:SetTextColor(color.r,color.g,color.b);local rank=context.member and context.member.rank or context.record and context.record.guildRank;local faction=context.record and context.record.faction;local factionName=type(faction)=="string"and L["FACTION_"..faction:upper()]or nil;local parts={};local function addPart(value)if value and value~=""then parts[#parts+1]=value end end;addPart(context.realm);addPart(context.className);addPart(context.record and context.record.race);addPart(context.spec and context.spec.name);addPart(context.level and(L["LEVEL"].." "..context.level));addPart(factionName);addPart(rank);Page.headerInfo:SetText(table.concat(parts,"  •  "))
  if Page:IsCharacterPageVisible()then Page:SetHeaderVisible(true)end
  if Page.classIcon then self:ApplyClassIconTexture(Page.classIcon,context.classFile)end
  if Page.specIcon then local icon=context.spec and context.spec.icon;if icon then Page.specIcon:SetTexture(icon);Page.specIcon:SetTexCoord(0,1,0,1);Page.specIcon:Show()else Page.specIcon:Hide()end end
@@ -181,7 +194,7 @@ function Page:InitializeUI()
  local headerBar=HolyStorm.UIComponents:CreateHeaderBar(UI.frame or page,UI.content or page);self.headerBar=headerBar;self.header=headerBar.frame;self.classIcon=headerBar.primaryIcon;self.portrait=headerBar.primaryIcon;self.specIcon=headerBar.secondaryIcon;self.headerName=headerBar.title;self.headerInfo=headerBar.subtitle;self.factionMark=headerBar.watermark;self.headerStatus=headerBar.status;self.headerUpdated=headerBar.updated;self.developer=headerBar.developer;self.refreshButton=headerBar.refreshButton
  self.refreshButton:SetScript("OnEnter",function(button)GameTooltip:SetOwner(button,"ANCHOR_LEFT");GameTooltip:SetText(L["REFRESH"]);GameTooltip:Show()end);self.refreshButton:SetScript("OnLeave",function()GameTooltip:Hide()end);self.refreshButton:SetScript("OnClick",function()if C.context then C:RequestRefresh(C.context.characterUUID,(C:GetTab(C.activeTab)or{}).blocks,"MANUAL")end end)
  self.pageLayout=HolyStorm.UI.Components:CreateColumn(page,{frame=page,padding={left=12,right=12,top=8,bottom=10}})
- local tabGroup=HolyStorm.UI.Components:CreateTabGroup(page);tabGroup.frame:Show();tabGroup:SetCallback("OnGroupSelected",function(_,_,tabId)if C.context then C:SelectTab(tabId);C:RequestRefresh(C.context.characterUUID,(C:GetTab(tabId)or{}).blocks,"TAB_SELECTED")end end);self.pageLayout:Add(tabGroup,{weight=1});self.tabGroup=tabGroup;self.tabHost=tabGroup:GetContentFrame();self.tabHost:Show();self:BuildTabs()
+  local tabGroup=HolyStorm.UI.Components:CreateTabGroup(page);tabGroup.frame:Show();tabGroup:SetCallback("OnGroupSelected",function(_,_,tabId)if C.context then C:SelectTab(tabId)end end);self.pageLayout:Add(tabGroup,{weight=1});self.tabGroup=tabGroup;self.tabHost=tabGroup:GetContentFrame();self.tabHost:Show();self:BuildTabs()
  page:HookScript("OnShow",function()Page:SetHeaderVisible(true)end);page:HookScript("OnHide",function()Page:SetHeaderVisible(false)end);local refresh=function()Page:SetHeaderVisible(true);if C.context then C:RefreshHeader();C:SelectTab(C.activeTab or"summary")end end;assert(HolyStorm.UI:RegisterView({id="character",owner="characters",title=L["WINDOW_TITLE"],page=page,refresh=refresh}))
  local function registerTabEvents(definition)for _,event in ipairs(definition.events or{})do local owner="character-overview:"..definition.id..":"..event;HolyStorm.Events:Register(event,owner,function(_,guid)Page:ScheduleRefresh(definition.id,definition.characterScopedEvents==false and nil or guid)end)end end
  for _,definition in ipairs(C:GetTabs())do registerTabEvents(definition)end

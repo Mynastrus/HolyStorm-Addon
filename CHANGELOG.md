@@ -4,6 +4,8 @@
 
 ### English
 
+- Audited Character Overview consumers against stored snapshot contracts; corrected Equipment v4 unknown socket/tier rendering, stale Raid weekly display, strict legacy-version handling, data-driven Stats rows, header identity metadata, and read-only tab switching. Documented the consumer matrix and Retail acceptance sequence.
+- Kept the seven base Character tabs in the requested order and moved the separately registered Achievements tab after them.
 - Audited current Retail Mythic+ APIs and moved Character snapshots to v4 with complete dynamic map-pool validation, direct season/rating data, Blizzard-selected timed and overtime records, current-period Mythic+ Great Vault thresholds, and no persisted volatile keystone or inferred Fortified/Tyrannical categories.
 - Updated stored Mythic+ views to use stable map IDs, separate timed/overtime records, current-season gating, Blizzard rating colors and correctly labeled Great Vault thresholds; documented the API contract and in-client acceptance checklist.
 - Audited Retail Equipment item APIs, preserved complete item links, separated equipped and overall character item level, rejected unknown slots and unloaded item data instead of storing them as empty, and kept uncertain gems/tier facts unknown in stored Character views.
@@ -23,6 +25,8 @@
 
 ### Deutsch
 
+- Die Character-Overview-Consumer wurden mit den gespeicherten Snapshot-Verträgen abgeglichen. Unbekannte Sockel-/Tierdaten in Equipment v4, veraltete Raid-Wochenbindungen, Legacy-Versionen, dynamische Stats-Zeilen, Header-Identität und Tab-Wechsel ohne Scan sind korrigiert. Consumer-Matrix und Retail-Abnahmefolge sind dokumentiert.
+- Die sieben Basis-Character-Tabs bleiben in der gewünschten Reihenfolge; der separat registrierte Erfolge-Tab folgt danach.
 - Die aktuellen Retail-Mythic+-APIs wurden geprüft. Character-Snapshots verwenden nun Schema v4 mit vollständigem dynamischem Dungeonpool, direkter Saison und Gesamtwertung, getrennten Blizzard-Bestläufen (In Time/Over Time) und aktuellen Mythisch+-Schatzkammer-Schwellen. Veränderliche Schlüssel sowie abgeleitete Tyrannisch-/Verstärkt-Kategorien werden nicht mehr gespeichert.
 - Gespeicherte Mythisch+-Ansichten verwenden stabile Karten-IDs, getrennte Laufrekorde, eine aktuelle Saisonprüfung, Blizzards Wertungsfarben und korrekt bezeichnete Schatzkammer-Schwellen. API-Vertrag und In-Game-Abnahmecheckliste sind dokumentiert.
 - Die Retail-Equipment-APIs wurden geprüft. Vollständige ItemLinks bleiben erhalten; angelegte und allgemeine Gegenstandsstufe sind getrennt. Unbekannte Plätze und ungeladene Itemdaten werden nicht als leer gespeichert; unsichere Sockel- und Setdaten bleiben in gespeicherten Charakteransichten unbekannt.
