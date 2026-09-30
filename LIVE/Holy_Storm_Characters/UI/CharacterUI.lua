@@ -196,7 +196,7 @@ function CharacterUI:GetDashboardSummary(characterUUID)
  characterUUID=characterUUID or(UnitGUID and UnitGUID("player"));local context=characterUUID and self:ResolveContext(characterUUID)
  if not context then return nil end
  local equipment,equipmentMeta=self:GetSnapshot(characterUUID,"equipment");local mythicPlus,mythicMeta=self:GetSnapshot(characterUUID,"mythicPlus");local raid,raidMeta=self:GetSnapshot(characterUUID,"raid");local delves,delvesMeta=self:GetSnapshot(characterUUID,"delves");local stats,statsMeta=self:GetSnapshot(characterUUID,"stats")
- local itemLevel=type(equipment)=="table"and tonumber(equipment.itemLevel)or nil;if itemLevel and itemLevel<=0 then itemLevel=nil end
+ local itemLevel=type(equipment)=="table"and tonumber(equipment.equippedItemLevel or equipment.itemLevel)or nil;if itemLevel and itemLevel<=0 then itemLevel=nil end
  local currentSeason=currentMythicPlusSeason();local storedSeason=type(mythicPlus)=="table"and tonumber(mythicPlus.seasonId)
  local rating=type(mythicPlus)=="table"and(currentSeason and storedSeason==currentSeason and tonumber(mythicPlus.overallScore)or nil)or nil
  local lastUpdatedAt=0;for _,meta in ipairs({equipmentMeta or{},mythicMeta or{},raidMeta or{},delvesMeta or{},statsMeta or{}})do lastUpdatedAt=math.max(lastUpdatedAt,tonumber(meta.updatedAt)or 0)end

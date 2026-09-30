@@ -4,6 +4,7 @@
 
 ### English
 
+- Audited Retail Equipment item APIs, preserved complete item links, separated equipped and overall character item level, rejected unknown slots and unloaded item data instead of storing them as empty, and kept uncertain gems/tier facts unknown in stored Character views.
 - Refined Character Overview spacing, compact profile sizing, and dynamic widget height; Mythic+ cards now use a neutral current-season label instead of exposing Blizzard's internal season ID.
 - Dynamic providers now form a two-column content-sized grid. Event weekdays and compact card descriptions use localized labels, and an empty achievement catalog has a clear zero state.
 - Corrected profile card anchoring and applied the shared dashboard text styles to keep profile content readable.
@@ -20,6 +21,7 @@
 
 ### Deutsch
 
+- Die Retail-Equipment-APIs wurden geprüft. Vollständige ItemLinks bleiben erhalten; angelegte und allgemeine Gegenstandsstufe sind getrennt. Unbekannte Plätze und ungeladene Itemdaten werden nicht als leer gespeichert; unsichere Sockel- und Setdaten bleiben in gespeicherten Charakteransichten unbekannt.
 - Twink-Beziehungen unterscheiden nun klar zwischen owner-bestätigter AUTO- und administrativer MANUAL-Autorität. Veraltete manuelle Relays können AUTO nicht überschreiben; manuelle Wechsel werden tombstoniert und TwinkCore verwendet die PlayerData-Beziehungs-API.
 - Wiederverwendbare Charakter-Kontextaktionen ermöglichen manuelles Zuordnen, Wechseln und Entfernen. Gildenleitung und Offiziere erhalten die Verwaltungsberechtigung standardmäßig; Quellhinweise sind lokalisiert.
 
