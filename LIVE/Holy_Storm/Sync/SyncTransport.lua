@@ -146,7 +146,7 @@ function Transport:GetDiagnostics()
     local result = {
         backend = self:IsAvailable() and "AceCommQueue-1.0/AceComm-3.0" or "unavailable",
         aceCommQueue = { available = acqStatus.loaded == true, version = acqStatus.version },
-        libGuildRoster = { available = rosterStatus.loaded == true, version = rosterStatus.version, usedForPeerResolution = false },
+        libGuildRoster = { available = rosterStatus.loaded == true, version = rosterStatus.version, usedForPeerResolution = true },
         peerBackend = "HolyStorm.Data.GuildStore + Sync presence",
         attempts = self.attempts,
         queued = self.queued,

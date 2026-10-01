@@ -14,11 +14,13 @@ function GetNormalizedRealmName()return"Realm"end
 function GetRealmName()return"Realm"end
 function GuildControlGetNumRanks()return 1 end
 function GuildControlGetRankName()return"Member"end
-function GetNumGuildMembers()return 3 end
-local rosterRows={
+local rosterRows
+function GetNumGuildMembers()return #rosterRows end
+rosterRows={
  {"Mynastrus-Realm","Member",5,80,"Paladin","City","","",true,0,"PALADIN",0,0,false,false,0,"Player-Local"},
  {"Maristy-Realm","Member",5,80,"Paladin","City","","",true,0,"PALADIN",0,0,false,false,0,"Player-A"},
  {"Modus-Realm","Member",5,80,"Paladin","City","","",true,0,"PALADIN",0,0,false,false,0,"Player-B"},
+ {"CrossPeer-OtherRealm","Member",5,80,"Paladin","City","","",true,0,"PALADIN",0,0,false,false,0,"Player-Cross"},
 }
 function GetGuildRosterInfo(index)return unpack(rosterRows[index])end
 C_Timer={}
@@ -27,9 +29,23 @@ function C_Timer.NewTimer(delay,callback)
  function timer:Cancel()self.cancelled=true end
  return timer
 end
-function LibStub(name)
+local rosterLibrary={}
+function rosterLibrary:NormalizeName(name)
+ if type(name)~="string"then return nil end
+ name=name:match("^%s*(.-)%s*$"):gsub("%s*%-%s*","-")
+ local character,realm=name:match("^(.-)%-(.-)$")
+ if not character then character=name end
+ if character==""then return nil end
+ if realm then realm=realm:gsub("%s+","");if realm==""then realm=nil end end
+ if not realm and name:lower()~="unknown"then realm="Realm"end
+ if realm then return character.."-"..realm end
+ return character
+end
+function LibStub(name,silent)
  if name=="AceLocale-3.0"then return{GetLocale=function()return locale end}end
  if name=="AceAddon-3.0"then return{GetAddon=function()return activeAddon end,NewAddon=function()return activeAddon end}end
+ if name=="LibGuildRoster-1.0"then return rosterLibrary end
+ if silent then return nil end
  error("Unexpected library: "..tostring(name))
 end
 
@@ -68,6 +84,7 @@ end
 
 local function loadAddonRuntime(addon,guid,name,withGuildStore)
  activeAddon,activeGuid,activeName=addon,guid,name
+ addon.testGuid,addon.testName=guid,name
  local rawVersion=addon.version
  C_AddOns={GetAddOnMetadata=function(_,key)assert(key=="Version");return rawVersion end}
  assert(loadfile(root.."LIVE/Holy_Storm/Core/Bootstrap/Bootstrap.lua"))("Holy_Storm")
@@ -111,8 +128,11 @@ end
 local function versionLogs(addon)
  local matches={};for _,entry in ipairs(addon.Logger.history)do if entry.message=="Presence version"then matches[#matches+1]=entry end end;return matches
 end
+local function findLog(addon,message)
+ for _,entry in ipairs(addon.Logger.history)do if entry.message==message then return entry end end
+end
 local function findVersionLog(addon,character,reason)
- for _,entry in ipairs(versionLogs(addon))do local context=entry.context or{};if context.character==character and context.reason==reason then return entry end end
+ for _,entry in ipairs(versionLogs(addon))do local context=entry.context or{};if tostring(context.character):lower()==tostring(character):lower()and context.reason==reason then return entry end end
 end
 local function sendQueued(addon,guid)
  activeAddon,activeGuid=addon,guid
@@ -126,25 +146,46 @@ local function sendQueued(addon,guid)
  end
  error("No queued Sync.Send task for "..guid)
 end
-local function receive(addon,guid,name)
+local function receiveTo(addon,guid,name,target,wireSender)
  local payload=sendQueued(addon,guid)
- activeAddon,activeGuid,activeName=receiver,"Player-Local","Mynastrus-Realm"
- local resolved=receiver.Data.GuildStore:ResolveSenderGuid(name)
- assert(receiver.Sync:Receive(payload,name,"GUILD",{transmissionId="test-"..guid}),"production Sync receive resolves "..tostring(name).." as "..tostring(resolved))
+ target=target or receiver;wireSender=wireSender or name
+ activeAddon,activeGuid,activeName=target,target.testGuid,target.testName
+ local resolved=target.Data.GuildStore:ResolveSenderGuid(wireSender,guid)
+ local savedComms=target.Comms
+ assert(loadfile(root.."LIVE/Holy_Storm/Sync/Comms.lua"))()
+ local productionComms=target.Comms
+ local transmissionId="HSC1-"..tostring(clock).."-"..tostring((target.testCommsSerial or 0)+1)
+ target.testCommsSerial=(target.testCommsSerial or 0)+1
+ local total=math.max(1,math.ceil(#payload/productionComms.chunkSize))
+ for part=1,total do
+  local chunk=payload:sub((part-1)*productionComms.chunkSize+1,part*productionComms.chunkSize)
+  local frame=table.concat({productionComms.protocol,transmissionId,part,total,chunk},"|")
+  assert(productionComms:OnMessage(productionComms.prefix,frame,"GUILD",wireSender),"production Comms reassembles the Presence frame")
+ end
+ target.Comms=savedComms
+ assert(target.Sync.knownOnline[guid]==clock,"production Comms delivery reaches the production Sync Presence handler for "..tostring(wireSender).." resolved as "..tostring(resolved))
+ return payload
 end
+local function receive(addon,guid,name)return receiveTo(addon,guid,name,receiver,name)end
 local function startRemote(guid,name,version)
  local addon=makeAddon(guid,version)
- loadAddonRuntime(addon,guid,name,false)
+ loadAddonRuntime(addon,guid,name,true)
  addon.Sync.loginSessionId="LOGIN-"..guid
  assert(addon.Sync:RunLoginPresence({metadata={sessionId=addon.Sync.loginSessionId}}),"remote login Presence is published")
- receive(addon,guid,name)
- return addon
+ local payload=receive(addon,guid,name)
+ return addon,payload
 end
 local function heartbeat(addon,guid,name)
  activeAddon,activeGuid,activeName=addon,guid,name
  local heartbeatTask=assert(addon.Tasks.registry["Sync.PresenceHeartbeat"],"heartbeat task is registered"):execute({metadata={}})
  assert(heartbeatTask,"online peer runs its scheduled Presence refresh")
  receive(addon,guid,name)
+end
+local function heartbeatTo(addon,guid,name,target)
+ activeAddon,activeGuid,activeName=addon,guid,name
+ local heartbeatTask=assert(addon.Tasks.registry["Sync.PresenceHeartbeat"],"heartbeat task is registered"):execute({metadata={}})
+ assert(heartbeatTask,"online peer runs its scheduled Presence refresh")
+ return receiveTo(addon,guid,name,target)
 end
 
 local versions=renderedVersions()
@@ -161,13 +202,50 @@ receiver.version="DEV";versions=renderedVersions();assertVersion(versions,"Playe
 receiver.Sync:OnPresence({version="8.0.0"},"Mynastrus-Realm","Player-Local")
 assert(receiver.Sync:GetKnownVersion("Player-Local")=="DEV","a Presence payload cannot replace the local authoritative build")
 
-local peerA=startRemote("Player-A","Maristy-Realm","5.9.0")
+local peerA,peerAAnnounce=startRemote("Player-A","Maristy-Realm","5.9.0")
 local peerB=startRemote("Player-B","Modus-Realm","5.9.0")
+local peerCross=startRemote("Player-Cross","CrossPeer-OtherRealm","8.1.0")
+local sentRelease=receiver.Serializer:Deserialize(peerAAnnounce)
+assert(sentRelease.kind=="PRESENCE"and sentRelease.data.version=="5.9.0","release clients put their resolved addon version in the actual serialized Presence payload")
+local peerAnnounce=findLog(peerA,"Presence announce")
+assert(peerAnnounce and peerAnnounce.context.character=="Maristy-Realm"and peerAnnounce.context.version=="5.9.0","a client logs its compact Presence announce with the actual release version")
 versions=renderedVersions()
 assertVersion(versions,"Player-A","5.9.0","initial remote A Presence reaches the roster")
 assertVersion(versions,"Player-B","5.9.0","initial remote B Presence reaches the roster")
-local learnedLog=findVersionLog(receiver,"Maristy-Realm","PRESENCE_VERSION_LEARNED")
-assert(learnedLog and learnedLog.level=="DEBUG"and learnedLog.context.old=="UNKNOWN"and learnedLog.context.incoming=="5.9.0"and learnedLog.context.result=="5.9.0","new remote versions have one structured DEBUG change log")
+assertVersion(versions,"Player-Cross","8.1.0","cross-realm Presence maps into the same GUID key the roster UI reads")
+local receivedLog=findLog(receiver,"Sync envelope received")
+assert(receivedLog and receivedLog.context.sender=="Maristy-Realm"and receivedLog.context.senderGuid=="Player-A"and receivedLog.context.claimedGuid=="Player-A"and receivedLog.context.version=="5.9.0"and receivedLog.context.identityReason=="GUID_AND_NAME_MATCH","Retail receive diagnostics include the wire sender, claimed/resolved GUID and incoming version")
+local learnedLog=findVersionLog(receiver,"maristy-realm","PRESENCE_VERSION_LEARNED")
+assert(learnedLog and learnedLog.level=="DEBUG"and learnedLog.context.character=="maristy-realm"and learnedLog.context.guid=="Player-A"and learnedLog.context.sender=="Maristy-Realm"and learnedLog.context.old=="UNKNOWN"and learnedLog.context.incoming=="5.9.0"and learnedLog.context.result=="5.9.0"and learnedLog.context.receivedAt==1000 and learnedLog.context.expiresAt==1300,"new remote versions have one structured DEBUG change log with normalized identity and TTL")
+local bareGuid,bareReason=receiver.Data.GuildStore:ResolveSenderGuid("Maristy","Player-A")
+assert(bareGuid=="Player-A"and bareReason=="GUID_AND_NAME_MATCH","a bare same-realm addon sender resolves to the canonical roster GUID")
+local crossGuid=receiver.Data.GuildStore:ResolveSenderGuid("CrossPeer - Other Realm","Player-Cross")
+assert(crossGuid=="Player-Cross","spacing in a qualified cross-realm sender normalizes to the roster identity")
+local completeName=rosterRows[2][1];rosterRows[2][1]="Maristy"
+assert(receiver.Data.GuildStore:RefreshFromBlizzard(),"roster refresh accepts a same-realm row without an explicit realm")
+local qualifiedGuid=receiver.Data.GuildStore:ResolveSenderGuid("Maristy-Realm","Player-A")
+assert(qualifiedGuid=="Player-A","a qualified addon sender resolves against the bare same-realm roster row")
+activeAddon,activeGuid,activeName=peerA,"Player-A","Maristy-Realm"
+local aliasPayload=peerA.Sync:QueueEnvelope("PRESENCE",nil,{version="5.9.0",reason="SENDER_ALIAS_TEST"},"GUILD",nil,90)
+assert(aliasPayload,"qualified sender alias Presence is queued")
+receiveTo(peerA,"Player-A","Maristy-Realm",receiver,"Maristy-Realm")
+rosterRows[2][1]=completeName;assert(receiver.Data.GuildStore:RefreshFromBlizzard(),"roster identity is restored after alias normalization test")
+local crossPeerView=renderedVersions();assertVersion(crossPeerView,"Player-Cross","8.1.0","cross-realm peer remains visible after sender normalization checks")
+activeAddon,activeGuid,activeName=receiver,"Player-Local","Mynastrus-Realm"
+assert(receiver.Sync:RunLoginPresence({metadata={sessionId=receiver.Sync.loginSessionId}}),"local DEV client announces its current resolved version")
+local localPayload=receiveTo(receiver,"Player-Local","Mynastrus-Realm",peerA)
+local localEnvelope=receiver.Serializer:Deserialize(localPayload)
+assert(localEnvelope.data.version=="DEV"and peerA.Sync:GetKnownVersion("Player-Local")=="DEV","client B's real Receive and GuildStore path exposes client A DEV on B's roster")
+local localAnnounce=findLog(receiver,"Presence announce")
+assert(localAnnounce and localAnnounce.context.character=="Mynastrus-Realm"and localAnnounce.context.version=="DEV","DEV announce is logged once with the transmitted local version")
+activeAddon,activeGuid,activeName=peerA,"Player-A","Maristy-Realm"
+peerA.Sync:QueueEnvelope("PRESENCE",nil,{version="7.0.0",reason="UNRESOLVED_SENDER_TEST"},"GUILD",nil,90)
+local unknownPayload=sendQueued(peerA,"Player-A")
+activeAddon,activeGuid,activeName=receiver,"Player-Local","Mynastrus-Realm"
+assert(not receiver.Sync:Receive(unknownPayload,"NotAGuildMember","GUILD",{transmissionId="test-unresolved-sender"}),"an unverified sender is not promoted to a confirmed Holy Storm peer")
+assert(receiver.Sync:GetKnownVersion("Player-A")=="5.9.0","a version from a sender that cannot map to the roster is not stored")
+local unresolvedLog=findVersionLog(receiver,"notaguildmember-realm","CLAIMED_GUID_NAME_MISMATCH")
+assert(unresolvedLog and unresolvedLog.context.sender=="NotAGuildMember"and unresolvedLog.context.claimedGuid=="Player-A"and unresolvedLog.context.incoming=="7.0.0"and unresolvedLog.context.result=="UNKNOWN","unresolved Presence logs the sender, claim, incoming version and resolution reason")
 local completeRosterRow=rosterRows[2]
 rosterRows[2]={"Maristy-Realm","Member",5,80,"Paladin","City","","",true,0,"PALADIN",0,0,false,false,0,nil}
 receiver.Events.listeners.GUILD_ROSTER_UPDATE["guild-roster"]("GUILD_ROSTER_UPDATE")
@@ -216,14 +294,26 @@ peerB.version="DEV"
 clock=1303
 heartbeat(peerA,"Player-A","Maristy-Realm")
 heartbeat(peerB,"Player-B","Modus-Realm")
+heartbeatTo(peerB,"Player-B","Modus-Realm",peerA)
+activeAddon,activeGuid,activeName=receiver,"Player-Local","Mynastrus-Realm"
 versions=renderedVersions()
 assertVersion(versions,"Player-A","5.10.0","fresh authoritative Presence replaces the cached release version")
 assertVersion(versions,"Player-B","DEV","remote DEV remains visible after a fresh Presence")
+assert(peerA.Sync:GetKnownVersion("Player-B")=="DEV","client B's actual DEV Presence reaches client A's GUID-keyed version store")
 local changedLog=findVersionLog(receiver,"Maristy-Realm","PRESENCE_VERSION_UPDATED")
 assert(changedLog and changedLog.context.old=="5.9.0"and changedLog.context.incoming=="5.10.0"and changedLog.context.result=="5.10.0","a changed remote release is logged with old, incoming and result values")
+local savedRemoteVersion=receiver.Sync.knownVersions["Player-A"]
+receiver.Sync.knownVersions["Player-A"]=nil
+versions=renderedVersions();assertVersion(versions,"Player-A",nil,"the roster UI reads the current Sync store and does not retain a separate version cache")
+receiver.Sync.knownVersions["Player-A"]=savedRemoteVersion
+versions=renderedVersions();assertVersion(versions,"Player-A","5.10.0","restoring the central Sync record updates the roster UI directly")
 
 clock=1400
 heartbeat(peerA,"Player-A","Maristy-Realm")
+rosterRows[3][9]=false
+assert(receiver.Data.GuildStore:RefreshFromBlizzard(),"Blizzard roster marks an expired peer offline")
+assert(receiver.Sync:GetKnownVersion("Player-B")=="DEV","offline roster status alone does not discard a still-fresh confirmed Presence version")
+versions=renderedVersions();assertVersion(versions,"Player-B","DEV","offline rows retain the version until the confirmed Presence TTL expires")
 clock=1604
 assert(receiver.Sync:Cleanup(),"production Sync cleanup runs")
 assert(receiver.Sync.knownVersions["Player-B"]==nil,"cleanup removes an expired remote version at the canonical Presence TTL")

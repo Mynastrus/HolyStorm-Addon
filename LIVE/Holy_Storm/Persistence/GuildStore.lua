@@ -42,9 +42,48 @@ function Store:GetCurrentRosterSummary()
     return summary
 end
 function Store:GetDiagnostics()return{guilds=HolyStorm.Utils.TableCount(self:_GetAllLive()),normalized=HolyStorm.Utils.TableCount(self.normalized),currentId=self.currentId}end
-function Store:ResolveSenderGuid(sender)
-    if type(sender)~="string" then return nil end; local full,short=string.lower(sender),string.lower(sender:match("^[^-]+")or sender); local qualified=sender:find("-",1,true)~=nil
-    local guild=self:GetCurrent(); for guid,member in pairs(guild and guild.roster or {}) do local name=member.name; if name then local candidateFull,candidateShort=string.lower(name),string.lower(name:match("^[^-]+")or name); if candidateFull==full or (not qualified and candidateShort==short) then return guid end end end
+function Store:NormalizeSenderName(sender)
+    if type(sender)~="string"or sender==""then return nil end
+    local rosterLibrary=LibStub and LibStub("LibGuildRoster-1.0",true)
+    local normalized=rosterLibrary and rosterLibrary.NormalizeName and rosterLibrary:NormalizeName(sender)
+    if type(normalized)=="string"and normalized~=""then return string.lower(normalized)end
+    local value=Ambiguate and Ambiguate(sender,"none")or sender
+    value=value:match("^%s*(.-)%s*$")
+    local name,realm=value:match("^([^%-]+)%-(.+)$")
+    if not name then
+        name=value
+        realm=GetNormalizedRealmName and GetNormalizedRealmName()or GetRealmName and GetRealmName()
+    end
+    if not name or name==""then return nil end
+    if realm and realm~=""then return string.lower(name.."-"..realm:gsub("%s+",""))end
+    return string.lower(name)
+end
+function Store:ResolveSenderGuid(sender,claimedGuid)
+    if type(sender)~="string"or sender==""then return nil,"INVALID_SENDER"end
+    local guild=self:GetCurrent();local roster=guild and guild.roster
+    if type(roster)~="table"then return nil,"GUILD_ROSTER_UNAVAILABLE"end
+    local senderKey=self:NormalizeSenderName(sender)
+    if not senderKey then return nil,"SENDER_NAME_UNRESOLVED"end
+    local claimedMemberNameMismatch=false
+    if claimedGuid~=nil then
+        if type(claimedGuid)~="string"or claimedGuid==""then return nil,"INVALID_CLAIMED_GUID"end
+        local claimedMember=roster[claimedGuid]
+        if claimedMember and self:NormalizeSenderName(claimedMember.name)==senderKey then return claimedGuid,"GUID_AND_NAME_MATCH"end
+        claimedMemberNameMismatch=claimedMember~=nil
+    end
+    local match
+    for guid,member in pairs(roster)do
+        if type(member)=="table"and self:NormalizeSenderName(member.name)==senderKey then
+            if match and match~=guid then return nil,"AMBIGUOUS_SENDER_NAME"end
+            match=guid
+        end
+    end
+    if match then
+        if claimedGuid and claimedGuid~=match then return match,"CLAIMED_GUID_MISMATCH"end
+        return match,"NORMALIZED_NAME_MATCH"
+    end
+    if claimedMemberNameMismatch then return nil,"CLAIMED_GUID_NAME_MISMATCH"end
+    return nil,claimedGuid and"CLAIMED_GUID_NOT_IN_ROSTER"or"SENDER_NOT_IN_GUILD_ROSTER"
 end
 function Store:GetGuildId()
     if not IsInGuild() then return nil end

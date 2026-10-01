@@ -1,7 +1,7 @@
 local addonVersion="3.5.0"
 local HolyStorm=LibStub("AceAddon-3.0"):GetAddon("Holy_Storm")
 local L=LibStub("AceLocale-3.0"):GetLocale("Holy_Storm")
-local Sync={version=addonVersion,protocol=3,domains={},requests={},activeRequests={},heard={},heardAt={},sequence=0,maxOffers=100,knownOnline={},knownVersions={},fetchTailByPeer={},publishedVersions={},requestTimeout=60,presenceTimeout=300,presenceRefreshMin=180,presenceRefreshJitter=60,cleanupTimer=nil,cleanupDue=nil,cleanupTaskId=nil,loginSessionId=nil,presencePublished=false,peerVersionReceived=false,outdatedNotified=false}
+local Sync={version=addonVersion,protocol=3,domains={},requests={},activeRequests={},heard={},heardAt={},sequence=0,maxOffers=100,knownOnline={},knownVersions={},presenceResolutionDiagnostics={},fetchTailByPeer={},publishedVersions={},requestTimeout=60,presenceTimeout=300,presenceRefreshMin=180,presenceRefreshJitter=60,cleanupTimer=nil,cleanupDue=nil,cleanupTaskId=nil,loginSessionId=nil,presencePublished=false,peerVersionReceived=false,outdatedNotified=false}
 local function copy(v)return HolyStorm.Utils.DeepCopy(v)end
 local function now()return HolyStorm.Utils.Now()end
 local function validId(v)return type(v)=="string"and#v>0 and#v<=160 end
@@ -10,19 +10,29 @@ local function validPresenceVersion(value)return value=="DEV"or type(value)=="st
 local function key(domain,objectId)return domain.."\030"..tostring(objectId or"*")end
 local function log(level,category,message,context,correlationId)HolyStorm.Logger:Write(level,"Sync",category,message,context,correlationId)end
 local function playerName()return GetUnitName and GetUnitName("player",true)or UnitName and UnitName("player")or"Player"end
-local function logPresenceVersion(character,oldVersion,incomingVersion,result,reason)
+local function normalizedCharacter(name)
+ local store=HolyStorm.Data and HolyStorm.Data.GuildStore
+ return store and store.NormalizeSenderName and store:NormalizeSenderName(name)or name
+end
+local function logPresenceVersion(character,guid,sender,oldVersion,incomingVersion,result,reason,receivedAt,expiresAt)
  if oldVersion==result then return end
- log("DEBUG","version","Presence version",{character=character or"UNKNOWN",old=oldVersion or"UNKNOWN",incoming=incomingVersion or"UNKNOWN",result=result or"UNKNOWN",reason=reason})
+ log("DEBUG","version","Presence version",{character=normalizedCharacter(character)or"UNKNOWN",guid=guid,sender=sender,old=oldVersion or"UNKNOWN",incoming=incomingVersion or"UNKNOWN",result=result or"UNKNOWN",reason=reason,receivedAt=receivedAt,expiresAt=expiresAt})
 end
 local function clearKnownVersion(sync,guid,entry,reason,incomingVersion)
  sync.knownVersions[guid]=nil
- logPresenceVersion(entry.sender or guid,entry.version,incomingVersion,nil,reason)
+ logPresenceVersion(entry.sender or guid,guid,entry.sender,entry.version,incomingVersion,nil,reason,now())
+end
+local function logUnresolvedPresence(sync,data,sender,claimedGuid,reason,receivedAt)
+ local key=string.lower(tostring(sender or"UNKNOWN"));local previous=sync.presenceResolutionDiagnostics[key]
+ if previous and previous.reason==reason and receivedAt-(tonumber(previous.receivedAt)or 0)<sync.presenceTimeout then return end
+ sync.presenceResolutionDiagnostics[key]={reason=reason,receivedAt=receivedAt}
+ log("DEBUG","version","Presence version",{character=normalizedCharacter(sender)or"UNKNOWN",sender=sender,claimedGuid=claimedGuid,old="UNKNOWN",incoming=data.version or"UNKNOWN",result="UNKNOWN",reason=reason,receivedAt=receivedAt})
 end
 local function audience(channel,target)if target and target~=""then return target end;local labels={GUILD="Guild",RAID="Raid",PARTY="Party",INSTANCE_CHAT="Instance"};return labels[channel]or"Broadcast"end
 local function receiver(channel)return channel=="WHISPER"and playerName()or audience(channel)end
 local messageClasses={PRESENCE="discovery",DISCOVER="discovery",ANNOUNCE="metadata",OFFER="metadata",FETCH="request",PAYLOAD="payload",LIVE="payload"}
 local function envelopeDiagnostics(envelope,channel,target,correlationId)local data=type(envelope.data)=="table"and envelope.data or{};local meta=type(data.metadata)=="table"and data.metadata or type(data.offers)=="table"and type(data.offers[1])=="table"and data.offers[1]or{};local objectId=data.objectId or meta.objectId;local characterUUID,blockType;if type(objectId)=="string"then characterUUID,blockType=objectId:match("^(.-)\031([^\031]+)$")end;local destination=audience(channel,target);return{direction="SEND",sender=playerName(),receiver=destination,target=target or destination,from=playerName(),to=destination,channel=channel,domain=envelope.domain,logicalObject=blockType or objectId,blockType=blockType,block=blockType,characterUUID=characterUUID,objectId=objectId,messageKind=envelope.kind,messageClass=messageClasses[envelope.kind]or"control",version=meta.version or data.version,revision=meta.revisionID or data.revisionID,reason=data.reason,requestId=data.requestId,correlationId=correlationId,originalOwner=meta.owner,relay=meta.owner and meta.owner~=UnitGUID("player")or false,retry=false}end
-local function senderGuid(sender)return HolyStorm.Data.GuildStore:ResolveSenderGuid(sender)end
+local function senderGuid(sender,claimedGuid)return HolyStorm.Data.GuildStore:ResolveSenderGuid(sender,claimedGuid)end
 local function samePlayerName(a,b)if not a or not b then return false end;if Ambiguate then return Ambiguate(a,"none")==Ambiguate(b,"none")end;return a==b end
 local function splitCharacterId(objectId)if type(objectId)~="string"then return nil end;return objectId:match("^(.-)\031([^\031]+)$")end
 local function characterBlockSyncEnabled(block)local data=HolyStorm.PlayerData;return not(data and type(data.IsBlockSyncEnabled)=="function")or data:IsBlockSyncEnabled(block)end
@@ -61,8 +71,31 @@ function Sync:QueueEnvelope(kind,domain,data,channel,target,priority,delay)
  local envelope={protocol=self.protocol,kind=kind,domain=domain,data=data,sentAt=now(),sender=UnitGUID("player")};self.correlationSerial=(self.correlationSerial or 0)+1;local correlationId=type(data)=="table"and data.requestId and("SYNC-"..data.requestId)or string.format("SYNC-%08X-%04X",now()%0xFFFFFFFF,self.correlationSerial%0xFFFF);local diagnostics=envelopeDiagnostics(envelope,channel,target,correlationId);return HolyStorm.Tasks:Queue("Sync.Send",{executionMode="MULTI",priority=priority or 70,delay=delay or 0,triggerSource="SYNC_"..kind,metadata={envelope=envelope,channel=channel,target=target,correlationId=correlationId,diagnostics=diagnostics}})
 end
 function Sync:SendNow(task)
- local m=task.metadata or{};local payload,err=HolyStorm.Serializer:Serialize(m.envelope);if not payload then log("WARN","validation","Sync envelope serialization failed",{error=err,messageKind=m.envelope and m.envelope.kind,domain=m.envelope and m.envelope.domain,correlationId=m.correlationId},m.correlationId);return false end
- local diagnostics=m.diagnostics or envelopeDiagnostics(m.envelope,m.channel,m.target,m.correlationId);local retryCount=tonumber(task.retryCount)or 0;diagnostics.bytes=#payload;diagnostics.serializedBytes=#payload;diagnostics.retry=retryCount>0;diagnostics.retryCount=retryCount;local sent,transmissionId=HolyStorm.Comms:Send(payload,m.channel,m.target,task.priority,diagnostics);diagnostics.transmissionId=transmissionId;if sent then if m.envelope and m.envelope.kind=="PRESENCE"and m.envelope.data and m.envelope.data.sessionId==self.loginSessionId then self.presencePublished=true;HolyStorm.Tasks:Queue("Sync.VersionNotice",{delay=2,priority=99,triggerSource="PRESENCE_PUBLISHED"})end;log("DEBUG",string.lower(tostring(diagnostics.messageKind or"sync")),"Sync envelope queued",diagnostics,diagnostics.correlationId)else log("WARN","retries","Sync envelope was not queued",diagnostics,diagnostics.correlationId);if retryCount<(tonumber(task.maxRetries)or 0)then HolyStorm.Tasks:Queue("Sync.Send",{executionMode="MULTI",priority=task.priority,delay=math.min(8,2^(retryCount+1)),retryCount=retryCount+1,maxRetries=task.maxRetries,triggerSource="SYNC_RETRY",metadata=m})end end;return sent
+ local m=task.metadata or{}
+ local payload,err=HolyStorm.Serializer:Serialize(m.envelope)
+ if not payload then log("WARN","validation","Sync envelope serialization failed",{error=err,messageKind=m.envelope and m.envelope.kind,domain=m.envelope and m.envelope.domain,correlationId=m.correlationId},m.correlationId);return false end
+ local diagnostics=m.diagnostics or envelopeDiagnostics(m.envelope,m.channel,m.target,m.correlationId)
+ local retryCount=tonumber(task.retryCount)or 0
+ diagnostics.bytes=#payload;diagnostics.serializedBytes=#payload;diagnostics.retry=retryCount>0;diagnostics.retryCount=retryCount
+ local sent,transmissionId=HolyStorm.Comms:Send(payload,m.channel,m.target,task.priority,diagnostics);diagnostics.transmissionId=transmissionId
+ if sent then
+  local envelope=m.envelope;local data=envelope and envelope.kind=="PRESENCE"and envelope.data
+  if data then
+   if data.reason=="LOGIN_PRESENCE"then
+    local sessionId=data.sessionId or"LOGIN_PRESENCE"
+    if self.presenceAnnounceLoggedSession~=sessionId then
+     self.presenceAnnounceLoggedSession=sessionId
+     log("DEBUG","version","Presence announce",{character=playerName(),guid=UnitGUID and UnitGUID("player"),version=data.version,sessionId=data.sessionId,reason=data.reason})
+    end
+   end
+   if data.sessionId==self.loginSessionId then self.presencePublished=true;HolyStorm.Tasks:Queue("Sync.VersionNotice",{delay=2,priority=99,triggerSource="PRESENCE_PUBLISHED"})end
+  end
+  log("DEBUG",string.lower(tostring(diagnostics.messageKind or"sync")),"Sync envelope queued",diagnostics,diagnostics.correlationId)
+ else
+  log("WARN","retries","Sync envelope was not queued",diagnostics,diagnostics.correlationId)
+  if retryCount<(tonumber(task.maxRetries)or 0)then HolyStorm.Tasks:Queue("Sync.Send",{executionMode="MULTI",priority=task.priority,delay=math.min(8,2^(retryCount+1)),retryCount=retryCount+1,maxRetries=task.maxRetries,triggerSource="SYNC_RETRY",metadata=m})end
+ end
+ return sent
 end
 function Sync:Publish(domainId,objectId,reason)
  local domain=self.domains[domainId];local meta=domain and domain.getMetadata(objectId);if not meta then return false,"OBJECT_NOT_FOUND"end
@@ -173,8 +206,8 @@ function Sync:GetKnownVersion(guid)
   if not validPresenceVersion(localVersion)then return nil end
   local entry=self.knownVersions[guid]
   if not entry or not entry.localPlayer or entry.version~=localVersion then
-   self.knownVersions[guid]={guid=guid,sender=playerName(),version=localVersion,receivedAt=now(),localPlayer=true}
-   logPresenceVersion(playerName(),entry and entry.version,localVersion,localVersion,entry and"LOCAL_VERSION_AUTHORITATIVE"or"LOCAL_VERSION_KNOWN")
+   local receivedAt=now();self.knownVersions[guid]={guid=guid,sender=playerName(),version=localVersion,receivedAt=receivedAt,localPlayer=true}
+   logPresenceVersion(playerName(),guid,playerName(),entry and entry.version,localVersion,localVersion,entry and"LOCAL_VERSION_AUTHORITATIVE"or"LOCAL_VERSION_KNOWN",receivedAt)
   end
   return localVersion
  end
@@ -212,8 +245,10 @@ function Sync:EvaluateOutdatedVersion()
  for _,entry in pairs(self.knownVersions)do local comparison=HolyStorm.Utils.CompareSemanticVersions(entry.version,HolyStorm.version);if comparison==1 then self.outdatedNotified=true;if HolyStorm.Commands and HolyStorm.Commands.PrintUserMessage then HolyStorm.Commands:PrintUserMessage(L["OUTDATED_VERSION_NOTICE"])end;HolyStorm.Logger:Write("INFO","Sync","version","Newer Holy Storm version discovered",{localVersion=HolyStorm.version,remoteVersion=entry.version,sender=entry.sender,characterUUID=entry.guid,sessionId=self.loginSessionId});return true end end
  return false
 end
-function Sync:OnPresence(data,sender,resolved)
- if not resolved then return false end;data=type(data)=="table"and data or{};local receivedAt=now();self.knownOnline[resolved]=receivedAt
+function Sync:OnPresence(data,sender,resolved,claimedGuid,identityReason)
+ data=type(data)=="table"and data or{};local receivedAt=now()
+ if not resolved then logUnresolvedPresence(self,data,sender,claimedGuid,identityReason or"SENDER_GUID_UNRESOLVED",receivedAt);return false end
+ self.presenceResolutionDiagnostics[string.lower(tostring(sender or"UNKNOWN"))]=nil;self.knownOnline[resolved]=receivedAt
  local localGuid=UnitGUID and UnitGUID("player")
  local previous=self.knownVersions[resolved]
  if resolved==localGuid or previous and previous.localPlayer then self:GetKnownVersion(resolved)
@@ -225,7 +260,7 @@ function Sync:OnPresence(data,sender,resolved)
   if validPresenceVersion(data.version)then
    local oldVersion=previous and previous.version
    self.knownVersions[resolved]={guid=resolved,sender=sender,version=data.version,receivedAt=receivedAt}
-   if oldVersion~=data.version then logPresenceVersion(sender,oldVersion,data.version,data.version,oldVersion and"PRESENCE_VERSION_UPDATED"or"PRESENCE_VERSION_LEARNED")end
+   if oldVersion~=data.version then logPresenceVersion(sender,resolved,sender,oldVersion,data.version,data.version,oldVersion and"PRESENCE_VERSION_UPDATED"or"PRESENCE_VERSION_LEARNED",receivedAt,receivedAt+self.presenceTimeout)end
    self.peerVersionReceived=true;HolyStorm.Events:Emit("HS_SYNC_VERSION_UPDATED",resolved,data.version,sender);HolyStorm.Tasks:Queue("Sync.VersionNotice",{delay=2,priority=99,triggerSource="PEER_VERSION_RECEIVED"})
   elseif previous then
    -- A versionless Presence still confirms that this peer is alive.
@@ -237,8 +272,23 @@ function Sync:OnPresence(data,sender,resolved)
  return true
 end
 function Sync:Receive(payload,sender,channel,transport)
- local envelope=HolyStorm.Serializer:Deserialize(payload);if type(envelope)~="table"or envelope.protocol~=self.protocol or type(envelope.kind)~="string"or envelope.sender==UnitGUID("player")then return false end;transport=type(transport)=="table"and transport or{};local data=type(envelope.data)=="table"and envelope.data or{};local meta=type(data.metadata)=="table"and data.metadata or type(data.offers)=="table"and type(data.offers[1])=="table"and data.offers[1]or{};local correlationId=transport.correlationId or transport.transmissionId;local objectId=data.objectId or meta.objectId;local characterUUID,blockType;if type(objectId)=="string"then characterUUID,blockType=objectId:match("^(.-)\031([^\031]+)$")end;local destination=receiver(channel);log("DEBUG",string.lower(envelope.kind),"Sync envelope received",{direction="RECEIVE",sender=sender,receiver=destination,target=destination,from=sender,to=destination,channel=channel,domain=envelope.domain,logicalObject=blockType or objectId,blockType=blockType,block=blockType,characterUUID=characterUUID,objectId=objectId,messageKind=envelope.kind,messageClass=messageClasses[envelope.kind]or"control",version=meta.version or data.version,revision=meta.revisionID or data.revisionID,reason=data.reason,requestId=data.requestId,selectedSource=sender,transmissionId=transport.transmissionId,packetTotal=transport.packetTotal,bytes=transport.bytes,serializedBytes=transport.bytes,correlationId=correlationId,originalOwner=meta.owner,relay=meta.owner and meta.owner~=envelope.sender or false,retry=false},correlationId);local resolved=senderGuid(sender);if resolved and envelope.sender~=resolved then log("WARN","authority","Envelope sender identity mismatch",{direction="RECEIVE",from=sender,to=destination,channel=channel,sender=sender,claimed=envelope.sender,resolved=resolved,transmissionId=transport.transmissionId,correlationId=correlationId},correlationId);return false end
- if envelope.kind=="PRESENCE"then return self:OnPresence(data,sender,resolved)end
+	local envelope=HolyStorm.Serializer:Deserialize(payload)
+	if type(envelope)~="table"or envelope.protocol~=self.protocol or type(envelope.kind)~="string"or envelope.sender==UnitGUID("player")then return false end
+	transport=type(transport)=="table"and transport or{}
+	local data=type(envelope.data)=="table"and envelope.data or{}
+	local meta=type(data.metadata)=="table"and data.metadata or type(data.offers)=="table"and type(data.offers[1])=="table"and data.offers[1]or{}
+	local correlationId=transport.correlationId or transport.transmissionId
+	local objectId=data.objectId or meta.objectId
+	local characterUUID,blockType
+	if type(objectId)=="string"then characterUUID,blockType=objectId:match("^(.-)\031([^\031]+)$")end
+	local destination=receiver(channel)
+	local resolved,identityReason=senderGuid(sender,envelope.sender)
+	log("DEBUG",string.lower(envelope.kind),"Sync envelope received",{direction="RECEIVE",sender=sender,receiver=destination,target=destination,from=sender,to=destination,channel=channel,domain=envelope.domain,logicalObject=blockType or objectId,blockType=blockType,block=blockType,characterUUID=characterUUID,objectId=objectId,messageKind=envelope.kind,messageClass=messageClasses[envelope.kind]or"control",version=meta.version or data.version,revision=meta.revisionID or data.revisionID,reason=data.reason,requestId=data.requestId,selectedSource=sender,senderGuid=resolved,claimedGuid=envelope.sender,identityReason=identityReason,transmissionId=transport.transmissionId,packetTotal=transport.packetTotal,bytes=transport.bytes,serializedBytes=transport.bytes,correlationId=correlationId,originalOwner=meta.owner,relay=meta.owner and meta.owner~=envelope.sender or false,retry=false},correlationId)
+	if resolved and envelope.sender~=resolved then
+		log("WARN","authority","Envelope sender identity mismatch",{direction="RECEIVE",from=sender,to=destination,channel=channel,sender=sender,claimed=envelope.sender,resolved=resolved,identityReason=identityReason,transmissionId=transport.transmissionId,correlationId=correlationId},correlationId)
+		return false
+	end
+	if envelope.kind=="PRESENCE"then return self:OnPresence(data,sender,resolved,envelope.sender,identityReason)end
   if not self.domains[envelope.domain]then return false end
  if envelope.kind=="DISCOVER"then return self:OnDiscover(envelope.domain,envelope.data,sender,channel)elseif envelope.kind=="OFFER"or envelope.kind=="ANNOUNCE"then return self:RecordOffers(envelope.domain,envelope.data,sender,envelope.kind=="ANNOUNCE")elseif envelope.kind=="FETCH"then return self:OnFetch(envelope.domain,envelope.data,sender)elseif envelope.kind=="PAYLOAD"or envelope.kind=="LIVE"then return self:OnPayload(envelope.domain,envelope.data,sender)end;return false
 end

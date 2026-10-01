@@ -54,7 +54,7 @@ local accepted, rejectReason = transport:SendGuild("HolyStormSync", "reject", 10
 assert(not accepted and rejectReason == "refused" and rejected and transport.failures == 1, "queue refusal completes and reports the send failure")
 local diagnostics = transport:GetDiagnostics()
 assert(diagnostics.backend == "AceCommQueue-1.0/AceComm-3.0" and diagnostics.aceCommQueue.available and diagnostics.aceCommQueue.version == 7, "transport backend and version exposed")
-assert(diagnostics.libGuildRoster.available and diagnostics.libGuildRoster.usedForPeerResolution == false, "roster library is diagnostic only")
+assert(diagnostics.libGuildRoster.available and diagnostics.libGuildRoster.usedForPeerResolution == true, "roster library normalization is used to resolve Presence peers")
 assert(diagnostics.queueCount == 2 and diagnostics.queuedAlert == 1 and diagnostics.queuedNormal == 1, "queue diagnostics include this prefix's queued work")
 comms.available = false
 local suppressed
