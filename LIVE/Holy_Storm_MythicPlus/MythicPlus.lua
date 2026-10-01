@@ -1,8 +1,8 @@
-local addonVersion = "2.3.0"
+local addonVersion = "2.4.0"
 local HolyStorm = LibStub("AceAddon-3.0"):GetAddon("Holy_Storm")
 local L = LibStub("AceLocale-3.0"):GetLocale("Holy_Storm_Dungeons")
 
-local SNAPSHOT_VERSION = 4
+local SNAPSHOT_VERSION = 5
 
 local function isSecret(value)
 	if issecretvalue then
@@ -42,32 +42,43 @@ end
 
 local function safeDate(value)
 	if isSecret(value) or type(value) ~= "table" then return nil end
+	-- Current Retail MapSeasonBestInfo uses CalendarTime.monthDay. Older
+	-- MythicPlusDate snapshots used day; normalize both to the stored `day` key.
+	local dayValue = value.monthDay
+	if dayValue == nil then dayValue = value.day end
+	local day = safeNumber(dayValue, 1, true)
+	if not day then return nil end
 	local result = {}
 	for _, key in ipairs({ "year", "month", "day", "hour", "minute", "weekday" }) do
-		local number = safeNumber(value[key], 0, true)
+		local number = key == "day" and day or safeNumber(value[key], 0, true)
 		if not number then return nil end
 		result[key] = number
 	end
 	return result
 end
 
-local function safeRun(value)
-	if isSecret(value) then return false end
+local function safeRun(value, overTime)
+	if isSecret(value) then return false, "SECRET_BEST_RUN" end
 	if value == nil then return nil end
-	if type(value) ~= "table" then return false end
+	if type(value) ~= "table" then return false, "INVALID_BEST_RUN" end
 	local level = safeNumber(value.level, 0, true)
 	local score = safeNumber(value.dungeonScore, 0)
 	if score == nil then score = safeNumber(value.score, 0) end
 	local duration = safeNumber(value.durationSec, 0)
 	local date = safeDate(value.completionDate)
 	local affixIDs = safeArray(value.affixIDs, 1)
-	if not level or not score or not duration or not date or not affixIDs then return false end
+	if not level or not score or not duration or not date or not affixIDs then
+		if not date then return false, "INVALID_BEST_RUN_COMPLETION_DATE" end
+		if not level or not score or not duration then return false, "INVALID_BEST_RUN_FIELDS" end
+		return false, "INVALID_BEST_RUN_AFFIXES"
+	end
 	return {
 		level = level,
 		score = score,
 		durationSec = duration,
 		completionDate = date,
 		affixIDs = affixIDs,
+		overTime = overTime,
 	}
 end
 
@@ -111,35 +122,42 @@ local function validVault(vault, weeklyIdentity)
 	return vault.progress == completedCount and count == #vault.activities
 end
 
-local function validateMythicPlus(data)
-	if isSecret(data) or type(data) ~= "table" then return false, "INVALID_MYTHICPLUS_DATA" end
-	if data.schemaVersion ~= SNAPSHOT_VERSION or data.snapshotVersion ~= SNAPSHOT_VERSION then return false, "UNSUPPORTED_MYTHICPLUS_SCHEMA" end
-	if not safeNumber(data.seasonId, 1, true) then return false, "INVALID_MYTHICPLUS_SEASON" end
-	if data.displaySeasonId ~= nil and not safeNumber(data.displaySeasonId, 1, true) then return false, "INVALID_MYTHICPLUS_DISPLAY_SEASON" end
-	if not safeNumber(data.overallScore, 0) then return false, "INVALID_MYTHICPLUS_RATING" end
-	if data.poolComplete ~= true or type(data.dungeons) ~= "table" or #data.dungeons == 0 or data.dungeonCount ~= #data.dungeons then return false, "INCOMPLETE_MYTHICPLUS_POOL" end
-	if type(data.scoreDataReady) ~= "boolean" or not data.scoreDataReady then return false, "INCOMPLETE_MYTHICPLUS_SCORES" end
+local function validateMythicPlus(data, collectionReason, collectionDiagnostics)
+	if isSecret(data) or type(data) ~= "table" then
+		if collectionReason then return false, collectionReason, collectionDiagnostics and collectionDiagnostics.retryable == true end
+		return false, "INVALID_MYTHICPLUS_DATA", false
+	end
+	if data.schemaVersion ~= SNAPSHOT_VERSION or data.snapshotVersion ~= SNAPSHOT_VERSION then return false, "UNSUPPORTED_MYTHICPLUS_SCHEMA", false end
+	if not safeNumber(data.seasonId, 1, true) then return false, "UNKNOWN_MYTHICPLUS_SEASON", true end
+	if data.displaySeasonId ~= nil and not safeNumber(data.displaySeasonId, 1, true) then return false, "INVALID_MYTHICPLUS_DISPLAY_SEASON", false end
+	if not safeNumber(data.overallScore, 0) then return false, "UNKNOWN_MYTHICPLUS_RATING", true end
+	if data.poolComplete ~= true or type(data.dungeons) ~= "table" or #data.dungeons == 0 or data.dungeonCount ~= #data.dungeons then return false, "INCOMPLETE_MYTHICPLUS_POOL", true end
+	if type(data.scoreDataReady) ~= "boolean" or not data.scoreDataReady then return false, "INCOMPLETE_MYTHICPLUS_SCORES", true end
 	local seen, count = {}, 0
 	for _, dungeon in ipairs(data.dungeons) do
-		if isSecret(dungeon) or type(dungeon) ~= "table" then return false, "INVALID_MYTHICPLUS_DUNGEON" end
+		if isSecret(dungeon) or type(dungeon) ~= "table" then return false, "INVALID_MYTHICPLUS_DUNGEON", false end
 		local id = safeNumber(dungeon.challengeMapId, 1, true)
-		if not id or seen[id] then return false, "INVALID_OR_DUPLICATE_MYTHICPLUS_MAP" end
+		if not id or seen[id] then return false, "INVALID_OR_DUPLICATE_MYTHICPLUS_MAP", false end
 		seen[id] = true
-		if not safeString(dungeon.name) or not safeNumber(dungeon.instanceId, 1, true) or not safeNumber(dungeon.mapId, 1, true) or not safeNumber(dungeon.timeLimit, 1) then return false, "INCOMPLETE_MYTHICPLUS_MAP" end
-		if not safeNumber(dungeon.score, 0) or type(dungeon.affixScores) ~= "table" then return false, "INCOMPLETE_MYTHICPLUS_DUNGEON_SCORE" end
+		if not safeString(dungeon.name) or not safeNumber(dungeon.instanceId, 1, true) or not safeNumber(dungeon.mapId, 1, true) or not safeNumber(dungeon.timeLimit, 1) then return false, "INCOMPLETE_MYTHICPLUS_MAP", true end
+		if not safeNumber(dungeon.score, 0) then return false, "INCOMPLETE_MYTHICPLUS_DUNGEON_SCORE", true end
+		if dungeon.affixScores ~= nil and type(dungeon.affixScores) ~= "table" then return false, "INVALID_MYTHICPLUS_AFFIX_SCORES", false end
 		for _, field in ipairs({ "bestInTime", "bestOverTime" }) do
 			local run = dungeon[field]
-			if run ~= nil and safeRun(run) == false then return false, "INVALID_MYTHICPLUS_BEST_RUN" end
+			if run ~= nil then
+				local validRun, runReason = safeRun(run)
+				if validRun == false then return false, runReason or "INVALID_MYTHICPLUS_BEST_RUN", false end
+			end
 		end
-		for _, score in ipairs(dungeon.affixScores) do
-			if type(score) ~= "table" or not safeNumber(score.score, 0) or not safeNumber(score.level, 0, true) or not safeNumber(score.durationSec, 0) then return false, "INVALID_MYTHICPLUS_AFFIX_SCORE" end
+		for _, score in ipairs(dungeon.affixScores or {}) do
+			if type(score) ~= "table" or not safeNumber(score.score, 0) or not safeNumber(score.level, 0, true) or not safeNumber(score.durationSec, 0) then return false, "INVALID_MYTHICPLUS_AFFIX_SCORE", false end
 		end
 		count = count + 1
 	end
-	if count ~= data.dungeonCount then return false, "INCOMPLETE_MYTHICPLUS_POOL" end
+	if count ~= data.dungeonCount then return false, "INCOMPLETE_MYTHICPLUS_POOL", true end
 	local week = data.weeklyIdentity
-	if week ~= nil and not safeNumber(week, 1, true) then return false, "INVALID_MYTHICPLUS_WEEK" end
-	if not validVault(data.greatVaultMythicPlus, week) then return false, "INVALID_MYTHICPLUS_VAULT" end
+	if week ~= nil and not safeNumber(week, 1, true) then return false, "INVALID_MYTHICPLUS_WEEK", false end
+	if not validVault(data.greatVaultMythicPlus, week) then return false, "INVALID_MYTHICPLUS_VAULT", false end
 	return true
 end
 
@@ -210,8 +228,8 @@ HolyStorm:RegisterModule(metadata, function(Module)
 		return HolyStorm.Data.CharacterStore:GetBlock(guid, "mythicPlus")
 	end
 
-	function Module:Validate(snapshot)
-		return validateMythicPlus(snapshot)
+	function Module:Validate(snapshot, collectionReason, collectionDiagnostics)
+		return validateMythicPlus(snapshot, collectionReason, collectionDiagnostics)
 	end
 
 	function Module:NeedsBootstrapRefresh(snapshot)
@@ -245,15 +263,27 @@ HolyStorm:RegisterModule(metadata, function(Module)
 		return requested
 	end
 
+	local function scanFailure(reason, details, retryable)
+		details = details or {}
+		details.retryable = retryable == true
+		return nil, reason, details
+	end
+
 	function Module:Collect()
 		local mythicPlus, challengeMode = C_MythicPlus, C_ChallengeMode
-		if type(mythicPlus) ~= "table" or type(challengeMode) ~= "table" then return nil end
+		if type(mythicPlus) ~= "table" or type(challengeMode) ~= "table" then return scanFailure("RETAIL_API_UNAVAILABLE", { season = "UNKNOWN", rating = "UNKNOWN", maps = 0 }, false) end
 		local seasonOK, season = safeCall(mythicPlus.GetCurrentSeason)
 		season = seasonOK and safeNumber(season, 1, true) or nil
 		local ratingOK, rating = safeCall(challengeMode.GetOverallDungeonScore)
 		rating = ratingOK and safeNumber(rating, 0) or nil
 		local mapsOK, mapIDs = safeCall(challengeMode.GetMapTable)
-		if not season or not rating or not mapsOK or isSecret(mapIDs) or type(mapIDs) ~= "table" or #mapIDs == 0 then return nil end
+		local mapCount = 0
+		if mapsOK and not isSecret(mapIDs) and type(mapIDs) == "table" then mapCount = #mapIDs end
+		local baseDiagnostics = { season = season or "UNKNOWN", rating = rating or "UNKNOWN", maps = mapCount }
+		if not season then return scanFailure("UNKNOWN_MYTHICPLUS_SEASON", baseDiagnostics, true) end
+		if not rating then return scanFailure("UNKNOWN_MYTHICPLUS_RATING", baseDiagnostics, true) end
+		if not mapsOK or isSecret(mapIDs) or type(mapIDs) ~= "table" or #mapIDs == 0 then return scanFailure("DUNGEON_POOL_NOT_READY", baseDiagnostics, true) end
+		baseDiagnostics.expectedMaps = #mapIDs
 		local displaySeason
 		if type(mythicPlus.GetCurrentUIDisplaySeason) == "function" then
 			local displayOK, value = safeCall(mythicPlus.GetCurrentUIDisplaySeason)
@@ -262,11 +292,13 @@ HolyStorm:RegisterModule(metadata, function(Module)
 		local dungeonIDs, seen = {}, {}
 		for _, rawID in ipairs(mapIDs) do
 			local id = safeNumber(rawID, 1, true)
-			if not id or seen[id] then return nil end
+			if not id then return scanFailure("INVALID_DUNGEON_POOL", baseDiagnostics, false) end
+			if seen[id] then return scanFailure("DUPLICATE_DUNGEON_MAP", baseDiagnostics, false) end
 			seen[id] = true
 			dungeonIDs[#dungeonIDs + 1] = id
 		end
 		table.sort(dungeonIDs)
+		baseDiagnostics.maps = #dungeonIDs
 		local snapshot = {
 			schemaVersion = SNAPSHOT_VERSION, snapshotVersion = SNAPSHOT_VERSION,
 			seasonId = season, displaySeasonId = displaySeason, overallScore = rating,
@@ -275,23 +307,34 @@ HolyStorm:RegisterModule(metadata, function(Module)
 		}
 		for _, id in ipairs(dungeonIDs) do
 			local infoOK, name, instanceID, timeLimit, texture, backgroundTexture, mapID = safeCall(challengeMode.GetMapUIInfo, id)
-			if not infoOK or not safeString(name) or not safeNumber(instanceID, 1, true) or not safeNumber(timeLimit, 1) or not safeNumber(mapID, 1, true) then return nil end
-			local scoreOK, affixScoresRaw, dungeonScore = safeCall(mythicPlus.GetSeasonBestAffixScoreInfoForMap, id)
-			if not scoreOK or isSecret(affixScoresRaw) or type(affixScoresRaw) ~= "table" then return nil end
-			dungeonScore = safeNumber(dungeonScore, 0)
-			local affixScores = safeAffixScores(affixScoresRaw)
-			if not dungeonScore or not affixScores then return nil end
-			local bestInTime, bestOverTime
-			if type(mythicPlus.GetSeasonBestForMap) == "function" then
-				local bestOK, inTime, overTime = safeCall(mythicPlus.GetSeasonBestForMap, id)
-				if not bestOK then return nil end
-				bestInTime, bestOverTime = safeRun(inTime), safeRun(overTime)
-				if bestInTime == false or bestOverTime == false then return nil end
+			local mapDiagnostics = { season = season, rating = rating, maps = #dungeonIDs, expectedMaps = #dungeonIDs, mapId = id }
+			if not infoOK or not safeString(name) or not safeNumber(instanceID, 1, true) or not safeNumber(timeLimit, 1) or not safeNumber(mapID, 1, true) then return scanFailure("DUNGEON_MAP_INFO_NOT_READY", mapDiagnostics, true) end
+			if type(mythicPlus.GetSeasonBestForMap) ~= "function" then return scanFailure("BEST_RUN_API_UNAVAILABLE", mapDiagnostics, false) end
+			local bestOK, inTime, overTime = safeCall(mythicPlus.GetSeasonBestForMap, id)
+			if not bestOK then return scanFailure("BEST_RUN_API_ERROR", mapDiagnostics, false) end
+			local bestInTime, inTimeReason = safeRun(inTime, false)
+			local bestOverTime, overTimeReason = safeRun(overTime, true)
+			if bestInTime == false then return scanFailure(inTimeReason or "INVALID_BEST_RUN", mapDiagnostics, false) end
+			if bestOverTime == false then return scanFailure(overTimeReason or "INVALID_BEST_RUN", mapDiagnostics, false) end
+			-- Blizzard's Challenges UI selects the higher dungeonScore from the two
+			-- documented best-run slots and displays zero when neither slot exists.
+			local dungeonScore = 0
+			if bestInTime and bestOverTime then dungeonScore = bestInTime.score > bestOverTime.score and bestInTime.score or bestOverTime.score
+			elseif bestInTime then dungeonScore = bestInTime.score
+			elseif bestOverTime then dungeonScore = bestOverTime.score end
+			-- Affix detail is explicitly MayReturnNothing in the Retail API. Keep
+			-- unavailable detail unknown; the authoritative map score above comes
+			-- from Blizzard's non-optional best-run API.
+			local affixScores
+			if type(mythicPlus.GetSeasonBestAffixScoreInfoForMap) == "function" then
+				local scoresOK, scoresRaw = safeCall(mythicPlus.GetSeasonBestAffixScoreInfoForMap, id)
+				if scoresOK and not isSecret(scoresRaw) and type(scoresRaw) == "table" then affixScores = safeAffixScores(scoresRaw) end
 			end
 			local dungeon = {
 				challengeMapId = id, name = name, instanceId = instanceID, mapId = mapID,
-				timeLimit = timeLimit, score = dungeonScore, affixScores = affixScores,
+				timeLimit = timeLimit, score = dungeonScore,
 			}
+			if affixScores then dungeon.affixScores = affixScores end
 			local icon = safeNumber(texture, 0, true)
 			local background = safeNumber(backgroundTexture, 0, true)
 			if icon then dungeon.texture = icon end
@@ -304,7 +347,8 @@ HolyStorm:RegisterModule(metadata, function(Module)
 		snapshot.scoreDataReady = snapshot.poolComplete
 		local week, vault = captureVault()
 		if week and vault then snapshot.weeklyIdentity, snapshot.greatVaultMythicPlus = week, vault end
-		if not validateMythicPlus(snapshot) then return nil end
+		local valid, reason, retryable = validateMythicPlus(snapshot)
+		if not valid then return scanFailure(reason or "INVALID_MYTHICPLUS_SNAPSHOT", baseDiagnostics, retryable) end
 		return snapshot
 	end
 
@@ -315,9 +359,24 @@ HolyStorm:RegisterModule(metadata, function(Module)
 
 	function Module:Queue(sync, delay)
 		return HolyStorm.Snapshots:Queue("mythicplus", function() return Module:Collect() end,
-			function(snapshot) return Module:Validate(snapshot) end,
+			function(snapshot, reason, diagnostics) return Module:Validate(snapshot, reason, diagnostics) end,
 			function(snapshot, force) return Module:Commit(snapshot, force, sync) end,
-			{ source = "MythicPlus", delay = delay or 1.5, retryDelay = 2.5, priority = 4 })
+			{
+				source = "MythicPlus", delay = delay or 1.5, retryDelay = 2.5, maxRetries = 3, priority = 4,
+				onValidationFailure = function(reason, disposition, retryCount, maxRetries, diagnostics)
+					diagnostics = type(diagnostics) == "table" and diagnostics or {}
+					HolyStorm.Logger:Write("WARN", "MythicPlus", "validation", "MythicPlus validation: " .. disposition, {
+						reason = reason,
+						season = diagnostics.season or "UNKNOWN",
+						rating = diagnostics.rating or "UNKNOWN",
+						maps = diagnostics.maps or 0,
+						expectedMaps = diagnostics.expectedMaps or 0,
+						mapId = diagnostics.mapId,
+						retryCount = retryCount,
+						maxRetries = maxRetries,
+					})
+				end,
+			})
 	end
 
 	function Module:OnInitialize()

@@ -79,7 +79,7 @@ do
   local ok,value=pcall(api.GetCurrentSeason);return ok and safeNumber(value)or nil
  end
  local function isCurrentSeason(snapshot)
-  if type(snapshot)~="table"or snapshot.schemaVersion~=4 or snapshot.snapshotVersion~=4 then return false end
+  if type(snapshot)~="table"or snapshot.schemaVersion~=5 or snapshot.snapshotVersion~=5 then return false end
   local stored=safeNumber(snapshot.seasonId);local current=currentSeasonId()
   return stored~=nil and stored>0 and current~=nil and stored==current
  end

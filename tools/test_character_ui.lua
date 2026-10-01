@@ -80,7 +80,7 @@ assert(C:GetBestProgress(identityRaid,{instanceId=300,name="Raid Three"})==nil,"
 assert(C:GetDifficultyById(7).id=="LFR"and C:GetDifficultyById(14).id=="NORMAL"and C:GetDifficultyById(15).id=="HEROIC"and C:GetDifficultyById(16).id=="MYTHIC"and C:GetDifficultyById(33).id=="TIMEWALKING")
 assert(C:GetDifficultyColor("LFR").r==1 and C:GetDifficultyColor("NORMAL").g==1 and C:GetDifficultyColor("HEROIC").b==1 and C:GetDifficultyColor("MYTHIC").r==.70)
 
-records.A.mythicPlus={snapshotVersion=4,schemaVersion=4,seasonId=18,overallScore=2500,scoreDataReady=true}
+records.A.mythicPlus={snapshotVersion=5,schemaVersion=5,seasonId=18,overallScore=2500,scoreDataReady=true}
  C_MythicPlus={GetCurrentSeason=function()return 18 end}
 records.A.raid={snapshotVersion=3,catalogReady=true,raids={{id=100,name="Current One",order=1,bosses={{id=1,name="Current Boss One"},{id=11,name="Second Boss"}}},{id=200,name="Current Two",order=2,bosses={{id=2,name="Current Boss Two"},{id=21,name="Second Boss"},{id=22,name="Third Boss"}}}},lifetime={bosses={
  currentOne={id=1,name="Current Boss One",raidInstanceId=100,raidName="Current One",difficulties={NORMAL={kills=2,source="blizzard-statistic",statisticId=21}}},

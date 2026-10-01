@@ -4,6 +4,7 @@
 
 ### English
 
+- Fixed Retail Mythic+ scans for Blizzard's current `CalendarTime.monthDay` best-run dates, made `GetSeasonBestAffixScoreInfoForMap` optional, derived map scores from Blizzard-selected best runs, and added bounded readiness retries with compact stable-reason diagnostics. Mythic+ snapshots are now v5.
 - Audited Character Overview consumers against stored snapshot contracts; corrected Equipment v4 unknown socket/tier rendering, stale Raid weekly display, strict legacy-version handling, data-driven Stats rows, header identity metadata, and read-only tab switching. Documented the consumer matrix and Retail acceptance sequence.
 - Kept the seven base Character tabs in the requested order and moved the separately registered Achievements tab after them.
 - Audited current Retail Mythic+ APIs and moved Character snapshots to v4 with complete dynamic map-pool validation, direct season/rating data, Blizzard-selected timed and overtime records, current-period Mythic+ Great Vault thresholds, and no persisted volatile keystone or inferred Fortified/Tyrannical categories.
@@ -25,6 +26,7 @@
 
 ### Deutsch
 
+- Retail-Mythic+-Scans unterstützen nun Blizzards aktuelles Datumsfeld `CalendarTime.monthDay`. `GetSeasonBestAffixScoreInfoForMap` ist optionale Detailinformation; Dungeonwertungen stammen aus Blizzards Bestläufen. Begrenzte Readiness-Retries und kompakte Reason-IDs machen Scanfehler sichtbar. Mythic+-Snapshots verwenden Schema v5.
 - Die Character-Overview-Consumer wurden mit den gespeicherten Snapshot-Verträgen abgeglichen. Unbekannte Sockel-/Tierdaten in Equipment v4, veraltete Raid-Wochenbindungen, Legacy-Versionen, dynamische Stats-Zeilen, Header-Identität und Tab-Wechsel ohne Scan sind korrigiert. Consumer-Matrix und Retail-Abnahmefolge sind dokumentiert.
 - Die sieben Basis-Character-Tabs bleiben in der gewünschten Reihenfolge; der separat registrierte Erfolge-Tab folgt danach.
 - Die aktuellen Retail-Mythic+-APIs wurden geprüft. Character-Snapshots verwenden nun Schema v4 mit vollständigem dynamischem Dungeonpool, direkter Saison und Gesamtwertung, getrennten Blizzard-Bestläufen (In Time/Over Time) und aktuellen Mythisch+-Schatzkammer-Schwellen. Veränderliche Schlüssel sowie abgeleitete Tyrannisch-/Verstärkt-Kategorien werden nicht mehr gespeichert.

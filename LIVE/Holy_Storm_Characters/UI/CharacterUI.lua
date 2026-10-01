@@ -98,7 +98,7 @@ function CharacterUI:ShowTooltip(owner,characterUUID)
 end
 
 local storedSnapshotFields={equipment="equipment",mythicPlus="mythicPlus",raid="raidLockouts",delves="delves",stats="stats"}
-local expectedSnapshotVersions={equipment=4,mythicPlus=4,raid=3,delves=3,stats=2}
+local expectedSnapshotVersions={equipment=4,mythicPlus=5,raid=3,delves=3,stats=2}
 function CharacterUI:GetSnapshot(characterUUID,blockId)
  local store=HolyStorm.Data.CharacterStore;local data,meta=store:GetBlock(characterUUID,blockId)
  if data==nil then local field=storedSnapshotFields[blockId];local record=field and store:Get(characterUUID);data=record and record[field];meta=store.GetBlockMetadata and store:GetBlockMetadata(characterUUID,blockId)or meta end
@@ -206,9 +206,9 @@ function CharacterUI:GetDashboardSummary(characterUUID)
  local equipment,equipmentMeta=self:GetSnapshot(characterUUID,"equipment");local mythicPlus,mythicMeta=self:GetSnapshot(characterUUID,"mythicPlus");local raid,raidMeta=self:GetSnapshot(characterUUID,"raid");local delves,delvesMeta=self:GetSnapshot(characterUUID,"delves");local stats,statsMeta=self:GetSnapshot(characterUUID,"stats")
  local equipmentV4=type(equipment)=="table"and equipment.snapshotVersion==4
  local itemLevel=equipmentV4 and safeNumeric(equipment.equippedItemLevel or equipment.itemLevel)or nil;if itemLevel and itemLevel<=0 then itemLevel=nil end
- local mythicPlusV4=type(mythicPlus)=="table"and mythicPlus.schemaVersion==4 and mythicPlus.snapshotVersion==4
- local currentSeason=currentMythicPlusSeason();local storedSeason=mythicPlusV4 and safeNumeric(mythicPlus.seasonId)
- local rating=mythicPlusV4 and currentSeason and storedSeason==currentSeason and safeNumeric(mythicPlus.overallScore)or nil
+ local mythicPlusV5=type(mythicPlus)=="table"and mythicPlus.schemaVersion==5 and mythicPlus.snapshotVersion==5
+ local currentSeason=currentMythicPlusSeason();local storedSeason=mythicPlusV5 and safeNumeric(mythicPlus.seasonId)
+ local rating=mythicPlusV5 and currentSeason and storedSeason==currentSeason and safeNumeric(mythicPlus.overallScore)or nil
  local lastUpdatedAt=0;for _,meta in ipairs({equipmentMeta or{},mythicMeta or{},raidMeta or{},delvesMeta or{},statsMeta or{}})do lastUpdatedAt=math.max(lastUpdatedAt,tonumber(meta.updatedAt)or 0)end
  local bestRaid=type(raid)=="table"and raid.snapshotVersion==3 and raid.catalogReady==true and self:GetBestCurrentRaidProgress(raid)or nil
  return{characterUUID=characterUUID,name=context.name,coloredName=classColoredName(context,context.name),classFile=context.classFile,className=context.className,specName=context.spec and context.spec.name,specIcon=context.spec and context.spec.icon,level=context.level,realm=context.realm,guildRank=context.member and context.member.rank,itemLevel=itemLevel,mythicPlusRating=rating,mythicPlusSeasonId=rating and storedSeason or nil,bestRaid=bestRaid,bestRaidRows=bestRaid and self:BuildRaidBestRows(raid,bestRaid)or{},equipment=equipment,mythicPlus=mythicPlus,raid=raid,delves=delves,stats=stats,lastUpdatedAt=lastUpdatedAt>0 and lastUpdatedAt or nil}

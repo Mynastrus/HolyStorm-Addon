@@ -1,6 +1,6 @@
 # Mythic+ Retail API Audit
 
-Last researched: 2026-09-30. The Retail UI source mirror's `live` branch and generated API documentation are the reference; the live branch can move as Blizzard patches the client. Holy Storm had no Retail client available for in-client verification during this audit.
+Last researched: 2026-10-01. The Retail UI source mirror's `live` branch and generated API documentation are the reference; the live branch can move as Blizzard patches the client. Holy Storm had no Retail client available for in-client verification during this audit.
 
 ## Purpose and authority
 
@@ -19,8 +19,8 @@ The feature remains a standard Character snapshot producer:
 | Rating color | `C_ChallengeMode.GetDungeonScoreRarityColor(score)` → optional `ColorMixin` | Reliable UI-only semantic for a supplied score; not character data | None | No data persisted; may render stored ratings | Used behind `pcall`; plain text fallback |
 | Seasonal dungeon pool | `C_ChallengeMode.GetMapTable()` → challenge-map ID array | Reliable current client pool; docs do not promise order; empty/duplicate IDs are rejected | Season | Yes, one stored row per returned ID | Implemented, sorted by stable challenge-map ID |
 | Dungeon metadata | `C_ChallengeMode.GetMapUIInfo(challengeMapID)` → name, instance ID, time limit, icon file ID, background file ID, map ID; may return nothing | Conditional on map info readiness; API marks arguments secret-capable, so calls are protected and returned fields are sanitized. Name is localized presentation, not identity | Season metadata | Name/icon/instance/map/time limit persist and sync; renderable remotely | Implemented; incomplete rows reject whole scan |
-| Seasonal in-time / overtime bests | `C_MythicPlus.GetSeasonBestForMap(challengeMapID)` → optional `MapSeasonBestInfo` in-time and overtime | Reliable official two-slot best data; nil record means no best record once the map score API is ready. API arguments are secret-capable; call and field reads are guarded. Each record documents level, `dungeonScore`, duration, completion date, affix IDs and members | Season | Selected record fields persist; party-member identity is intentionally excluded | Implemented without choosing a best record in the producer |
-| Per-dungeon tracked-affix scores and total | `C_MythicPlus.GetSeasonBestAffixScoreInfoForMap(challengeMapID)` → tracked-affix rows and `bestOverAllScore`; may return nothing; secret arguments are allowed only untainted | Conditional readiness; reports current season data. API arguments are secret-capable; call and values are guarded. No assumption that tracked rows mean Fortified/Tyrannical | Season | Score rows persist; the API's total stays distinct from character rating and run score | Implemented; localized labels are display text only, no category inference |
+| Seasonal in-time / overtime bests | `C_MythicPlus.GetSeasonBestForMap(challengeMapID)` → nilable `MapSeasonBestInfo` records | Current source returns timed and overtime slots separately. Each record includes `dungeonScore`, duration, `completionDate: CalendarTime`, affix IDs and members. Calls/fields are guarded for secret values | Season | Selected record fields persist; party-member identity is excluded | Authoritative map score and best-run source |
+| Per-dungeon tracked-affix details | `C_MythicPlus.GetSeasonBestAffixScoreInfoForMap(challengeMapID)` → tracked-affix rows and `bestOverAllScore`; marked `MayReturnNothing` | Optional current-season detail. A nil result is not evidence of a zero or empty affix list. The Challenges UI does not require it for its seasonal map rows | Season | Persist only when the API returns a usable table; absent detail stays nil | Optional tooltip detail; never blocks a complete score snapshot |
 | Affix identity on a best run | `MapSeasonBestInfo.affixIDs` | Reliable IDs inside each returned run | Run/season | Persist IDs; resolve labels dynamically only if needed | Implemented |
 | Current weekly affixes | `C_MythicPlus.GetCurrentAffixes()` and `C_ChallengeMode.GetAffixInfo(id)` | Current rotation, global and transient; returned names are localized | Weekly | No | Audited; intentionally not persisted or used as identity |
 | Great Vault Mythic+ thresholds | `C_WeeklyRewards.GetActivities(Enum.WeeklyRewardChestThresholdType.MythicPlus)` → activity list | Character-scoped weekly activity thresholds; API arguments are secret-capable; conditional on reward data being current | Weekly reward period | Persist only with `AreRewardsForCurrentRewardPeriod()==true` and `C_DateAndTime.GetWeeklyResetStartTime()` identity; standard character sync | Implemented separately as `greatVaultMythicPlus` |
@@ -43,15 +43,17 @@ API definitions are in Blizzard's generated `MythicPlusInfoDocumentation.lua`, `
 
 `seasonId` is the authoritative ID from `C_MythicPlus.GetCurrentSeason()`. `displaySeasonId` is retained separately if `GetCurrentUIDisplaySeason()` is available; it is not substituted for the actual season ID. No season is inferred from a date or hardcoded ID.
 
-`C_ChallengeMode.GetMapTable()` defines the entire current pool. A scan sorts IDs for deterministic display, requires each ID to be unique, and requires map metadata and a ready score response for every member. It does not assume a fixed pool size. `challengeMapId` is the row key; localized dungeon name is presentation only.
+`C_ChallengeMode.GetMapTable()` defines the entire current pool. A scan sorts IDs for deterministic display, requires each ID to be unique, and requires metadata and successful best-run reads for every member. It does not assume a fixed pool size. `challengeMapId` is the row key; localized dungeon name is presentation only. `GetMapUIInfo` may return nothing before map info is ready.
 
 If a stored season differs from the known current season, bootstrap requests a new scan and the Character UI suppresses old-season rows. The original stored block may remain until a valid replacement commits. A missing current-season API does not make old data current; the UI reports no current-season data.
 
 ## Best runs, score and affixes
 
-The schema keeps `bestInTime` and `bestOverTime` as distinct API-selected records. The producer never re-ranks by key level or score. Each record stores the documented level, run score, duration, completion calendar fields, and affix IDs; it does not store party members. The main row follows Blizzard Challenges UI's current display rule when a single value is needed: choose the record with the greater `dungeonScore`; if tied, use the overtime record as Blizzard's current UI does. The tooltip retains both records.
+The schema keeps `bestInTime` and `bestOverTime` as distinct API-selected records. Each record stores the documented level, run score, duration, completion calendar fields, and affix IDs; it does not store party members. For the map's single displayed score, Holy Storm follows the Blizzard Challenges UI rule: use the higher `dungeonScore`; if tied, use the overtime record. Both API-selected records remain stored separately.
 
-The second return from `GetSeasonBestAffixScoreInfoForMap` is the per-dungeon total, while `GetOverallDungeonScore` is the character total. Tracked-affix rows are retained as returned. Their names are localized labels, not stable keys. The producer no longer maps localized names to `FORTIFIED` or `TYRANNICAL`.
+The map score is taken from the selected run record's documented `dungeonScore`. If a successful `GetSeasonBestForMap` call returns neither slot, the map has no season best and its score is zero, matching the Blizzard Challenges UI. If either best-run slot exists, the higher run score is used. This does not substitute a missing API read with zero: a failed call or malformed record rejects the scan. `GetOverallDungeonScore` remains the character total. Affix detail comes from the separate `GetSeasonBestAffixScoreInfoForMap`; if Blizzard returns nothing, `affixScores` stays nil. A returned empty table stays an empty table. Localized affix names are labels, not stable keys, and are never mapped to `FORTIFIED` or `TYRANNICAL`.
+
+Current `GetSeasonBestForMap` documentation declares `completionDate` as `CalendarTime`. The current Calendar API field is `monthDay`; the previous MythicPlusDate shape used `day`. Collection accepts the current `monthDay` value and normalizes it to the existing stored `completionDate.day` key. This keeps timestamps comparable and avoids persisting a transient API type name.
 
 Dungeon rating color comes from `C_ChallengeMode.GetDungeonScoreRarityColor`; the numeric score remains authoritative and the UI falls back to uncolored text if the color API fails.
 
@@ -63,12 +65,12 @@ Weekly data is included only when `AreRewardsForCurrentRewardPeriod()` is true, 
 
 ## Snapshot schema and validation
 
-The block and snapshot schema are v4. This is a semantic version change: v3's locally assembled `bestRun`, inferred Fortified/Tyrannical labels, volatile `ownedKey`, and current affix rotation are no longer treated as authoritative v4 data. There is no destructive migration. A v3 block fails v4 validation and the provider requests a replacement; PlayerData retains the last stored block unless a new valid commit succeeds.
+The block and snapshot schema are v5. V5 makes per-map `affixScores` optional because Blizzard documents that API as `MayReturnNothing`; the required map score and best records come from `GetSeasonBestForMap`. It also normalizes the current `CalendarTime.monthDay` field into the stable stored `day` key. V3 and v4 snapshots remain stored but fail current validation; bootstrap requests a replacement, and PlayerData retains the prior stored block unless a complete v5 snapshot commits.
 
 ```lua
 {
-  schemaVersion = 4,
-  snapshotVersion = 4,
+  schemaVersion = 5,
+  snapshotVersion = 5,
   seasonId = number,
   displaySeasonId = number?,
   overallScore = number, -- 0 is valid
@@ -85,7 +87,7 @@ The block and snapshot schema are v4. This is a semantic version change: v3's lo
       score = number, -- 0 is valid
       bestInTime = run?,
       bestOverTime = run?,
-      affixScores = {},
+      affixScores = {}?, -- nil means API detail unavailable; {} means confirmed empty
     },
   },
   weeklyIdentity = number?,
@@ -93,17 +95,22 @@ The block and snapshot schema are v4. This is a semantic version change: v3's lo
 }
 ```
 
-Validation checks exact schema versions, finite numeric season/rating/map/score/run values, unique map IDs, full pool count, metadata for every dungeon, per-map score readiness, run record shapes, and weekly identity/vault invariants. `nil` rating, missing per-map score response, malformed pool, protected values, and unavailable API calls reject the complete scan. A zero overall or map score is valid and is not confused with API-unavailable. A loaded map with no best-run records is a known no-completion state.
+Validation checks exact schema versions, finite numeric season/rating/map/score/run values, unique map IDs, a complete dynamic pool, metadata for every dungeon, best-run shapes, and weekly identity/vault invariants. Season, overall rating, pool, or map metadata that is not ready remains UNKNOWN. Numeric rating zero is valid. A successful best-run API call with both nil slots is a confirmed no-completion state and yields map score zero. Nil affix detail remains UNKNOWN; it is never converted to zero or `[]`.
+
+Stable validation reason IDs are:
+
+- Retryable readiness: `UNKNOWN_MYTHICPLUS_SEASON`, `UNKNOWN_MYTHICPLUS_RATING`, `DUNGEON_POOL_NOT_READY`, `DUNGEON_MAP_INFO_NOT_READY`, `INCOMPLETE_MYTHICPLUS_POOL`, `INCOMPLETE_MYTHICPLUS_MAP`, and `INCOMPLETE_MYTHICPLUS_SCORES`.
+- Immediate failure: `RETAIL_API_UNAVAILABLE`, `INVALID_DUNGEON_POOL`, `DUPLICATE_DUNGEON_MAP`, `BEST_RUN_API_UNAVAILABLE`, `BEST_RUN_API_ERROR`, `INVALID_BEST_RUN`, `INVALID_BEST_RUN_FIELDS`, `INVALID_BEST_RUN_COMPLETION_DATE`, `INVALID_BEST_RUN_AFFIXES`, and schema/record invariant failures returned by validation.
 
 `updatedAt` is diagnostic only; semantic comparison remains owned by PlayerData and ignores it under the existing timestamp normalization. Identical meaningful content does not create a new revision or publish.
 
 ## Collection, readiness, retry and triggers
 
-Bootstrap, a current-season mismatch, a weekly reset mismatch, and manual `/hs scan mythicplus` use `CharacterScanManager`. The provider requests map and reward data as needed, then the central Snapshot/Workflow path performs a fresh complete collection. It rejects partial pool data and lets the bounded central retry policy retry API-not-ready states; it never persists from an event handler or reuses a partial snapshot.
+Bootstrap, a current-season mismatch, a weekly reset mismatch, and manual `/hs scan mythicplus` use the same `CharacterScanManager` provider. A manual/bootstrap request calls `RequestMapInfo()` and `RequestRewards()` before the workflow scans. Blizzard signals map readiness with `CHALLENGE_MODE_MAPS_UPDATE`; that event queues another ordinary CharacterScan request. The same non-parallel Snapshot workflow performs every retry as a fresh collection. Only season/rating/pool/map-metadata readiness failures retry. Invalid pool IDs, API errors, malformed best records, and invalid schemas fail without repeating an unchanged read. There are at most three retries after the initial attempt, 2.5 seconds apart; total attempts are four. No timer loop is used, and response events enter the same serialized scan path.
 
-`CHALLENGE_MODE_COMPLETED`, `MYTHIC_PLUS_NEW_WEEKLY_RECORD`, `CHALLENGE_MODE_MAPS_UPDATE`, and `WEEKLY_REWARDS_UPDATE` request a scan through `CharacterScanManager`. The completion provider uses the existing delayed workflow start and validation/retry path because the completion event is synchronous. No raid boss kill or generic login event is registered by this feature. `MYTHIC_PLUS_CURRENT_AFFIX_UPDATE` is not a trigger because the rotation is not stored.
+`CHALLENGE_MODE_COMPLETED`, `MYTHIC_PLUS_NEW_WEEKLY_RECORD`, `CHALLENGE_MODE_MAPS_UPDATE`, and `WEEKLY_REWARDS_UPDATE` request a scan through `CharacterScanManager`. The completion provider uses the existing delayed workflow start because the completion event is synchronous. No raid boss kill or generic login event is registered by this feature. `MYTHIC_PLUS_CURRENT_AFFIX_UPDATE` is not a trigger because the rotation is not stored.
 
-The current Blizzard Challenges UI responds to `CHALLENGE_MODE_COMPLETED` and then reads the completion result for its banner; its main seasonal dungeon display reads both best slots and weekly best independently. It does not establish a general wait duration for persisted score readiness, so Holy Storm uses its central delay and full-scan validation rather than assuming all score caches update synchronously.
+The current Blizzard Challenges UI requests map info on show, listens for `CHALLENGE_MODE_MAPS_UPDATE`, and builds seasonal map rows from `GetSeasonBestForMap`'s two slots and their `dungeonScore`. It defaults a row to zero only when neither best record exists. Its optional tooltip reads affix detail separately. This is why Holy Storm treats `GetSeasonBestAffixScoreInfoForMap` as optional and uses the same best-run records for required per-map scores.
 
 ## Persistence, sync, query consumers and UI
 
