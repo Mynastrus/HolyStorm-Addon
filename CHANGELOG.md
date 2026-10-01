@@ -4,6 +4,7 @@
 
 ### English
 
+- Kept the local Holy Storm version authoritative in the Sync version store, preserved fresh peer versions across versionless Presence and repeated login reconciliation, and limited version DEBUG logs to actual changes and expiry. Guild Roster reads every version from the store.
 - Fixed Retail Mythic+ scans for Blizzard's current `CalendarTime.monthDay` best-run dates, made `GetSeasonBestAffixScoreInfoForMap` optional, derived map scores from Blizzard-selected best runs, and added bounded readiness retries with compact stable-reason diagnostics. Mythic+ snapshots are now v5.
 - Audited Character Overview consumers against stored snapshot contracts; corrected Equipment v4 unknown socket/tier rendering, stale Raid weekly display, strict legacy-version handling, data-driven Stats rows, header identity metadata, and read-only tab switching. Documented the consumer matrix and Retail acceptance sequence.
 - Kept the seven base Character tabs in the requested order and moved the separately registered Achievements tab after them.
@@ -26,6 +27,7 @@
 
 ### Deutsch
 
+- Die lokale Holy-Storm-Version bleibt im Sync-Versionsstore autoritativ. Versionslose Presence-Updates und wiederholte Login-Abgleiche erhalten noch gueltige Peer-Versionen. Das Gildenroster liest alle Versionen aus dem Store; DEBUG-Eintraege entstehen nur bei tatsaechlichen Aenderungen und beim Ablauf.
 - Retail-Mythic+-Scans unterstützen nun Blizzards aktuelles Datumsfeld `CalendarTime.monthDay`. `GetSeasonBestAffixScoreInfoForMap` ist optionale Detailinformation; Dungeonwertungen stammen aus Blizzards Bestläufen. Begrenzte Readiness-Retries und kompakte Reason-IDs machen Scanfehler sichtbar. Mythic+-Snapshots verwenden Schema v5.
 - Die Character-Overview-Consumer wurden mit den gespeicherten Snapshot-Verträgen abgeglichen. Unbekannte Sockel-/Tierdaten in Equipment v4, veraltete Raid-Wochenbindungen, Legacy-Versionen, dynamische Stats-Zeilen, Header-Identität und Tab-Wechsel ohne Scan sind korrigiert. Consumer-Matrix und Retail-Abnahmefolge sind dokumentiert.
 - Die sieben Basis-Character-Tabs bleiben in der gewünschten Reihenfolge; der separat registrierte Erfolge-Tab folgt danach.

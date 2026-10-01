@@ -25,10 +25,12 @@ assert(Sync:GetKnownVersion("peer")=="5.8.9","recent presence exposes its known 
 Sync.knownVersions.peer.receivedAt=1000-Sync.presenceTimeout
 assert(Sync:GetKnownVersion("peer")==nil and Sync.knownVersions.peer==nil,"stale presence no longer supplies a roster version")
 local rosterSource=assert(io.open(root.."../Holy_Storm_Guild/Guild.lua","rb")):read("*a")
-assert(rosterSource:find("stored.guid==localGuid and HolyStorm.version",1,true),"the local roster character reads the loaded core addon version directly")
+assert(rosterSource:find("HolyStorm.Sync and HolyStorm.Sync:GetKnownVersion(stored.guid)",1,true)and not rosterSource:find("HolyStorm.version",1,true),"the roster reads local and remote versions only from the Sync version store")
+assert(Sync:GetKnownVersion("Player-Local")=="5.9.0","the local character version is available from the authoritative Sync store")
 
 local originalCatchUp=Sync.RunCatchUp;Sync.RunCatchUp=function()return true end;IsInGuild=function()return true end
 HolyStorm.version="DEV";local beforePresence=#queued
+assert(Sync:GetKnownVersion("Player-Local")=="DEV","a local development build refreshes the authoritative Sync store")
 assert(Sync:RunLoginPresence({metadata={sessionId="LOGIN-dev"}}),"development login presence is queued")
 local presence=queued[beforePresence+1].options.metadata.envelope
 assert(presence.kind=="PRESENCE"and presence.data.version=="DEV","development Presence advertises the canonical DEV value")

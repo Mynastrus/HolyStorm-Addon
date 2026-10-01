@@ -10,6 +10,14 @@ local function validPresenceVersion(value)return value=="DEV"or type(value)=="st
 local function key(domain,objectId)return domain.."\030"..tostring(objectId or"*")end
 local function log(level,category,message,context,correlationId)HolyStorm.Logger:Write(level,"Sync",category,message,context,correlationId)end
 local function playerName()return GetUnitName and GetUnitName("player",true)or UnitName and UnitName("player")or"Player"end
+local function logPresenceVersion(character,oldVersion,incomingVersion,result,reason)
+ if oldVersion==result then return end
+ log("DEBUG","version","Presence version",{character=character or"UNKNOWN",old=oldVersion or"UNKNOWN",incoming=incomingVersion or"UNKNOWN",result=result or"UNKNOWN",reason=reason})
+end
+local function clearKnownVersion(sync,guid,entry,reason,incomingVersion)
+ sync.knownVersions[guid]=nil
+ logPresenceVersion(entry.sender or guid,entry.version,incomingVersion,nil,reason)
+end
 local function audience(channel,target)if target and target~=""then return target end;local labels={GUILD="Guild",RAID="Raid",PARTY="Party",INSTANCE_CHAT="Instance"};return labels[channel]or"Broadcast"end
 local function receiver(channel)return channel=="WHISPER"and playerName()or audience(channel)end
 local messageClasses={PRESENCE="discovery",DISCOVER="discovery",ANNOUNCE="metadata",OFFER="metadata",FETCH="request",PAYLOAD="payload",LIVE="payload"}
@@ -36,7 +44,7 @@ function Sync:GetNextCleanupAt()
  for _,request in pairs(self.requests)do include((tonumber(request.createdAt)or 0)+self.requestTimeout)end
  for _,at in pairs(self.heardAt)do include((tonumber(at)or 0)+self.requestTimeout)end
  for _,at in pairs(self.knownOnline)do include((tonumber(at)or 0)+self.presenceTimeout)end
- for _,entry in pairs(self.knownVersions)do include((tonumber(entry.receivedAt)or 0)+self.presenceTimeout)end
+ for _,entry in pairs(self.knownVersions)do if not entry.localPlayer then include((tonumber(entry.receivedAt)or 0)+self.presenceTimeout)end end
  return due
 end
 function Sync:CancelCleanupTimer()if self.cleanupTimer then self.cleanupTimer:Cancel()end;self.cleanupTimer,self.cleanupDue=nil,nil end
@@ -147,15 +155,44 @@ function Sync:RunPassive(task)local m=task.metadata;local domain=self.domains[m.
 function Sync:GetOnlineName(guid)if type(guid)~="string"then return nil end;local guild=HolyStorm.Data.GuildStore:GetCurrent();local member=guild and guild.roster and guild.roster[guid];return member and member.online and member.name or nil end
 function Sync:GetDiagnostics()local candidates=0;for _,request in pairs(self.requests)do for _,peers in pairs(request.candidates or{})do candidates=candidates+HolyStorm.Utils.TableCount(peers)end end;return{requests=HolyStorm.Utils.TableCount(self.requests),activeRequests=HolyStorm.Utils.TableCount(self.activeRequests),heard=HolyStorm.Utils.TableCount(self.heard),knownOnline=HolyStorm.Utils.TableCount(self.knownOnline),domains=HolyStorm.Utils.TableCount(self.domains),fetchPeers=HolyStorm.Utils.TableCount(self.fetchTailByPeer),peerCandidates=candidates,lastSelection=self.lastSelection,publishedVersions=HolyStorm.Utils.TableCount(self.publishedVersions),cleanupScheduled=self.cleanupTimer~=nil or self.cleanupTaskId~=nil,transport=HolyStorm.Comms and HolyStorm.Comms:GetDiagnostics().transport}end
 function Sync:Cleanup()
- local current=now();local requestCutoff=current-self.requestTimeout;for requestId,request in pairs(self.requests)do if(request.createdAt or 0)<=requestCutoff then self.activeRequests[request.key or key(request.domain,request.objectId)]=nil;self.requests[requestId]=nil end end;for requestId,at in pairs(self.heardAt)do if at<=requestCutoff then self.heardAt[requestId]=nil;self.heard[requestId]=nil end end;local presenceCutoff=current-self.presenceTimeout;for guid,at in pairs(self.knownOnline)do if at<=presenceCutoff then self.knownOnline[guid]=nil end end;for guid,entry in pairs(self.knownVersions)do if not validPresenceVersion(entry.version)or(tonumber(entry.receivedAt)or 0)<=presenceCutoff then self.knownVersions[guid]=nil end end;self:ScheduleCleanup();return true
+ local current=now();local requestCutoff=current-self.requestTimeout;for requestId,request in pairs(self.requests)do if(request.createdAt or 0)<=requestCutoff then self.activeRequests[request.key or key(request.domain,request.objectId)]=nil;self.requests[requestId]=nil end end;for requestId,at in pairs(self.heardAt)do if at<=requestCutoff then self.heardAt[requestId]=nil;self.heard[requestId]=nil end end
+ local presenceCutoff=current-self.presenceTimeout;for guid,at in pairs(self.knownOnline)do if at<=presenceCutoff then self.knownOnline[guid]=nil end end
+ for guid,entry in pairs(self.knownVersions)do if not entry.localPlayer and(not validPresenceVersion(entry.version)or(tonumber(entry.receivedAt)or 0)<=presenceCutoff)then clearKnownVersion(self,guid,entry,validPresenceVersion(entry.version)and"PRESENCE_EXPIRED"or"INVALID_PRESENCE_VERSION")end end
+ self:ScheduleCleanup();return true
 end
 function Sync:RunCatchUp()
  -- Each domain is a distinct logical scope. Discover() merges repeated catch-up requests per domain/scope.
  if not IsInGuild()then return false end;for domainId,domain in pairs(self.domains)do if domain.catchUp~=false then self:Discover(domainId,nil,{reason="LOGIN_CATCHUP",priority=98,watermark=HolyStorm.PlayerData:GetForeignWatermark(domainId)})end end;log("DEBUG","catchup","Delayed login catch-up started",{watermark=HolyStorm.PlayerData:GetForeignWatermark(),domains=HolyStorm.Utils.TableCount(self.domains)});return true
 end
-function Sync:GetKnownVersion(guid)local entry=type(guid)=="string"and self.knownVersions[guid];if not entry then return nil end;if not validPresenceVersion(entry.version)or now()-(tonumber(entry.receivedAt)or 0)>=self.presenceTimeout then self.knownVersions[guid]=nil;return nil end;return entry.version end
+function Sync:GetKnownVersion(guid)
+ if type(guid)~="string"then return nil end
+ local localGuid=UnitGUID and UnitGUID("player")
+ if localGuid and guid==localGuid then
+  -- Bootstrap's local version is authoritative and must not age out with peer Presence.
+  local localVersion=(HolyStorm.GetVersion and HolyStorm:GetVersion())or HolyStorm.version
+  if not validPresenceVersion(localVersion)then return nil end
+  local entry=self.knownVersions[guid]
+  if not entry or not entry.localPlayer or entry.version~=localVersion then
+   self.knownVersions[guid]={guid=guid,sender=playerName(),version=localVersion,receivedAt=now(),localPlayer=true}
+   logPresenceVersion(playerName(),entry and entry.version,localVersion,localVersion,entry and"LOCAL_VERSION_AUTHORITATIVE"or"LOCAL_VERSION_KNOWN")
+  end
+  return localVersion
+ end
+ local entry=self.knownVersions[guid]
+ if not entry then return nil end
+ if entry.localPlayer then
+  if localGuid then clearKnownVersion(self,guid,entry,"LOCAL_CHARACTER_CHANGED");return nil end
+  return validPresenceVersion(entry.version)and entry.version or nil
+ end
+ if not validPresenceVersion(entry.version)or now()-(tonumber(entry.receivedAt)or 0)>=self.presenceTimeout then
+  clearKnownVersion(self,guid,entry,validPresenceVersion(entry.version)and"PRESENCE_EXPIRED"or"INVALID_PRESENCE_VERSION");return nil
+ end
+ return entry.version
+end
 function Sync:BeginLoginSession()
- self.loginSessionId="LOGIN-"..self:NewRequestId();self.presencePublished=false;self.peerVersionReceived=false;self.outdatedNotified=false;self.knownVersions={}
+ -- A login refreshes Presence; it does not invalidate still-fresh peer versions.
+ self.loginSessionId="LOGIN-"..self:NewRequestId();self.presencePublished=false;self.peerVersionReceived=false;self.outdatedNotified=false
+ local localGuid=UnitGUID and UnitGUID("player");if localGuid then self:GetKnownVersion(localGuid)end
  return HolyStorm.Tasks:Queue("Sync.LoginPresence",{delay=1.5,startupPhase=4,priority=98,triggerSource="PLAYER_LOGIN",metadata={sessionId=self.loginSessionId}})
 end
 function Sync:RunLoginPresence(task)
@@ -176,8 +213,26 @@ function Sync:EvaluateOutdatedVersion()
  return false
 end
 function Sync:OnPresence(data,sender,resolved)
- if not resolved then return false end;local receivedAt=now();self.knownOnline[resolved]=receivedAt
- if validPresenceVersion(data.version)then self.knownVersions[resolved]={guid=resolved,sender=sender,version=data.version,receivedAt=receivedAt};self.peerVersionReceived=true;HolyStorm.Events:Emit("HS_SYNC_VERSION_UPDATED",resolved,data.version,sender);HolyStorm.Tasks:Queue("Sync.VersionNotice",{delay=2,priority=99,triggerSource="PEER_VERSION_RECEIVED"})end;self:ScheduleCleanup()
+ if not resolved then return false end;data=type(data)=="table"and data or{};local receivedAt=now();self.knownOnline[resolved]=receivedAt
+ local localGuid=UnitGUID and UnitGUID("player")
+ local previous=self.knownVersions[resolved]
+ if resolved==localGuid or previous and previous.localPlayer then self:GetKnownVersion(resolved)
+ else
+  if previous then
+   local previousFresh=validPresenceVersion(previous.version)and receivedAt-(tonumber(previous.receivedAt)or 0)<self.presenceTimeout
+   if not previousFresh then clearKnownVersion(self,resolved,previous,validPresenceVersion(previous.version)and"PRESENCE_EXPIRED"or"INVALID_PRESENCE_VERSION");previous=nil end
+  end
+  if validPresenceVersion(data.version)then
+   local oldVersion=previous and previous.version
+   self.knownVersions[resolved]={guid=resolved,sender=sender,version=data.version,receivedAt=receivedAt}
+   if oldVersion~=data.version then logPresenceVersion(sender,oldVersion,data.version,data.version,oldVersion and"PRESENCE_VERSION_UPDATED"or"PRESENCE_VERSION_LEARNED")end
+   self.peerVersionReceived=true;HolyStorm.Events:Emit("HS_SYNC_VERSION_UPDATED",resolved,data.version,sender);HolyStorm.Tasks:Queue("Sync.VersionNotice",{delay=2,priority=99,triggerSource="PEER_VERSION_RECEIVED"})
+  elseif previous then
+   -- A versionless Presence still confirms that this peer is alive.
+   previous.sender=sender;previous.receivedAt=receivedAt
+  end
+ end
+ self:ScheduleCleanup()
  if data.replyRequested==true and not data.responseTo then self:QueueEnvelope("PRESENCE",nil,{version=HolyStorm.version,responseTo=data.sessionId,reason="PRESENCE_RESPONSE"},"WHISPER",sender,90,.2+math.random()*.6)end
  return true
 end
