@@ -51,9 +51,10 @@ local function region(kind,parent,template)
  return object
 end
 
-local locale={WINDOW_TITLE="Holy Storm",WINDOW_TITLE_OPTIONS="Holy Storm Options",STATUS_BAR_READY="Holy Storm v%s - Ready",DASHBOARD_UPDATE_UNKNOWN="Update time unknown",DASHBOARD_REFRESH="Refresh data",DASHBOARD_REFRESH_TOOLTIP="Refresh character data through the normal scan workflow."}
+local locale={WINDOW_TITLE="Holy Storm",WINDOW_TITLE_OPTIONS="Holy Storm Options",STATUS_BAR_READY="Holy Storm v%s - Ready",DASHBOARD_UPDATE_UNKNOWN="Update time unknown",DASHBOARD_REFRESH="Refresh data",DASHBOARD_REFRESH_TOOLTIP="Refresh character data through the normal scan workflow.",SYNC_RUNNING="Sync running",SYNC_TOOLTIP_TITLE="Synchronization activity",SYNC_CHARACTER="Character",SYNC_DOMAIN="Domain",SYNC_DOMAIN_EQUIPMENT="Equipment",SYNC_DIRECTION="Direction",SYNC_RECEIVE="Receive",SYNC_PHASE="Phase",SYNC_PHASE_TRANSFER="Transfer",SYNC_SOURCE="Source",SYNC_TARGET="Target",SYNC_REQUEST="Request ID",SYNC_REVISION="Revision",SYNC_BYTES="Bytes",SYNC_FRAGMENTS="Fragments",SYNC_RETRY="Retry",SYNC_QUEUE="Queue",SYNC_SEND="Send"}
 local module={dashboardProviders={}}
-local addon={version="DEV",Libraries={}}
+local addon={version="DEV",Libraries={},Events={listeners={}}}
+function addon.Events:Register(event,owner,callback)self.listeners[event]=callback end
 function addon:RegisterRequiredModule()return module end
 function addon:ApplyModuleMetadata()end
 function addon:GetModule(id)if id=="UI"then return module end end
@@ -73,6 +74,7 @@ function tooltip:SetText(text,...)
 end
 function tooltip:Show()self.shown=true end
 function tooltip:Hide()self.shown=false end
+function tooltip:AddDoubleLine(left,right)self.lines=self.lines or{};self.lines[#self.lines+1]={left=left,right=right}end
 
 function LibStub(name)
  if name=="AceAddon-3.0"then return{GetAddon=function()return addon end}end
@@ -105,8 +107,12 @@ assert(module.windowTitle and module.windowTitle.text==locale.WINDOW_TITLE,"the 
 local refreshButton
 for _,frame in ipairs(frames)do if frame.template=="UIPanelButtonTemplate"then refreshButton=frame;break end end
 assert(refreshButton and refreshButton.text==locale.DASHBOARD_REFRESH,"refresh button receives its localized caption")
+assert(not module.syncActivityButton.shown and module.syncActivityLabel.text==locale.SYNC_RUNNING,"sync activity is completely hidden at idle while retaining its active label")
+addon.Sync={GetActivity=function()return{active=true,queuedJobs=4,activeOperations={{characterUUID="Character-1",domain="equipment",direction="RECEIVE",phase="TRANSFER",sender="Source-Realm",receiver="Local-Realm",requestId="request-1",revision=27,bytes=12000,fragments=58,fragmentsTotal=139,retryCount=1,maxRetries=3,queuePosition=1}}}end}
+assert(module:RefreshSyncActivity()and module.syncActivityButton.shown,"the statusbar appears only when the central model reports an active transfer")
+module.syncActivityButton.scripts.OnEnter(module.syncActivityButton);assert(tooltip.shown and tooltip.text==locale.SYNC_TOOLTIP_TITLE and tooltip.lines[1].right=="Character-1"and tooltip.lines[10].right=="58 / 139","the active tooltip exposes localized technical activity details");module.syncActivityButton.scripts.OnLeave();addon.Sync.GetActivity=function()return{active=false,queuedJobs=0,activeOperations={}}end;assert(not module:RefreshSyncActivity()and not module.syncActivityButton.shown,"the statusbar becomes empty again when the last transfer ends")
 local onEnter=assert(refreshButton.scripts.OnEnter,"refresh tooltip handler is installed")
 onEnter(refreshButton)
-assert(tooltip.callCount==1 and tooltip.text==locale.DASHBOARD_REFRESH_TOOLTIP,"hover assigns the localized tooltip using only supported Retail arguments")
+assert(tooltip.callCount==2 and tooltip.text==locale.DASHBOARD_REFRESH_TOOLTIP,"hover assigns the localized tooltip using only supported Retail arguments")
 
 print("MainWindow Retail tooltip SetText contract and initialization regression passed")

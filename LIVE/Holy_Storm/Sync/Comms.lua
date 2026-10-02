@@ -75,21 +75,28 @@ function Comms:ScheduleCleanup()
 end
 function Comms:ResolveChannel(preferred,target)if target and target~=""then return"WHISPER",target end;if preferred=="RAID"and IsInRaid()then return"RAID"end;if preferred=="PARTY"and IsInGroup()and not IsInRaid()then return"PARTY"end;if preferred=="GUILD"and IsInGuild()then return"GUILD"end;if IsInRaid()then return"RAID"elseif IsInGroup()then return"PARTY"elseif IsInGuild()then return"GUILD"end end
 function Comms:IsSelfSender(sender)local senderName,senderRealm=normalizedName(sender);local ownName,ownRealm=normalizedName(playerName());if not senderName or senderName~=ownName then return false end;if senderRealm and ownRealm then return senderRealm==ownRealm end;return true end
-function Comms:Send(payload,preferred,target,priority,diagnostics)
- if not self.available or type(payload)~="string"or#payload>HolyStorm.Serializer.limits.bytes then return false end;local channel,resolved=self:ResolveChannel(preferred,target);if not channel then return false end;self.serial=self.serial+1;local id=tostring(HolyStorm.Utils.Now()).."-"..self.serial;local total=math.max(1,math.ceil(#payload/self.chunkSize));if self.pendingPackets+total>self.maxQueue then return false end
- id=self.protocol.."-"..id;local base=compact(diagnostics);base.direction="SEND";base.from=playerName();base.to=audience(channel,resolved);base.channel=channel;base.transmissionId=id;base.packetTotal=total;base.correlationId=base.correlationId or id
+function Comms:Send(payload,preferred,target,priority,diagnostics,onComplete,onProgress)
+ if not self.available or type(payload)~="string"or#payload>HolyStorm.Serializer.limits.bytes then return false end;local channel,resolved=self:ResolveChannel(preferred,target);if not channel then return false end;self.serial=self.serial+1;local id=tostring(HolyStorm.Utils.Now()).."-"..self.serial;local total=math.max(1,math.ceil(#payload/self.chunkSize));if total>self.receiveLimits.maxFragments or self.pendingPackets+total>self.maxQueue then return false end
+ id=self.protocol.."-"..id;local base=compact(diagnostics);base.direction="SEND";base.from=playerName();base.to=audience(channel,resolved);base.channel=channel;base.transmissionId=id;base.packetTotal=total;base.serializedBytes=#payload;base.correlationId=base.correlationId or id
+ if total>=48 then HolyStorm.Logger:Write("WARN","Comms","send","Large logical sync transfer is using HSC1 fragments",{direction="SEND",from=base.from,to=base.to,channel=channel,transmissionId=id,packetTotal=total,serializedBytes=#payload,domain=base.domain,objectId=base.objectId,requestId=base.requestId,reason="LARGE_ATOMIC_TRANSFER"},base.correlationId)end
+ local queueing,queuedParts,completedParts=true,0,0;local anyFailed=false;local finalReason;local finalCalled=false
+ local function finishIfReady()
+  if not queueing and completedParts>=queuedParts and onComplete and not finalCalled then finalCalled=true;onComplete(not anyFailed,id,#payload,finalReason)end
+ end
  for part=1,total do
   local chunk=payload:sub((part-1)*self.chunkSize+1,part*self.chunkSize);local packetDiagnostics=compact(base);for field,value in pairs(base)do packetDiagnostics[field]=value end;packetDiagnostics.packetPart=part;packetDiagnostics.bytes=#chunk
-  local message=table.concat({self.protocol,id,part,total,chunk},"|");if #message>255 then HolyStorm.Logger:Write("WARN","Comms","send","Legacy frame exceeds addon message limit",packetDiagnostics,packetDiagnostics.correlationId);return false end
-  self.pendingPackets=self.pendingPackets+1;local completed=false
-  local function onComplete(_,sent,totalBytes,result,reason)
-   if completed then return end;completed=true;Comms.pendingPackets=math.max(0,Comms.pendingPackets-1)
-   if result==false or(reason and reason~="suppressed")then HolyStorm.Logger:Write("WARN","Comms","send","Queued addon message failed",{direction="SEND",from=playerName(),to=audience(channel,resolved),channel=channel,transmissionId=id,packetPart=part,packetTotal=total,reason=reason or"SEND_REFUSED",bytes=#message},packetDiagnostics.correlationId)
-   elseif reason=="suppressed"then return else HolyStorm.Logger:Write("DEBUG","Comms","send","Packet sent",packetDiagnostics,packetDiagnostics.correlationId)end
+  local message=table.concat({self.protocol,id,part,total,chunk},"|");if#message>255 then anyFailed=true;finalReason="FRAME_TOO_LARGE";break end
+  self.pendingPackets=self.pendingPackets+1;queuedParts=queuedParts+1;local completed=false
+  local function packetComplete(_,sent,totalBytes,result,reason)
+   if completed then return end;completed=true;Comms.pendingPackets=math.max(0,Comms.pendingPackets-1);completedParts=completedParts+1
+   if result==false or(reason and reason~="suppressed")then anyFailed=true;finalReason=reason or"SEND_REFUSED";HolyStorm.Logger:Write("WARN","Comms","send","Queued addon message failed",{direction="SEND",from=playerName(),to=audience(channel,resolved),channel=channel,transmissionId=id,packetPart=part,packetTotal=total,reason=finalReason,bytes=#message},packetDiagnostics.correlationId)
+   elseif reason~="suppressed"then HolyStorm.Logger:Write("DEBUG","Comms","send","Packet sent",packetDiagnostics,packetDiagnostics.correlationId)end
+   if onProgress then onProgress(completedParts,total)end;finishIfReady()
   end
-  local queued,reason;if channel=="WHISPER"then queued,reason=HolyStorm.SyncTransport:SendWhisper(self.prefix,message,resolved,priority,onComplete,nil,packetDiagnostics)elseif channel=="GUILD"then queued,reason=HolyStorm.SyncTransport:SendGuild(self.prefix,message,priority,onComplete,nil,packetDiagnostics)else queued,reason=HolyStorm.SyncTransport:Send(self.prefix,message,channel,resolved,priority,onComplete,nil,packetDiagnostics)end
-  if not queued and not completed then completed=true;self.pendingPackets=math.max(0,self.pendingPackets-1);HolyStorm.Logger:Write("WARN","Comms","send","Addon message was not queued",{direction="SEND",from=playerName(),to=audience(channel,resolved),channel=channel,transmissionId=id,packetPart=part,packetTotal=total,reason=reason or"QUEUE_REJECTED",bytes=#message},packetDiagnostics.correlationId);return false end
- end;return true,id
+  local queued,reason;if channel=="WHISPER"then queued,reason=HolyStorm.SyncTransport:SendWhisper(self.prefix,message,resolved,priority,packetComplete,nil,packetDiagnostics)elseif channel=="GUILD"then queued,reason=HolyStorm.SyncTransport:SendGuild(self.prefix,message,priority,packetComplete,nil,packetDiagnostics)else queued,reason=HolyStorm.SyncTransport:Send(self.prefix,message,channel,resolved,priority,packetComplete,nil,packetDiagnostics)end
+  if not queued and not completed then completed=true;self.pendingPackets=math.max(0,self.pendingPackets-1);queuedParts=queuedParts-1;anyFailed=true;finalReason=reason or"QUEUE_REJECTED";HolyStorm.Logger:Write("WARN","Comms","send","Addon message was not queued",{direction="SEND",from=playerName(),to=audience(channel,resolved),channel=channel,transmissionId=id,packetPart=part,packetTotal=total,reason=finalReason,bytes=#message},packetDiagnostics.correlationId);break end
+ end
+ queueing=false;finishIfReady();return queuedParts>0 or not anyFailed,id
 end
 function Comms:OnMessage(prefix,message,channel,sender)
  if prefix~=self.prefix then return false end
@@ -121,6 +128,7 @@ function Comms:OnMessage(prefix,message,channel,sender)
  if previous then self.receiveCounters.duplicateFragments=self.receiveCounters.duplicateFragments+1 else packet.receivedParts=packet.receivedParts+1 end
  packet.parts[part]=chunk;packet.receivedBytes=receivedBytes;packet.lastUpdatedAt=receivedAt
  context.receivedBytes=receivedBytes;HolyStorm.Logger:Write("DEBUG","Comms","receive","Packet received",context,id)
+ local progressStep=math.max(1,math.floor(packet.total/20));if packet.receivedParts==packet.total or packet.receivedParts-(packet.lastProgressEventParts or 0)>=progressStep then packet.lastProgressEventParts=packet.receivedParts;HolyStorm.Events:Emit("HS_COMMS_FRAGMENT_PROGRESS",{sender=sender,channel=channel,transmissionId=id,fragments=packet.receivedParts,fragmentsTotal=packet.total,bytes=receivedBytes})end
  if packet.receivedParts~=packet.total then self:ScheduleCleanup();return true end
  for index=1,packet.total do if packet.parts[index]==nil then self:ScheduleCleanup();return true end end
  self:RemoveIncoming(key);local completePayload=table.concat(packet.parts);self:ScheduleCleanup()

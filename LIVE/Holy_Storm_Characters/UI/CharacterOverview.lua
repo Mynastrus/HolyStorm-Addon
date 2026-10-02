@@ -180,7 +180,7 @@ function C:SelectTab(id)
  for tabId,view in pairs(Page.views)do view.frame:SetShown(tabId==id)end;Page:UpdateTabVisuals();if not Page.views[id]then self:RefreshTab(id)end;self:LayoutTabView(Page.views[id]);Page.views[id].frame:Show();if Page.dirty[id]then self:RefreshTab(id)end;self:RefreshHeader();return true
 end
 function C:OpenCharacter(characterUUID,optionalTab,addHistory)
- local context=self:SetContext(characterUUID,addHistory);if not context then return false end;if characterUUID==UnitGUID("player")then HolyStorm.Events:Emit("HS_STATS_LIVE_REQUESTED",characterUUID)end;for _,definition in ipairs(self:GetTabs())do Page.dirty[definition.id]=true end;if HolyStorm.UI.ShowView then HolyStorm.UI:ShowView("character")else HolyStorm.UI:ShowPage("character")end;self:RefreshHeader();self:SelectTab(optionalTab or self.activeTab or"summary");self:RequestRefresh(characterUUID,(self:GetTab(optionalTab or self.activeTab or"summary")or{}).blocks,"CHARACTER_OPEN");return true
+ local context=self:SetContext(characterUUID,addHistory);if not context then return false end;if characterUUID==UnitGUID("player")then HolyStorm.Events:Emit("HS_STATS_LIVE_REQUESTED",characterUUID)end;for _,definition in ipairs(self:GetTabs())do Page.dirty[definition.id]=true end;if HolyStorm.UI.ShowView then HolyStorm.UI:ShowView("character")else HolyStorm.UI:ShowPage("character")end;self:RefreshHeader();Page:RefreshSyncSpinner();self:SelectTab(optionalTab or self.activeTab or"summary");self:RequestRefresh(characterUUID,(self:GetTab(optionalTab or"summary")or{}).blocks,"CHARACTER_OPEN");return true
 end
 function Page:ScheduleRefresh(tabId,guid)
  if guid and C.context and guid~=C.context.characterUUID then return end;self.dirty[tabId]=true;self.dirty.summary=true;if self.refreshScheduled then return end;local token=C.contextToken;self.refreshScheduled=true;C_Timer.After(.05,function()Page.refreshScheduled=nil;if token~=C.contextToken then return end;C:RefreshHeader();if C.activeTab and Page.dirty[C.activeTab]then C:RefreshTab(C.activeTab)end end)
@@ -192,6 +192,7 @@ end
 function Page:InitializeUI()
  local UI=HolyStorm:GetModule("UI",true);local page=CreateFrame("Frame",nil,UI.content);self.page=page;self.views,self.tabButtons,self.dirty={},{},{}
  local headerBar=HolyStorm.UIComponents:CreateHeaderBar(UI.frame or page,UI.content or page);self.headerBar=headerBar;self.header=headerBar.frame;self.classIcon=headerBar.primaryIcon;self.portrait=headerBar.primaryIcon;self.specIcon=headerBar.secondaryIcon;self.headerName=headerBar.title;self.headerInfo=headerBar.subtitle;self.factionMark=headerBar.watermark;self.headerStatus=headerBar.status;self.headerUpdated=headerBar.updated;self.developer=headerBar.developer;self.refreshButton=headerBar.refreshButton
+ self.syncSpinner=headerBar.frame:CreateTexture(nil,"OVERLAY");self.syncSpinner:SetSize(13,13);self.syncSpinner:SetTexture("Interface\\Buttons\\UI-RefreshButton");self.syncSpinner:SetPoint("LEFT",headerBar.title,"RIGHT",4,-3);self.syncSpinner:Hide();local rotation=0;headerBar.frame:SetScript("OnUpdate",function(_,elapsed)if self.syncSpinner:IsShown()then rotation=(rotation+elapsed*5)%(math.pi*2);self.syncSpinner:SetRotation(rotation)end end)
  self.refreshButton:SetScript("OnEnter",function(button)GameTooltip:SetOwner(button,"ANCHOR_LEFT");GameTooltip:SetText(L["REFRESH"]);GameTooltip:Show()end);self.refreshButton:SetScript("OnLeave",function()GameTooltip:Hide()end);self.refreshButton:SetScript("OnClick",function()if C.context then C:RequestRefresh(C.context.characterUUID,(C:GetTab(C.activeTab)or{}).blocks,"MANUAL")end end)
  self.pageLayout=HolyStorm.UI.Components:CreateColumn(page,{frame=page,padding={left=12,right=12,top=8,bottom=10}})
   local tabGroup=HolyStorm.UI.Components:CreateTabGroup(page);tabGroup.frame:Show();tabGroup:SetCallback("OnGroupSelected",function(_,_,tabId)if C.context then C:SelectTab(tabId)end end);self.pageLayout:Add(tabGroup,{weight=1});self.tabGroup=tabGroup;self.tabHost=tabGroup:GetContentFrame();self.tabHost:Show();self:BuildTabs()
@@ -200,12 +201,17 @@ function Page:InitializeUI()
  for _,definition in ipairs(C:GetTabs())do registerTabEvents(definition)end
  HolyStorm.Events:Register("HS_CHARACTER_TAB_REGISTERED","character-overview-tabs",function(_,id)local definition=C:GetTab(id);if definition then registerTabEvents(definition)end;Page:BuildTabs()end)
  HolyStorm.Events:Register("HS_CHARACTER_SUMMARY_SECTION_REGISTERED","character-overview-summary",function()Page:ScheduleRefresh("summary")end)
- HolyStorm.Events:Register("HS_TASK_STARTED","character-overview-task",function(_,task)if task.registryId=="Character.Refresh"and C:IsCurrent(task.metadata.characterUUID)then Page.headerStatus:SetText(L["STATUS_REFRESHING"])end end)
+ HolyStorm.Events:Register("HS_SYNC_ACTIVITY_UPDATED","character-overview-sync-activity",function()Page:RefreshSyncSpinner()end)
  HolyStorm.Events:Register("HS_TASK_COMPLETED","character-overview-task-complete",function(_,task)if task.registryId=="Character.Refresh"and C:IsCurrent(task.metadata.characterUUID)then Page:ScheduleRefresh(C.activeTab,task.metadata.characterUUID)end end)
  HolyStorm.Events:Register("HS_TASK_FAILED","character-overview-task-failed",function(_,task)if task.registryId=="Character.Refresh"and C:IsCurrent(task.metadata.characterUUID)then Page:ScheduleRefresh(C.activeTab,task.metadata.characterUUID)end end)
+end
+function Page:RefreshSyncSpinner()
+ local context=C.context;local activity=context and HolyStorm.Sync and HolyStorm.Sync:GetActivity(context.characterUUID);local active=activity and activity.active==true
+ if self.syncSpinner then self.syncSpinner:SetShown(active==true)end
+ return active==true
 end
 function Page:OnInitialize()
  HolyStorm.Tasks:RegisterTaskType("Character.Refresh",{name=L["TASK_CHARACTER_REFRESH"],localizedNameKey="TASK_CHARACTER_REFRESH",module="CharacterOverview",priority=30,executionMode="MERGE_BY_KEY",execute=function(task)local metadata=task.metadata or{};return C:ConsumeRefresh(metadata.characterUUID)end})
  HolyStorm:RegisterUIExtension("CharacterOverview",{id="characters.overview",order=4,initialize=function()Page:InitializeUI()end})
 end
-function Page:OnDisable()HolyStorm.Events:UnregisterOwner("character-overview");for _,definition in ipairs(C:GetTabs())do for _,event in ipairs(definition.events or{})do HolyStorm.Events:UnregisterOwner("character-overview:"..definition.id..":"..event)end end;HolyStorm.Events:UnregisterOwner("character-overview-tabs");HolyStorm.Events:UnregisterOwner("character-overview-summary");HolyStorm.Events:UnregisterOwner("character-overview-task");HolyStorm.Events:UnregisterOwner("character-overview-task-complete");HolyStorm.Events:UnregisterOwner("character-overview-task-failed")end
+function Page:OnDisable()HolyStorm.Events:UnregisterOwner("character-overview");for _,definition in ipairs(C:GetTabs())do for _,event in ipairs(definition.events or{})do HolyStorm.Events:UnregisterOwner("character-overview:"..definition.id..":"..event)end end;HolyStorm.Events:UnregisterOwner("character-overview-tabs");HolyStorm.Events:UnregisterOwner("character-overview-summary");HolyStorm.Events:UnregisterOwner("character-overview-sync-activity");HolyStorm.Events:UnregisterOwner("character-overview-task-complete");HolyStorm.Events:UnregisterOwner("character-overview-task-failed")end

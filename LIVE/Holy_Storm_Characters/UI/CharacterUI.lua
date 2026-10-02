@@ -2,7 +2,7 @@ local addonVersion="2.0.0"
 local HolyStorm=LibStub("AceAddon-3.0"):GetAddon("Holy_Storm")
 local localeLibrary=LibStub("AceLocale-3.0",true)
 local L=localeLibrary and localeLibrary.GetLocale and localeLibrary:GetLocale("Holy_Storm_CharacterUI")or setmetatable({},{__index=function(_,key)return key end})
-local CharacterUI={version=addonVersion,tabs={},tabOrder={},summarySections={},summaryOrder={},context=nil,contextToken=0,history={},maxHistory=20,pendingRefreshBlocks={},liveStats={}}
+local CharacterUI={version=addonVersion,tabs={},tabOrder={},summarySections={},summaryOrder={},context=nil,contextToken=0,history={},maxHistory=20,pendingRefreshBlocks={},pendingRefreshOptions={},liveStats={}}
 
 CharacterUI.raidDifficulties={
  LFR={id="LFR",order=1,color={r=1,g=.82,b=0},difficultyIds={[7]=true,[17]=true}},
@@ -220,20 +220,21 @@ function CharacterUI:CanUseTab(definition)
  if definition.availability then local ok,available,reason=HolyStorm.Utils.SafeCall("character.tab.availability:"..definition.id,definition.availability,self.context);if not ok or available==false then return false,reason or"UNAVAILABLE"end end
  return true
 end
-function CharacterUI:RunRefresh(characterUUID,blocks)
+function CharacterUI:RunRefresh(characterUUID,blocks,options)
  local wanted={};for _,block in ipairs(blocks or{})do wanted[block]=true end;local all=next(wanted)==nil
  if characterUUID==UnitGUID("player")then if all or wanted.identity then HolyStorm.Data.CharacterStore:CaptureCurrent()end;if all or wanted.equipment then HolyStorm:CallCapability("character.scan.equipment",true)end;if all or wanted.raid then HolyStorm:CallCapability("character.scan.raids",true)end;if all or wanted.mythicPlus then HolyStorm:CallCapability("character.scan.mythicplus",true)end;if all or wanted.delves then HolyStorm:CallCapability("character.scan.delves",true)end;if all or wanted.stats then HolyStorm:CallCapability("character.scan.stats",true)end;return true end
- return HolyStorm.Data.CharacterStore:RequestRefresh(characterUUID,blocks)
+ return HolyStorm.Data.CharacterStore:RequestRefresh(characterUUID,blocks,options)
 end
 function CharacterUI:RequestRefresh(characterUUID,blocks,reason)
  characterUUID=characterUUID or(self.context and self.context.characterUUID);if not characterUUID then return false end
  local requested={};for _,block in ipairs(blocks or{})do if reason=="MANUAL"or self:GetDataStatus(characterUUID,block)~="CURRENT"then requested[#requested+1]=block end end;if#requested==0 then return true end
  local pending=self.pendingRefreshBlocks[characterUUID]or{};for _,block in ipairs(requested)do pending[block]=true end;self.pendingRefreshBlocks[characterUUID]=pending
+ local priorityClass=(reason=="MANUAL"or reason=="CHARACTER_OPEN")and"USER_INTERACTIVE"or"BACKGROUND_CATCHUP";local previous=self.pendingRefreshOptions[characterUUID];if not previous or priorityClass=="USER_INTERACTIVE"then self.pendingRefreshOptions[characterUUID]={reason=reason or"CHARACTER_OPEN",priorityClass=priorityClass}end
  if HolyStorm.Tasks:GetTaskType("Character.Refresh")then return HolyStorm.Tasks:Queue("Character.Refresh",{mergeKey=characterUUID,metadata={characterUUID=characterUUID},triggerSource=reason or"CHARACTER_OPEN",debounce=.2})end
- self.pendingRefreshBlocks[characterUUID]=nil;return self:RunRefresh(characterUUID,requested)
+ local options=self.pendingRefreshOptions[characterUUID];self.pendingRefreshBlocks[characterUUID]=nil;self.pendingRefreshOptions[characterUUID]=nil;return self:RunRefresh(characterUUID,requested,options)
 end
 function CharacterUI:ConsumeRefresh(characterUUID)
- local pending=self.pendingRefreshBlocks[characterUUID]or{};self.pendingRefreshBlocks[characterUUID]=nil;local blocks={};for block in pairs(pending)do blocks[#blocks+1]=block end;table.sort(blocks);return self:RunRefresh(characterUUID,blocks)
+ local pending=self.pendingRefreshBlocks[characterUUID]or{};local options=self.pendingRefreshOptions[characterUUID];self.pendingRefreshBlocks[characterUUID]=nil;self.pendingRefreshOptions[characterUUID]=nil;local blocks={};for block in pairs(pending)do blocks[#blocks+1]=block end;table.sort(blocks);return self:RunRefresh(characterUUID,blocks,options)
 end
 
 HolyStorm.CharacterUI=CharacterUI

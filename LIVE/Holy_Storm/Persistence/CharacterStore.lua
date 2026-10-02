@@ -19,7 +19,7 @@ function Store:GetProjection(guid,blocks)
     return projection
 end
 function Store:GetBlockMetadata(guid,blockId) return HolyStorm.PlayerData:GetMetadata(guid,blockId) end
-function Store:RequestRefresh(guid,blocks) return HolyStorm.PlayerData:RequestRefresh(guid,blocks) end
+function Store:RequestRefresh(guid,blocks,options) return HolyStorm.PlayerData:RequestRefresh(guid,blocks,options) end
 
 -- Compatibility adapter for Core collectors. Remote synchronization uses
 -- AcceptRemoteBlock exclusively so relays can never increment owner versions.

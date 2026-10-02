@@ -276,10 +276,11 @@ function PlayerData:GetBlockFreshness(guid,blockId)
     return{metadata=meta,metadataExists=meta~=nil,stale=state~="CURRENT",state=state,clockDomain=localOwner and"LOCAL_COMMIT"or"LOCAL_RECEIVE",updatedAt=tonumber(meta and(meta.originCreatedAt or meta.updatedAt)),freshnessAt=updatedAt,staleAfter=staleAfter,age=age}
 end
 function PlayerData:IsStale(guid,blockId)return self:GetBlockFreshness(guid,blockId).stale end
-function PlayerData:RequestRefresh(guid,blocks)
+function PlayerData:RequestRefresh(guid,blocks,options)
     if not HolyStorm.Sync then return false end
+    options=options or{}
     if not blocks then blocks={};for blockId in pairs(self.blocks)do if blockId~="addon"then blocks[#blocks+1]=blockId end end;table.sort(blocks)end
-    for _,blockId in ipairs(blocks)do if self:IsStale(guid,blockId)then HolyStorm.Sync:RequestObject("character",guid.."\031"..blockId,{owner=guid,reason="ON_DEMAND"})end end;return true
+    for _,blockId in ipairs(blocks)do if self:IsStale(guid,blockId)then HolyStorm.Sync:RequestObject("character",guid.."\031"..blockId,{owner=guid,reason=options.reason or"ON_DEMAND",priorityClass=options.priorityClass or"USER_INTERACTIVE"})end end;return true
 end
 
 local identity={"name","realm","class","classFile","race","raceFile","sex","level","faction","guild","guildRank","guildRankIndex","lastSeen"}

@@ -108,6 +108,32 @@ function UI:OnInitialize()
 
     local status = frame:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
     status:SetPoint("BOTTOMLEFT", frame, "BOTTOMLEFT", 16, 10); status:SetText(string.format(L["STATUS_BAR_READY"], HolyStorm.version))
+    local syncActivity = CreateFrame("Button", nil, frame)
+    syncActivity:SetSize(170, 24); syncActivity:SetPoint("BOTTOM", frame, "BOTTOM", 0, 7); syncActivity:Hide()
+    local syncSpinner = syncActivity:CreateTexture(nil, "ARTWORK")
+    syncSpinner:SetSize(13, 13); syncSpinner:SetPoint("LEFT", syncActivity, "LEFT", 4, 0); if syncSpinner.SetTexture then syncSpinner:SetTexture("Interface\\Buttons\\UI-RefreshButton") end
+    local syncLabel = syncActivity:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    syncLabel:SetPoint("LEFT", syncSpinner, "RIGHT", 5, 0); syncLabel:SetText(L["SYNC_RUNNING"])
+    local syncRotation = 0
+    syncActivity:SetScript("OnUpdate", function(_, elapsed) syncRotation = (syncRotation + elapsed * 5) % (math.pi * 2); syncSpinner:SetRotation(syncRotation) end)
+    syncActivity:SetScript("OnEnter", function(button)
+        local activity = HolyStorm.Sync and HolyStorm.Sync:GetActivity()
+        GameTooltip:SetOwner(button, "ANCHOR_TOP"); GameTooltip:SetText(L["SYNC_TOOLTIP_TITLE"])
+        local domainLabels = {identity="SYNC_DOMAIN_IDENTITY",equipment="SYNC_DOMAIN_EQUIPMENT",mythicPlus="SYNC_DOMAIN_MYTHICPLUS",raid="SYNC_DOMAIN_RAID",delves="SYNC_DOMAIN_DELVES",stats="SYNC_DOMAIN_STATS",GuildLog="SYNC_DOMAIN_GUILDLOG",guildLog="SYNC_DOMAIN_GUILDLOG"}
+        local phaseLabels = {REQUEST="SYNC_PHASE_REQUEST",TRANSFER="SYNC_PHASE_TRANSFER",VALIDATE_COMMIT="SYNC_PHASE_VALIDATE_COMMIT"}
+        for _, operation in ipairs(activity and activity.activeOperations or {}) do
+            local function line(key, value) if value ~= nil and value ~= "" then GameTooltip:AddDoubleLine(L[key], tostring(value), .8, .8, .8, 1, 1, 1) end end
+            line("SYNC_CHARACTER", operation.characterUUID or operation.entity); line("SYNC_DOMAIN", L[domainLabels[operation.domain]] or operation.domain)
+            line("SYNC_DIRECTION", L[operation.direction == "RECEIVE" and "SYNC_RECEIVE" or "SYNC_SEND"]); line("SYNC_PHASE", L[phaseLabels[operation.phase]] or operation.phase)
+            line("SYNC_SOURCE", operation.sender); line("SYNC_TARGET", operation.receiver); line("SYNC_REQUEST", operation.requestId)
+            line("SYNC_REVISION", operation.revision); line("SYNC_BYTES", operation.bytes)
+            if operation.fragmentsTotal then line("SYNC_FRAGMENTS", tostring(operation.fragments or 0) .. " / " .. tostring(operation.fragmentsTotal)) end
+            line("SYNC_RETRY", tostring(operation.retryCount or 0) .. " / " .. tostring(operation.maxRetries or 0))
+            line("SYNC_QUEUE", tostring(operation.queuePosition or 0) .. " / " .. tostring((activity.queuedJobs or 0) + 1))
+        end
+        GameTooltip:Show()
+    end)
+    syncActivity:SetScript("OnLeave", function() GameTooltip:Hide() end)
     local updated = frame:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
     updated:SetPoint("RIGHT", frame, "BOTTOMRIGHT", -190, 10); updated:SetJustifyH("RIGHT"); updated:SetText(L["DASHBOARD_UPDATE_UNKNOWN"])
     local refresh = CreateFrame("Button", nil, frame, "UIPanelButtonTemplate")
@@ -130,15 +156,25 @@ function UI:OnInitialize()
 
     self.frame, self.content, self.scroll, self.page, self.pages = frame, content, scroll, page, {}
     self.dashboardElements, self.dashboardWidgets, self.windowTitle, self.status = dashboard, dashboardWidgets, title, status
+    self.syncActivityButton, self.syncActivityLabel, self.syncSpinner = syncActivity, syncLabel, syncSpinner
     self.updatedStatus, self.refreshButton = updated, refresh
     self:LoadWindowState()
     self:CreateRightDock()
     self:RegisterDashboardEvents()
+    if HolyStorm.Events and type(HolyStorm.Events.Register) == "function" then HolyStorm.Events:Register("HS_SYNC_ACTIVITY_UPDATED", "ui-sync-activity", function() UI:RefreshSyncActivity() end) end
     frame:HookScript("OnShow", function() UI:SetRightDockVisible(true) end)
     frame:HookScript("OnHide", function() UI:SetRightDockVisible(false) end)
     self:SetRightDockVisible(false)
     HolyStorm.UI:SetDriver(self)
+    self:RefreshSyncActivity()
     self:RefreshDashboard()
+end
+
+function UI:RefreshSyncActivity()
+    local activity = HolyStorm.Sync and HolyStorm.Sync:GetActivity()
+    local active = activity and activity.active == true
+    if self.syncActivityButton then self.syncActivityButton:SetShown(active) end
+    return active == true
 end
 
 function UI:SetRightDockVisible(visible)
