@@ -107,8 +107,10 @@ function Sync:RunLivePublish(task)
 end
 function Sync:RunPublish(task)
  local m=task.metadata;local domain=self.domains[m.domain];local meta=domain and domain.getMetadata(m.objectId);if not meta then return false end;meta=copy(meta);meta.direct=meta.owner==UnitGUID("player")
- if domain.getRecipients then
-  local recipients=domain.getRecipients(meta,"publish")or{};local names={};for _,recipient in ipairs(recipients)do local name=type(recipient)=="table"and recipient.name or recipient;local guid=type(recipient)=="table"and recipient.guid or senderGuid(name);if type(name)=="string"and name~=""and(not domain.canShare or domain.canShare(meta,guid,name,"publish"))then names[#names+1]=name end end;table.sort(names)
+ -- nil means the domain uses its normal channel; a list (including empty) is an explicit recipient scope.
+ local recipients=domain.getRecipients and domain.getRecipients(meta,"publish")
+ if recipients~=nil then
+  local names={};for _,recipient in ipairs(recipients)do local name=type(recipient)=="table"and recipient.name or recipient;local guid=type(recipient)=="table"and recipient.guid or senderGuid(name);if type(name)=="string"and name~=""and(not domain.canShare or domain.canShare(meta,guid,name,"publish"))then names[#names+1]=name end end;table.sort(names)
   local publishKey=key(m.domain,m.objectId);local signature=table.concat({tostring(meta.version),tostring(meta.revisionID or""),table.concat(names,string.char(31))},string.char(31));if self.publishedVersions[publishKey]==signature then return true end;if#names==0 then log("DEBUG","discovery","No authorized online recipients for targeted metadata",{domain=m.domain,objectId=m.objectId,version=meta.version,reason=m.reason});return true end
   local queued;for _,name in ipairs(names)do queued=self:QueueEnvelope("ANNOUNCE",m.domain,{offers={meta},reason=m.reason},"WHISPER",name,70)or queued end
   if queued then self.publishedVersions[publishKey]=signature end;log("DEBUG","discovery","Publishing targeted metadata offers",{domain=m.domain,objectId=m.objectId,version=meta.version,recipients=#names,reason=m.reason});return queued~=nil

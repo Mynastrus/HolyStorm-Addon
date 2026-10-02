@@ -63,7 +63,7 @@ for _,feature in ipairs(features)do
  assert(toc:find("## Title: Holy Storm: |cff24a7de"..feature.title.."|r",1,true),feature.folder.." title contract")
  assert(toc:find("## Category: Holy Storm",1,true),feature.folder.." category contract")
  assert(toc:find("## RequiredDeps: Holy_Storm",1,true),feature.folder.." must require only the core")
- if feature.folder=="Holy_Storm_GuildLog"then assert(toc:find("## SavedVariables: HS_GuildLog_DB",1,true),"GuildLog must own its SavedVariables")else assert(not toc:find("## SavedVariables:",1,true),feature.folder.." owns unexpected SavedVariables")end
+ assert(not toc:find("## SavedVariables:",1,true),feature.folder.." must use central persistence")
  assert(toc:find("## X-HolyStorm-ID:",1,true),feature.folder.." lacks discovery metadata")
  tocEntries(root,toc)
  local module=read(root.."/"..feature.module);assert(module:find("RegisterModule",1,true),feature.folder.." does not register dynamically")

@@ -24,10 +24,20 @@ end
 function UI:Build(parent)
  local frame=CreateFrame("Frame",nil,parent);local tabs=C:CreateTabGroup(frame,{wrapTabs=true,minTabWidth=150});if not tabs then return frame end;tabs.frame:SetAllPoints();local definitions={};for _,feature in ipairs(GM:GetFeatures())do definitions[#definitions+1]={value=feature.id,text=feature.title,icon=feature.icon}end;tabs:SetTabs(definitions);tabs:SetCallback("OnGroupSelected",function(_,_,id)UI:SelectFeature(id)end);self.frame,self.tabs,self.content=frame,tabs,tabs:GetContentFrame();return frame
 end
+function UI:RefreshFeatureTabs()
+ if not self.tabs then return false end
+ local definitions={};for _,feature in ipairs(GM:GetFeatures())do definitions[#definitions+1]={value=feature.id,text=feature.title,icon=feature.icon}end
+ self.tabs:SetTabs(definitions)
+ if GM:GetFeature(self.selected)then return self:SelectFeature(self.selected)end
+ if definitions[1]then return self:SelectFeature(definitions[1].value)end
+ return true
+end
 function UI:Refresh()if not self.built[self.selected]then self:SelectFeature(self.selected)else local feature=GM:GetFeature(self.selected);if feature and feature.refresh then feature.refresh()end end end
 function UI:Initialize()
  C=HolyStorm.UIComponents;HolyStorm.UI:RegisterView({id="guildManagement",owner="GuildManagement",moduleId="GuildManagement",order=4,title=L["GUILD_MANAGEMENT_TITLE"],description=L["GUILD_MANAGEMENT_DESCRIPTION"],navigation={order=4,icon="Interface\\Icons\\Achievement_GuildPerk_EverybodysFriend",title=L["GUILD_MANAGEMENT_TITLE"],description=L["GUILD_MANAGEMENT_DESCRIPTION"]},events={"HS_GUILD_NOTE_CREATED","HS_GUILD_NOTE_UPDATED","HS_GUILD_NOTE_DELETED","HS_GUILD_NOTE_SYNCED","HS_GUILD_NOTE_EXPIRATION","HS_GUILD_ABSENCE_CREATED","HS_GUILD_ABSENCE_UPDATED","HS_GUILD_ABSENCE_DELETED","HS_GUILD_ABSENCE_SYNCED","HS_GUILD_ACTIVITY_UPDATED","HS_GUILD_ACTIVITY_SYNCED","HS_GUILD_ACTIVITY_POINTS_UPDATED","HS_GUILD_ACTIVITY_POINTS_SYNCED","HS_GUILD_ACTIVITY_PROVIDER_AVAILABILITY","HS_ROSTER_UPDATED","HS_PERMISSIONS_STATE_UPDATED"},build=function(parent)return UI:Build(parent)end,refresh=function()return UI:Refresh()end})
  HolyStorm.Events:Register("HS_GUILD_MANAGEMENT_OPEN_REQUESTED","guild-management-ui",function(_,featureId,characterUUID,mode)UI.pendingCharacter=characterUUID;UI.pendingMode=mode;if featureId=="absences"then UI.absenceOwnerFilter=GM:GetAccountUUID(characterUUID)elseif featureId=="activity"then UI.activityAccountFilter=GM:GetAccountUUID(characterUUID)end;UI:SelectFeature(featureId or"notes");if featureId=="notes"and mode=="create"then UI:EditNote()end end)
+ HolyStorm.Events:Register("HS_GUILD_MANAGEMENT_FEATURE_REGISTERED","guild-management-tabs",function()UI:RefreshFeatureTabs()end)
+ HolyStorm.Events:Register("HS_GUILD_MANAGEMENT_FEATURE_UNREGISTERED","guild-management-tabs",function()UI:RefreshFeatureTabs()end)
 end
 
 function UI:NoteVisibilityLabel(value)return L["GUILD_NOTE_VISIBILITY_"..tostring(value)]or value end

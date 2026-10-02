@@ -9,7 +9,7 @@ function GuildManagement:RegisterFeature(definition)
  table.sort(self.featureOrder,function(left,right)local a,b=self.features[left],self.features[right];return a.order<b.order or a.order==b.order and left<right end)
  if HolyStorm.Events then HolyStorm.Events:Emit("HS_GUILD_MANAGEMENT_FEATURE_REGISTERED",definition.id)end;return true
 end
-function GuildManagement:UnregisterFeature(id)if not self.features[id]then return false end;self.features[id]=nil;for index,value in ipairs(self.featureOrder)do if value==id then table.remove(self.featureOrder,index);break end end;return true end
+function GuildManagement:UnregisterFeature(id)if not self.features[id]then return false end;self.features[id]=nil;for index,value in ipairs(self.featureOrder)do if value==id then table.remove(self.featureOrder,index);break end end;if HolyStorm.Events then HolyStorm.Events:Emit("HS_GUILD_MANAGEMENT_FEATURE_UNREGISTERED",id)end;return true end
 function GuildManagement:GetFeatures()
  local out={};for _,id in ipairs(self.featureOrder)do out[#out+1]=self.features[id]end;return out
 end
