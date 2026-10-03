@@ -19,6 +19,9 @@ local function region(kind,parent,template)
  function object:CreateFontString()local text=region("font",self);self.children[#self.children+1]=text;return text end
  function object:CreateTexture()return region("texture",self)end
  function object:SetText(text,...)assert(select("#",...)==0,"button SetText receives only its text");self.text=text end
+ function object:SetOwner(owner,anchor)self.owner,self.anchor=owner,anchor end
+ function object:ClearLines()self.text=nil;self.lines={}end
+ function object:AddLine(text,r,g,b,wrap)self.lines=self.lines or{};self.lines[#self.lines+1]={text=text,r=r,g=g,b=b,wrap=wrap}end
  function object:SetImage(value,...)self.image=value;self.imageArgs={...}end
  function object:SetImageSize()end
  function object:SetFontObject()end
@@ -35,7 +38,7 @@ local function region(kind,parent,template)
  function object:RegisterForDrag()end
  function object:SetFrameStrata()end
  function object:SetFrameLevel()end
- function object:SetClampedToScreen()end
+ function object:SetClampedToScreen(value)self.clampedToScreen=value end
  function object:SetClampRectInsets()end
  function object:SetMovable()end
  function object:SetResizable()end
@@ -51,7 +54,7 @@ local function region(kind,parent,template)
  return object
 end
 
-local locale={WINDOW_TITLE="Holy Storm",WINDOW_TITLE_OPTIONS="Holy Storm Options",STATUS_BAR_READY="Holy Storm v%s - Ready",DASHBOARD_UPDATE_UNKNOWN="Update time unknown",DASHBOARD_REFRESH="Refresh data",DASHBOARD_REFRESH_TOOLTIP="Refresh character data through the normal scan workflow.",SYNC_RUNNING="Sync running",SYNC_TOOLTIP_TITLE="Synchronization activity",SYNC_CHARACTER="Character",SYNC_DOMAIN="Domain",SYNC_DOMAIN_EQUIPMENT="Equipment",SYNC_DIRECTION="Direction",SYNC_RECEIVE="Receive",SYNC_PHASE="Phase",SYNC_PHASE_TRANSFER="Transfer",SYNC_SOURCE="Source",SYNC_TARGET="Target",SYNC_REQUEST="Request ID",SYNC_REVISION="Revision",SYNC_BYTES="Bytes",SYNC_FRAGMENTS="Fragments",SYNC_RETRY="Retry",SYNC_QUEUE="Queue",SYNC_SEND="Send"}
+local locale={WINDOW_TITLE="Holy Storm",WINDOW_TITLE_OPTIONS="Holy Storm Options",STATUS_BAR_READY="Holy Storm v%s - Ready",DASHBOARD_UPDATE_UNKNOWN="Update time unknown",DASHBOARD_REFRESH="Refresh data",DASHBOARD_REFRESH_TOOLTIP="Refresh character data through the normal scan workflow.",SYNC_RUNNING="Sync running",SYNC_TOOLTIP_TITLE="Synchronization activity",SYNC_ACTIVITY_CHARACTER="Character data is being synchronized",SYNC_ACTIVITY_POI="POIs are being synchronized",SYNC_ACTIVITY_POSITIONS="Position data is being synchronized",SYNC_ACTIVITY_TRANSFER="Synchronization data is being transferred"}
 local module={dashboardProviders={}}
 local addon={version="DEV",Libraries={},Events={listeners={}}}
 function addon.Events:Register(event,owner,callback)self.listeners[event]=callback end
@@ -108,11 +111,28 @@ local refreshButton
 for _,frame in ipairs(frames)do if frame.template=="UIPanelButtonTemplate"then refreshButton=frame;break end end
 assert(refreshButton and refreshButton.text==locale.DASHBOARD_REFRESH,"refresh button receives its localized caption")
 assert(not module.syncActivityButton.shown and module.syncActivityLabel.text==locale.SYNC_RUNNING,"sync activity is completely hidden at idle while retaining its active label")
-addon.Sync={GetActivity=function()return{active=true,queuedJobs=4,activeOperations={{characterUUID="Character-1",domain="equipment",direction="RECEIVE",phase="TRANSFER",sender="Source-Realm",receiver="Local-Realm",requestId="request-1",revision=27,bytes=12000,fragments=58,fragmentsTotal=139,retryCount=1,maxRetries=3,queuePosition=1}}}end}
+local longIdentifier=string.rep("character/object/UUID-",1000)
+addon.Sync={GetActivity=function()return{active=true,queuedJobs=4,activeOperations={{characterUUID=longIdentifier,entity=longIdentifier,domain="equipment",direction="RECEIVE",phase="TRANSFER",sender=longIdentifier,receiver=longIdentifier,requestId=longIdentifier,revision=longIdentifier,bytes=12000,fragments=58,fragmentsTotal=139,retryCount=1,maxRetries=3,queuePosition=1}}}end}
 assert(module:RefreshSyncActivity()and module.syncActivityButton.shown,"the statusbar appears only when the central model reports an active transfer")
-module.syncActivityButton.scripts.OnEnter(module.syncActivityButton);assert(tooltip.shown and tooltip.text==locale.SYNC_TOOLTIP_TITLE and tooltip.lines[1].right=="Character-1"and tooltip.lines[10].right=="58 / 139","the active tooltip exposes localized technical activity details");module.syncActivityButton.scripts.OnLeave();addon.Sync.GetActivity=function()return{active=false,queuedJobs=0,activeOperations={}}end;assert(not module:RefreshSyncActivity()and not module.syncActivityButton.shown,"the statusbar becomes empty again when the last transfer ends")
+local syncTooltip=module.syncActivityTooltip
+module.syncActivityButton.scripts.OnEnter(module.syncActivityButton)
+assert(syncTooltip.shown and syncTooltip.text==locale.SYNC_TOOLTIP_TITLE and #syncTooltip.lines==1 and syncTooltip.lines[1].text==locale.SYNC_ACTIVITY_CHARACTER and syncTooltip.lines[1].wrap==true,"character tooltip contains only a separate, wrappable localized description")
+assert(syncTooltip.clampedToScreen==true and syncTooltip.anchor=="ANCHOR_TOP" and not syncTooltip.lines[1].text:find(longIdentifier,1,true),"long character and transfer identifiers do not enter tooltip content or anchor layout")
+module.syncActivityButton.scripts.OnLeave()
+addon.Sync.GetActivity=function()return{active=true,queuedJobs=0,activeOperations={{domain="poi",entity="poi@"..longIdentifier,requestId=longIdentifier}}}end
+module.syncActivityButton.scripts.OnEnter(module.syncActivityButton)
+assert(#syncTooltip.lines==1 and syncTooltip.lines[1].text==locale.SYNC_ACTIVITY_POI and not syncTooltip.lines[1].text:find(longIdentifier,1,true),"POI identifiers are summarized without appearing in the tooltip")
+addon.Sync.GetActivity=function()return{active=true,queuedJobs=0,activeOperations={{domain="guild-position",entity=longIdentifier}}}end
+module.syncActivityButton.scripts.OnEnter(module.syncActivityButton)
+assert(syncTooltip.lines[1].text==locale.SYNC_ACTIVITY_POSITIONS,"position activity gets a localized summary")
+addon.Sync.GetActivity=function()return{active=true,queuedJobs=0,activeOperations={{domain="snapshot",entity=longIdentifier,requestId=longIdentifier}}}end
+module.syncActivityButton.scripts.OnEnter(module.syncActivityButton)
+assert(syncTooltip.lines[1].text==locale.SYNC_ACTIVITY_TRANSFER and #syncTooltip.lines==1,"other sync-v2 activity uses one generic localized line")
+module.syncActivityButton.scripts.OnLeave()
+addon.Sync.GetActivity=function()return{active=false,queuedJobs=0,activeOperations={}}end
+assert(not module:RefreshSyncActivity()and not module.syncActivityButton.shown,"the statusbar becomes empty again when the last transfer ends")
 local onEnter=assert(refreshButton.scripts.OnEnter,"refresh tooltip handler is installed")
 onEnter(refreshButton)
-assert(tooltip.callCount==2 and tooltip.text==locale.DASHBOARD_REFRESH_TOOLTIP,"hover assigns the localized tooltip using only supported Retail arguments")
+assert(tooltip.callCount==1 and tooltip.text==locale.DASHBOARD_REFRESH_TOOLTIP,"hover assigns the localized tooltip using only supported Retail arguments")
 
 print("MainWindow Retail tooltip SetText contract and initialization regression passed")
