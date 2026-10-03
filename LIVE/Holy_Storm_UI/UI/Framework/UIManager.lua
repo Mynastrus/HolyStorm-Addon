@@ -4,6 +4,7 @@ local localeLibrary=LibStub("AceLocale-3.0",true)
 
 local UIManager={
     version=addonVersion,driver=nil,pages={},views={},viewOrder={},dirty={},scheduled={},initializedExtensions={},dashboardProviders={},
+    runtimeMetrics={pageRefreshes=0,byPage={}},
     Layout=HolyStorm.UILayout,Components=HolyStorm.UIComponents,
 }
 
@@ -53,9 +54,20 @@ function UIManager:MarkDirty(id,deferVisible)
     end
     return true
 end
+function UIManager:GetRuntimeMetrics()return self.runtimeMetrics end
+function UIManager:ResetRuntimeMetrics()self.runtimeMetrics={pageRefreshes=0,byPage={}};return true end
+function UIManager:NotifyRuntimeEvent()
+    if not self.runtimeEventMonitorVisible then return false end
+    local page=HolyStorm:GetModule("TaskManagerUI",true)
+    return page and page.RequestRefresh and page:RequestRefresh()or false
+end
 function UIManager:RefreshPage(id,force)
     local page=self.pages[id];if not page or(not force and not self.dirty[id])then return false end
-    self.dirty[id]=nil;if page.refresh then local ok=HolyStorm.Utils.SafeCall("ui:"..id,page.refresh);return ok end;return true
+    self.dirty[id]=nil;self.runtimeMetrics.pageRefreshes=self.runtimeMetrics.pageRefreshes+1
+    local metricId=id;local pageMetric=self.runtimeMetrics.byPage[metricId]
+    if not pageMetric then local count=0;for _ in pairs(self.runtimeMetrics.byPage)do count=count+1 end;if count>=128 then metricId="OTHER";pageMetric=self.runtimeMetrics.byPage[metricId]end;if not pageMetric then pageMetric={refreshes=0};self.runtimeMetrics.byPage[metricId]=pageMetric end end;pageMetric.refreshes=pageMetric.refreshes+1
+    if HolyStorm.Tasks and HolyStorm.Tasks.RecordStartupMetric then HolyStorm.Tasks:RecordStartupMetric("uiRefreshes")end
+    if page.refresh then local ok=HolyStorm.Utils.SafeCall("ui:"..id,page.refresh);return ok end;return true
 end
 function UIManager:ShowPage(id)
     if not self.driver or not self.pages[id]then return false end;self.driver:ShowPage(id);self:RefreshPage(id);return true

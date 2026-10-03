@@ -219,4 +219,6 @@ timedOut.timeoutTimer.callback();assert(timedOut.job.retryCount==1 and timedOut.
 assert(Sync:RunQueuePump() and Sync.activeTransfer and Sync.activeTransfer.characterUUID~=userGuid,"queue advances to another stale character while the failed job backs off")
 Sync.activeTransfer=nil;Sync.catchUpJobs={};Sync.catchUpIndex={};Sync:NotifyActivity();assert(not Sync:GetActivity().active and Sync:GetActivity().queuedJobs==0,"idle activity model is empty after the queue drains")
 assert(activityEvents>0,"central activity changes emit update events")
+local syncMetrics=Sync:GetRuntimeMetrics();assert(syncMetrics.requested>0 and syncMetrics.started>0 and syncMetrics.completed>0 and syncMetrics.retried>0 and next(syncMetrics.byDomain)and next(syncMetrics.byReason),"sync lifecycle metrics include bounded domain and reason aggregates")
+local requestsBeforeReset=Sync.requests;assert(Sync:ResetRuntimeMetrics()and Sync:GetRuntimeMetrics().requested==0 and next(Sync:GetRuntimeMetrics().byDomain)==nil and Sync.requests==requestsBeforeReset,"sync metrics reset preserves protocol request state")
 print("Sync v2 large-guild queue, paging, priority, serialization and atomic receive tests passed")

@@ -93,6 +93,7 @@ assert(UI:RegisterView({id="example.view",owner="example",localeName="Example",t
 assert(builds==1 and UI:GetView("example.view").owner=="example"and driver.pages["example.view"].title=="Localized title","view registration and localization")
 local duplicate,duplicateReason=UI:RegisterView({id="example.view",owner="other",frame=region("duplicate")});assert(not duplicate and duplicateReason=="VIEW_ID_EXISTS","duplicate view IDs")
 assert(UI:ShowView("example.view")and refreshes==1,"view show and refresh lifecycle")
+local uiMetrics=UI:GetRuntimeMetrics();assert(uiMetrics.pageRefreshes==1 and uiMetrics.byPage["example.view"].refreshes==1,"central page refreshes contribute volatile runtime and startup metrics");local registeredPages=UI.pages;assert(UI:ResetRuntimeMetrics()and UI:GetRuntimeMetrics().pageRefreshes==0 and UI.pages==registeredPages,"runtime metrics reset preserves registered Developer pages")
 assert(UI:RegisterView({id="fallback.view",owner="example",titleKey="MISSING_TITLE",frame=region("fallback")}));assert(driver.pages["fallback.view"].title=="fallback.view","localization fallback")
 local optionalBuilds=0
 assert(UI:RegisterView({id="optional.view",owner="optional",requires={module="missing"},build=function(parentFrame)optionalBuilds=optionalBuilds+1;return region("optional",parentFrame)end}))

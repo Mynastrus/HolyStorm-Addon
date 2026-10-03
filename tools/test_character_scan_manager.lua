@@ -18,6 +18,7 @@ function HolyStorm.Events:Emit(event,...)emitted[#emitted+1]={event=event,args={
 function HolyStorm.AddonLoader:GetCharacterDataDefinitions()return{{block="equipment",capability="character.scan.equipment",addonId="equipment",order=10},{block="mythicPlus",capability="character.scan.mythicplus",addonId="mythicPlus",order=20},{block="raid",capability="character.scan.raids",addonId="raids",order=30},{block="delves",capability="character.scan.delves",addonId="delves",order=40},{block="stats",capability="character.scan.stats",addonId="characters",order=50}}end
 function UnitGUID()return"Player-Local"end
 assert(loadfile(root.."Core/Tasks/CharacterScanManager.lua"))();local scans=HolyStorm.CharacterScans;scans:Initialize()
+local initialMetrics=scans:GetRuntimeMetrics();for _,block in ipairs({"equipment","mythicPlus","raid","delves","stats"})do assert(initialMetrics.byBlock[block]and initialMetrics.byBlock[block].requested==0,"zero-valued startup metrics expose the "..block.." producer")end
 assert(not HolyStorm.Tasks.definitions["CharacterScan.InitialBootstrap"],"the delayed login bootstrap task is removed")
 assert(HolyStorm.Tasks.definitions["CharacterScan.Advance"],"explicit and event-driven work keeps the shared serialized advance task")
 local declarations=scans:GetDeclarations();assert(#declarations==5 and declarations[1].block=="equipment"and declarations[5].block=="stats"and declarations[3].addonId=="raids","manual scan declarations are discovered in producer order without loading the providers")
@@ -48,6 +49,8 @@ assert(scans:Finish({workflowId=scans.active.workflowId},"COMPLETED"));assert(sc
 assert(scans:Finish({workflowId=scans.active.workflowId},"FAILED")and scans:GetRuntimeState("Player-Local","raid").state=="ERROR","failed refresh retains an ERROR runtime state")
 assert(scans:Advance()and scans.active.block=="equipment"and started[#started].reason=="SOCKET_INFO_UPDATE","same-producer follow-up remains serialized after higher-priority blocks")
 assert(scans:GetRuntimeState("Player-Remote","raid")==nil,"local scan state is not exposed as a remote character state")
+local producerMetrics=scans:GetRuntimeMetrics().byBlock;assert(producerMetrics.equipment.requested==2 and producerMetrics.equipment.automatic==2 and producerMetrics.equipment.completed==1,"automatic producer requests and completions are attributed by block");assert(producerMetrics.mythicPlus.manual==1 and producerMetrics.mythicPlus.completed==1 and producerMetrics.raid.manual==1 and producerMetrics.raid.failed==1,"manual producer requests and failed/completed outcomes are attributed by block")
+local activeBeforeReset,queuedBeforeReset=scans.active,#scans.queue;assert(scans:ResetRuntimeMetrics()and scans.active==activeBeforeReset and#scans.queue==queuedBeforeReset and scans:GetRuntimeMetrics().byBlock.equipment.requested==0 and scans:GetRuntimeMetrics().loginProducerScans==0,"producer metric reset preserves active/queued work while restoring visible zero rows")
 
 local contracts={
  {path="LIVE/Holy_Storm_Equipment/Equipment.lua",events={"PLAYER_EQUIPMENT_CHANGED","UNIT_INVENTORY_CHANGED","SOCKET_INFO_UPDATE"}},
