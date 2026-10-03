@@ -116,8 +116,7 @@ function UI:OnInitialize()
     syncLabel:SetPoint("LEFT", syncSpinner, "RIGHT", 5, 0); syncLabel:SetText(L["SYNC_RUNNING"])
     local syncRotation = 0
     syncActivity:SetScript("OnUpdate", function(_, elapsed) syncRotation = (syncRotation + elapsed * 5) % (math.pi * 2); syncSpinner:SetRotation(syncRotation) end)
-    local syncTooltip = CreateFrame("GameTooltip", nil, UIParent, "GameTooltipTemplate")
-    syncTooltip:SetClampedToScreen(true)
+    local syncTooltip = GameTooltip
     syncActivity:SetScript("OnEnter", function(button)
         local activity = HolyStorm.Sync and HolyStorm.Sync:GetActivity()
         local operation = activity and activity.activeOperations and activity.activeOperations[1]
@@ -139,7 +138,7 @@ function UI:OnInitialize()
         syncTooltip:AddLine(L[descriptionKey], .8, .8, .8, true)
         syncTooltip:Show()
     end)
-    syncActivity:SetScript("OnLeave", function() syncTooltip:Hide() end)
+    syncActivity:SetScript("OnLeave", function() GameTooltip:Hide() end)
     local updated = frame:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
     updated:SetPoint("RIGHT", frame, "BOTTOMRIGHT", -190, 10); updated:SetJustifyH("RIGHT"); updated:SetText(L["DASHBOARD_UPDATE_UNKNOWN"])
     local refresh = CreateFrame("Button", nil, frame, "UIPanelButtonTemplate")

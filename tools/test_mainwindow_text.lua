@@ -67,6 +67,7 @@ addon.UI=driver
 
 local tooltip={text=nil,callCount=0}
 function tooltip:SetOwner(owner,anchor)self.owner,self.anchor=owner,anchor end
+function tooltip:ClearLines()self.lines={}end
 function tooltip:SetText(text,...)
  local count=select("#",...);assert(count<=3,"Retail GameTooltip:SetText accepts color, alpha and wrap after its text")
  local color,alpha,wrap=...
@@ -77,6 +78,7 @@ function tooltip:SetText(text,...)
 end
 function tooltip:Show()self.shown=true end
 function tooltip:Hide()self.shown=false end
+function tooltip:AddLine(text,r,g,b,wrap)self.lines=self.lines or{};self.lines[#self.lines+1]={text=text,wrap=wrap}end
 function tooltip:AddDoubleLine(left,right)self.lines=self.lines or{};self.lines[#self.lines+1]={left=left,right=right}end
 
 function LibStub(name)
@@ -115,10 +117,12 @@ local longIdentifier=string.rep("character/object/UUID-",1000)
 addon.Sync={GetActivity=function()return{active=true,queuedJobs=4,activeOperations={{characterUUID=longIdentifier,entity=longIdentifier,domain="equipment",direction="RECEIVE",phase="TRANSFER",sender=longIdentifier,receiver=longIdentifier,requestId=longIdentifier,revision=longIdentifier,bytes=12000,fragments=58,fragmentsTotal=139,retryCount=1,maxRetries=3,queuePosition=1}}}end}
 assert(module:RefreshSyncActivity()and module.syncActivityButton.shown,"the statusbar appears only when the central model reports an active transfer")
 local syncTooltip=module.syncActivityTooltip
+local tooltipCallsBeforeSync=tooltip.callCount
 module.syncActivityButton.scripts.OnEnter(module.syncActivityButton)
-assert(syncTooltip.shown and syncTooltip.text==locale.SYNC_TOOLTIP_TITLE and #syncTooltip.lines==1 and syncTooltip.lines[1].text==locale.SYNC_ACTIVITY_CHARACTER and syncTooltip.lines[1].wrap==true,"character tooltip contains only a separate, wrappable localized description")
-assert(syncTooltip.clampedToScreen==true and syncTooltip.anchor=="ANCHOR_TOP" and not syncTooltip.lines[1].text:find(longIdentifier,1,true),"long character and transfer identifiers do not enter tooltip content or anchor layout")
+assert(syncTooltip==GameTooltip and syncTooltip.shown and syncTooltip.text==locale.SYNC_TOOLTIP_TITLE and #syncTooltip.lines==1 and syncTooltip.lines[1].text==locale.SYNC_ACTIVITY_CHARACTER and syncTooltip.lines[1].wrap==true,"character activity uses the shared Blizzard tooltip with separate, wrappable localized lines")
+assert(syncTooltip.owner==module.syncActivityButton and syncTooltip.anchor=="ANCHOR_TOP" and not syncTooltip.lines[1].text:find(longIdentifier,1,true),"the statusbar button is the external owner and long IDs never enter tooltip content")
 module.syncActivityButton.scripts.OnLeave()
+assert(not syncTooltip.shown,"leaving the statusbar hides the shared tooltip")
 addon.Sync.GetActivity=function()return{active=true,queuedJobs=0,activeOperations={{domain="poi",entity="poi@"..longIdentifier,requestId=longIdentifier}}}end
 module.syncActivityButton.scripts.OnEnter(module.syncActivityButton)
 assert(#syncTooltip.lines==1 and syncTooltip.lines[1].text==locale.SYNC_ACTIVITY_POI and not syncTooltip.lines[1].text:find(longIdentifier,1,true),"POI identifiers are summarized without appearing in the tooltip")
@@ -133,6 +137,6 @@ addon.Sync.GetActivity=function()return{active=false,queuedJobs=0,activeOperatio
 assert(not module:RefreshSyncActivity()and not module.syncActivityButton.shown,"the statusbar becomes empty again when the last transfer ends")
 local onEnter=assert(refreshButton.scripts.OnEnter,"refresh tooltip handler is installed")
 onEnter(refreshButton)
-assert(tooltip.callCount==1 and tooltip.text==locale.DASHBOARD_REFRESH_TOOLTIP,"hover assigns the localized tooltip using only supported Retail arguments")
+assert(tooltip.callCount==tooltipCallsBeforeSync+5 and tooltip.text==locale.DASHBOARD_REFRESH_TOOLTIP,"status and refresh hovers use supported Retail tooltip calls")
 
 print("MainWindow Retail tooltip SetText contract and initialization regression passed")
