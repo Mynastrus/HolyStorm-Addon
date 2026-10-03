@@ -227,7 +227,7 @@ function Sync:ApplyPayload(domainId,data,sender)
  local localMeta=domain.getMetadata(data.objectId);if domain.freshness~="revision-chain"and domain.freshness~="player-block"then local decision,reason=HolyStorm.PlayerData:CompareMetadata(localMeta,meta);if decision<=0 then log("DEBUG","freshness","Stale synchronized payload rejected",{domain=domainId,objectId=data.objectId,localVersion=localMeta and localMeta.version,remoteVersion=meta.version,reason=reason});return false end end
  local ok,result,importReason=HolyStorm.Utils.SafeCall("sync.import:"..domainId,domain.import,data.objectId,data.payload,meta,senderId,sender);if not ok or result==false then log("WARN","import","Synchronized payload import failed",{domain=domainId,objectId=data.objectId,error=importReason or result});return false end
  if importReason=="NOOP"then log("DEBUG","freshness","Synchronized payload is already current",{domain=domainId,objectId=data.objectId,version=meta.version,decision="NOOP",reason="SAME_REVISION_IDENTICAL"});return true end
- HolyStorm.PlayerData:AdvanceForeignWatermark(meta.owner,meta.updatedAt,domainId);log("DEBUG","freshness",meta.direct and"Direct owner payload accepted"or"Indirect relay payload accepted",{domain=domainId,objectId=data.objectId,owner=meta.owner,version=meta.version,receivedFrom=sender});HolyStorm.Events:Emit("HS_SYNC_DOMAIN_UPDATED",domainId,data.objectId,meta);if domain.updateEvent then HolyStorm.Events:Emit(domain.updateEvent,data.objectId,meta)end;return true
+ if not domain.live then HolyStorm.PlayerData:AdvanceForeignWatermark(meta.owner,meta.updatedAt,domainId)end;log("DEBUG","freshness",meta.direct and"Direct owner payload accepted"or"Indirect relay payload accepted",{domain=domainId,objectId=data.objectId,owner=meta.owner,version=meta.version,receivedFrom=sender});HolyStorm.Events:Emit("HS_SYNC_DOMAIN_UPDATED",domainId,data.objectId,meta);if domain.updateEvent then HolyStorm.Events:Emit(domain.updateEvent,data.objectId,meta)end;return true
 end
 function Sync:ConsiderPassive(domainId,meta,sender)
  local domain=self.domains[domainId];local localMeta=domain and domain.getMetadata(meta.objectId);local decision=HolyStorm.PlayerData:CompareMetadata(localMeta,meta);local sibling=domain and domain.freshness=="revision-chain"and localMeta and tonumber(localMeta.version)==tonumber(meta.version)and localMeta.revisionID~=meta.revisionID;if decision<=0 and not sibling then return false end;local delay=3+math.random()*5;HolyStorm.Tasks:Queue("Sync.PassiveRefresh",{mergeKey=key(domainId,meta.objectId),delay=delay,priority=95,triggerSource="PASSIVE_HEALING",metadata={domain=domainId,objectId=meta.objectId,sender=sender,version=meta.version,revisionID=meta.revisionID}});log("DEBUG","passive","Passive refresh scheduled",{domain=domainId,objectId=meta.objectId,remoteVersion=meta.version,localVersion=localMeta and localMeta.version});return true
@@ -322,10 +322,22 @@ function Sync:RunQueuePump()
  if not selected then if earliest then self:QueuePump(math.max(.05,earliest-now()))end;return true end
  local job=selected.job;table.remove(self.catchUpJobs,index);if job.kind=="SEND"then self.activeTransfer={kind="SEND",job=job};return self:StartSend(job)end;return self:StartFetch(job)
 end
-function Sync:OnPayload(domainId,data,sender,transport)
- if not self.domains[domainId]or type(data)~="table"or not validId(data.objectId)or type(data.metadata)~="table"then return false end
+function Sync:OnPayload(domainId,data,sender,transport,kind)
+ local domain=self.domains[domainId];if not domain or type(data)~="table"or not validId(data.objectId)or type(data.metadata)~="table"then return false end
+ transport=type(transport)=="table"and transport or{};kind=kind or"PAYLOAD"
+ if kind=="LIVE"and domain.live then
+  local incomingVersion=tonumber(data.metadata.version)or-1
+  for _,pendingId in ipairs(self.pendingPayloadOrder)do
+   local pending=self.pendingPayloads[pendingId]
+   if pending and pending.kind=="LIVE"and pending.domain==domainId and pending.data.objectId==data.objectId then
+    local queuedVersion=tonumber(pending.data.metadata and pending.data.metadata.version)or-1
+    if incomingVersion>queuedVersion then pending.data=data;pending.sender=sender;pending.receivedAt=now();pending.bytes=transport.bytes;pending.fragments=transport.packetTotal end
+    return true,"COALESCED"
+   end
+  end
+ end
  if#self.pendingPayloadOrder>=self.maxPendingPayloads then log("WARN","backpressure","Complete payload deferred because receive queue is full",{domain=domainId,objectId=data.objectId,sender=sender,result="RECEIVE_QUEUE_FULL"});return false end
- self.sequence=self.sequence+1;local id="RX-"..self:NewRequestId().."-"..self.sequence;transport=type(transport)=="table"and transport or{};self.pendingPayloads[id]={id=id,domain=domainId,data=data,sender=sender,receivedAt=now(),bytes=transport.bytes,fragments=transport.packetTotal};self.pendingPayloadOrder[#self.pendingPayloadOrder+1]=id
+ self.sequence=self.sequence+1;local id="RX-"..self:NewRequestId().."-"..self.sequence;self.pendingPayloads[id]={id=id,domain=domainId,data=data,sender=sender,kind=kind,receivedAt=now(),bytes=transport.bytes,fragments=transport.packetTotal};self.pendingPayloadOrder[#self.pendingPayloadOrder+1]=id
  local active=self.activeTransfer;if active and active.kind=="FETCH"and active.domain==domainId and active.objectId==data.objectId and samePlayerName(active.selectedSource,sender)then if active.timeoutTimer then active.timeoutTimer:Cancel();active.timeoutTimer=nil end;active.receiveId=id;active.bytes=transport.bytes or active.bytes;active.fragments=transport.packetTotal or active.fragments;active.fragmentsTotal=transport.packetTotal or active.fragmentsTotal;self:ActivityPhase(active,"VALIDATE_COMMIT")end
  self:SchedulePayloadPump();return true
 end
@@ -449,7 +461,7 @@ function Sync:Receive(payload,sender,channel,transport)
 	end
  if envelope.kind=="PRESENCE"then return self:OnPresence(data,sender,resolved,envelope.sender,identityReason)end
   if not self.domains[envelope.domain]then return false end
- if envelope.kind=="DISCOVER"then return self:OnDiscover(envelope.domain,envelope.data,sender,channel)elseif envelope.kind=="OFFER"or envelope.kind=="ANNOUNCE"then return self:RecordOffers(envelope.domain,envelope.data,sender,envelope.kind=="ANNOUNCE")elseif envelope.kind=="FETCH"then return self:OnFetch(envelope.domain,envelope.data,sender)elseif envelope.kind=="PAYLOAD"or envelope.kind=="LIVE"then return self:OnPayload(envelope.domain,envelope.data,sender,transport)end;return false
+  if envelope.kind=="DISCOVER"then return self:OnDiscover(envelope.domain,envelope.data,sender,channel)elseif envelope.kind=="OFFER"or envelope.kind=="ANNOUNCE"then return self:RecordOffers(envelope.domain,envelope.data,sender,envelope.kind=="ANNOUNCE")elseif envelope.kind=="FETCH"then return self:OnFetch(envelope.domain,envelope.data,sender)elseif envelope.kind=="PAYLOAD"or envelope.kind=="LIVE"then return self:OnPayload(envelope.domain,envelope.data,sender,transport,envelope.kind)end;return false
 end
 function Sync:Initialize()
  HolyStorm.Tasks:RegisterTaskType("Sync.Send",{name=L["TASK_SYNC_SEND"],localizedNameKey="TASK_SYNC_SEND",module="Sync",priority=70,executionMode="MULTI",maxRetries=2,execute=function(task)return Sync:SendNow(task)end})

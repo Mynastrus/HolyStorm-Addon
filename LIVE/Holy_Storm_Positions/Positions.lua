@@ -1,7 +1,7 @@
 local addonVersion="1.0.0"
 local HolyStorm=LibStub("AceAddon-3.0"):GetAddon("Holy_Storm")
 local L=LibStub("AceLocale-3.0"):GetLocale("Holy_Storm_Positions")
-local metadata={id="Positions",name="Positions",internalName="positions",displayName=L["TITLE"],description=L["DESCRIPTION"],version=addonVersion,moduleType="feature",category="feature",permissions={{id="position-view",category="Positions",defaults={officers=true,member=true}},{id="position-share",category="Positions",defaults={officers=true,member=true}}},dependencies={"core","synchronization"},ui={page="positions",navigation=true},sync={domains={"guild-position"}},enabledByDefault=true}
+local metadata={id="Positions",name="Positions",internalName="positions",displayName=L["TITLE"],description=L["DESCRIPTION"],icon="Interface\\Icons\\Achievement_GuildPerk_EverybodysFriend",version=addonVersion,moduleType="feature",category="feature",dependencies={"core","synchronization","ui","options"},ui={page="positions",navigation=true},sync={domains={"guild-position"}},enabledByDefault=true}
 HolyStorm:RegisterModule(metadata,function(Module)
 local function yes(value)return value and L["YES"]or L["NO"]end
 local function stamp(value)return value and date("%H:%M:%S",value)or"-"end
@@ -25,6 +25,6 @@ function Module:OnInitialize()
  HolyStorm.GuildPositions:Initialize();HolyStorm.GuildPositionMap:Initialize()
  HolyStorm:RegisterUIExtension("Positions",{id="positions.page",order=3.5,initialize=function()Module:InitializeUI()end})
 end
-function Module:OnEnable()for _,event in ipairs({"HS_GUILD_POSITION_UPDATED","HS_GUILD_POSITIONS_CLEARED","HS_GUILD_POSITIONS_RECONCILED","HS_POSITION_SETTINGS_CHANGED","HS_GUILD_POSITION_MAP_REFRESHED"})do local eventName=event;HolyStorm.Events:Register(eventName,"positions-ui",function()Module:Refresh()end)end end
-function Module:OnDisable()HolyStorm.Events:UnregisterOwner("positions-ui")end
+function Module:OnEnable()HolyStorm.GuildPositions:Enable();HolyStorm.GuildPositionMap:Enable();for _,event in ipairs({"HS_GUILD_POSITION_UPDATED","HS_GUILD_POSITIONS_CLEARED","HS_GUILD_POSITIONS_RECONCILED","HS_POSITION_SETTINGS_CHANGED","HS_GUILD_POSITION_MAP_REFRESHED"})do local eventName=event;HolyStorm.Events:Register(eventName,"positions-ui",function()Module:Refresh()end)end end
+function Module:OnDisable()HolyStorm.Events:UnregisterOwner("positions-ui");HolyStorm.GuildPositions:Disable()end
 end)

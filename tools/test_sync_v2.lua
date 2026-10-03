@@ -157,6 +157,61 @@ local stalePayload={objectId=userObject,snapshot={stale=true}}
 assert(Sync:OnPayload("character",{objectId=userObject,metadata={owner=userGuid,version=1,revisionID="r1",updatedAt=clock+100},payload=stalePayload},"Relay-One-Realm"))
 Sync:RunReceivePayload();assert(commits==1 and cached[userObject].new==true,"stale relay cannot replace the committed snapshot")
 
+-- Live domains coalesce queued receipts to their latest object version and do not advance durable watermarks.
+local liveGuid,liveOwner="Character-Live","Live-Owner-Realm";names[liveOwner]=liveGuid
+local liveState,liveImports=nil,0
+Sync:RegisterDomain("live-test",{
+ live=true,catchUp=false,priority=110,
+ getMetadata=function(id)return liveState and{objectId=id,owner=id,version=liveState.version,updatedAt=clock,direct=true}or nil end,
+ listMetadata=function()return{}end,
+ export=function()return nil end,
+ validate=function(payload,meta,id)return type(payload)=="table"and payload.characterUUID==id end,
+ authorize=function(_,meta,senderId,_,id)return meta.owner==id and senderId==id end,
+ import=function(id,payload,meta)liveState={version=meta.version,value=payload.value};liveImports=liveImports+1;return true end,
+})
+local watermarkCalls=0;local oldAdvance=HolyStorm.PlayerData.AdvanceForeignWatermark
+HolyStorm.PlayerData.AdvanceForeignWatermark=function()watermarkCalls=watermarkCalls+1 end
+local function livePayload(version,value)
+ return{objectId=liveGuid,metadata={owner=liveGuid,version=version,updatedAt=clock},payload={characterUUID=liveGuid,value=value}}
+end
+local liveQueueStart=#Sync.pendingPayloadOrder
+assert(Sync:OnPayload("live-test",livePayload(1,"old"),liveOwner,{bytes=80,packetTotal=1},"LIVE"))
+assert(Sync:OnPayload("live-test",livePayload(3,"latest"),liveOwner,{bytes=82,packetTotal=1},"LIVE"))
+assert(Sync:OnPayload("live-test",livePayload(2,"late-old"),liveOwner,{bytes=81,packetTotal=1},"LIVE"))
+assert(#Sync.pendingPayloadOrder==liveQueueStart+1,"queued live states for one object must occupy one bounded receive slot")
+local queuedLive=Sync.pendingPayloads[Sync.pendingPayloadOrder[#Sync.pendingPayloadOrder]]
+assert(queuedLive.kind=="LIVE"and queuedLive.data.metadata.version==3 and queuedLive.data.payload.value=="latest",
+ "live receive queue did not retain the newest object state")
+assert(Sync:RunReceivePayload()and liveImports==1 and liveState.value=="latest","latest queued live state was not imported")
+assert(watermarkCalls==0,"ephemeral live data must not update durable catch-up watermarks")
+HolyStorm.PlayerData.AdvanceForeignWatermark=oldAdvance
+
+-- A burst of position publications is one low-priority live task, exported at execution time.
+HolyStorm.Tasks:RegisterTaskType("Sync.LivePublish",{executionMode="MERGE_BY_KEY"})
+local outboundPosition={version=0,value=0}
+Sync:RegisterDomain("live-out-test",{
+ live=true,catchUp=false,priority=110,
+ getMetadata=function(id)return{objectId=id,owner="Player-Local",version=outboundPosition.version,updatedAt=clock}end,
+ listMetadata=function()return{}end,
+ export=function()return{value=outboundPosition.value}end,
+ import=function()return true end,
+})
+local queuedPositionTasks=0;local positionTask
+for version=1,500 do
+ outboundPosition.version,outboundPosition.value=version,version
+ local _,queueState=Sync:Publish("live-out-test","Player-Local","POSITION_LIVE_UPDATE")
+ if queueState=="QUEUED"then queuedPositionTasks=queuedPositionTasks+1 end
+end
+for _,task in ipairs(HolyStorm.Tasks.queue)do if task.id=="Sync.LivePublish"and task.options.metadata.domain=="live-out-test"then positionTask=task end end
+assert(queuedPositionTasks==1 and positionTask and positionTask.options.priority==110,
+ "500 pending position updates must coalesce into one low-priority live task")
+assert(Sync:RunLivePublish({metadata=positionTask.options.metadata})
+ and HolyStorm.Serializer.lastEnvelope.kind=="LIVE"
+ and HolyStorm.Serializer.lastEnvelope.data.payload.value==500,
+ "coalesced live task must export only the newest position at dispatch time")
+assert(HolyStorm.Comms.sent[#HolyStorm.Comms.sent].priority==110,
+ "position traffic must retain its low Sync transport priority")
+
 -- A lost response retries finitely and does not block the next eligible character.
 clock=1002
 assert(Sync:RunQueuePump());local timedOut=Sync.activeTransfer;assert(timedOut and timedOut.kind=="FETCH")

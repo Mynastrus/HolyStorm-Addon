@@ -13,9 +13,11 @@ assert(modules:find("RegisterModulePermissions",1,true),"module permission regis
 for _,path in ipairs({
     "Holy_Storm_News/News.lua","Holy_Storm_Calendar/Calendar.lua","Holy_Storm_Raids/Raids.lua",
     "Holy_Storm_MythicPlus/MythicPlus.lua","Holy_Storm_Delves/Delves.lua","Holy_Storm_Equipment/Equipment.lua",
-    "Holy_Storm_POI/POI.lua","Holy_Storm_Positions/Positions.lua","Holy_Storm_Achievements/Achievements.lua",
+    "Holy_Storm_POI/POI.lua","Holy_Storm_Achievements/Achievements.lua",
     "Holy_Storm_Guild/Guild.lua","Holy_Storm_Professions/Professions.lua",
 }) do
     assert(read("LIVE/"..path):find("permissions",1,true),"missing modular permissions: "..path)
 end
+local positions=read("LIVE/Holy_Storm_Positions/Positions.lua")
+assert(not positions:find("position-view",1,true)and not positions:find("position-share",1,true),"position display/privacy must not be guild permissions")
 print("Module-owned feature permission contracts passed")

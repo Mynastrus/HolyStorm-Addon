@@ -6,7 +6,7 @@
 ## Category: Holy Storm
 ## DefaultState: enabled
 ## Version: @project-version@
-## RequiredDeps: Holy_Storm, Blizzard_MapCanvas
+## RequiredDeps: Holy_Storm, Holy_Storm_UI, Blizzard_MapCanvas
 ## X-HolyStorm-ID: positions
 ## X-HolyStorm-Requires: synchronization
 
