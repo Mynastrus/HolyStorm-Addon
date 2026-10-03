@@ -28,6 +28,7 @@ local savedInstances={
  {difficultyId=15,difficultyName="Heroic",kills={true,true,true,true,true,true,true,true}},
 }
 function GetTime()return fakeTime end
+function GetTimePreciseSec()return fakeTime+calls.apiCalls*.0003 end
 function EJ_GetNumTiers()calls.apiCalls=calls.apiCalls+1;return 1 end
 function EJ_GetCurrentTier()calls.apiCalls=calls.apiCalls+1;return 1 end
 function EJ_GetTierInfo()calls.apiCalls=calls.apiCalls+1;return"Storm Fixture"end
@@ -60,14 +61,15 @@ assert(queued and workflowId=="wf-performance"and HolyStorm.Snapshots.id=="raids
 local chunkCount,snapshot=0,nil
 while not snapshot do
  chunkCount=chunkCount+1;assert(chunkCount<1000,"the deterministic scan completes in bounded work units")
- fakeTime=fakeTime+1/60;local before={apiCalls=calls.apiCalls,categoryInfo=calls.categoryInfo,categoryCounts=calls.categoryCounts,entries=calls.entries,achievementInfo=calls.achievementInfo}
- local result=HolyStorm.Snapshots.scanner()
+ fakeTime=fakeTime+1/60;local before={apiCalls=calls.apiCalls,categoryInfo=calls.categoryInfo,categoryCounts=calls.categoryCounts,entries=calls.entries,achievementInfo=calls.achievementInfo};local sliceStarted=GetTimePreciseSec()
+ local result=HolyStorm.Snapshots.scanner();local sliceDuration=GetTimePreciseSec()-sliceStarted
  assert(calls.apiCalls-before.apiCalls<=8,"each scheduler step stays within the explicit eight-call work budget (observed "..tostring(calls.apiCalls-before.apiCalls)..")")
+ assert(sliceDuration<=.005,"a scheduler step also stops on its elapsed-time slice (observed "..string.format("%.4f",sliceDuration).."s)")
  assert(calls.categoryInfo-before.categoryInfo<=8,"each scan task reads at most eight category labels")
  assert(calls.categoryCounts-before.categoryCounts<=8,"each scan task counts at most eight categories")
  assert(calls.entries-before.entries<=8,"each scan task enumerates at most eight Statistics rows")
  assert(calls.achievementInfo-before.achievementInfo<=8,"each scan task reads at most eight statistic labels")
- if type(result)=="table"and result.workflowAction=="GOTO"then assert(result.gotoStep==1 and result.delay==HolyStorm.Tasks.schedulerYieldDelay,"each bounded chunk resumes through the existing delayed TaskManager workflow");assert(commitCount==0 and storedSnapshot==nil,"no intermediate catalog, Statistics or lifetime state is committed")else snapshot=result end
+ if type(result)=="table"and result.workflowAction=="GOTO"then assert(result.gotoStep==1 and result.delay>=.033,"each bounded chunk resumes through the existing TaskManager workflow at a paced cadence");assert(commitCount==0 and storedSnapshot==nil,"no intermediate catalog, Statistics or lifetime state is committed")else snapshot=result end
 end
 assert(chunkCount>100 and calls.categories==1 and calls.categoryInfo==96 and calls.categoryCounts==96 and calls.entries==1025 and calls.achievementInfo==1025,"large Statistics discovery is traversed once, in category and row batches")
 assert(Module:Validate(snapshot),"the chunked Raid snapshot validates only after discovery completes")
@@ -78,7 +80,7 @@ assert(snapshot.lifetime.bosses[5001].difficulties.NORMAL.kills==9 and snapshot.
 local audit;for _,entry in ipairs(logs)do if entry.message=="RAID_LIFETIME_SCAN_SUMMARY"then audit=entry.context end end
 assert(audit and audit.categories==96 and audit.categoriesListCalls==1 and audit.categoryInfoReads==96 and audit.categoriesEnumerated==96 and audit.entries==1025 and audit.statisticIds==1025 and audit.labelReads==1025 and audit.candidates==1025 and audit.valueReads==1 and audit.mappingProbes==32 and audit.unmappedCandidateChecks==1025 and audit.candidateComparisons<=1100 and audit.workChunks>0 and audit.workChunks<chunkCount,"audit counters show linear index construction, direct value reads and bounded slot probes")
 local performance;for _,entry in ipairs(logs)do if entry.message=="RAID_SCAN_PERFORMANCE"then performance=entry.context end end
-assert(performance and performance.schedulerSteps==chunkCount and performance.elapsedSeconds>0 and performance.luaExecutionSeconds>=0 and performance.queueWaitSeconds>=0 and performance.longestStepSeconds>=0,"scan performance reports scheduler steps, wall duration, Lua time, queue wait and longest step")
+assert(performance and performance.schedulerSteps==chunkCount and performance.elapsedSeconds>0 and performance.luaExecutionSeconds>=0 and performance.queueWaitSeconds>=0 and performance.longestStepSeconds>=0 and performance.sliceBudgetSeconds==.002 and performance.yieldDelaySeconds>=.033,"scan performance reports scheduler steps, wall duration, Lua time, queue wait, longest step and pacing limits")
 local valid,validationReason=HolyStorm.Snapshots.validator(snapshot);assert(valid,validationReason)
 assert(HolyStorm.Snapshots.commit(snapshot,"fixture-fingerprint")and commitCount==1 and storedSnapshot.snapshotVersion==3,"only the final validated snapshot reaches the commit stage")
 local lastValidStored=storedSnapshot

@@ -18,7 +18,17 @@ HolyStorm:RegisterModule(metadata,function(Module)
  HolyStorm:ApplyModuleMetadata(Module,metadata)
  local difficultyKeys={[7]="LFR",[17]="LFR",[14]="NORMAL",[15]="HEROIC",[16]="MYTHIC",[33]="TIMEWALKING"};local difficultyOrder={LFR=1,NORMAL=2,HEROIC=3,MYTHIC=4,TIMEWALKING=5}
  local RAID_SCAN_WORK_BUDGET=8
+ local RAID_SCAN_SLICE_SECONDS=.002
+ local RAID_SCAN_YIELD_DELAY=1/30
  local lifetimeDifficultyIds={LFR=17,NORMAL=14,HEROIC=15,MYTHIC=16};local lifetimeDifficultyOrder={"LFR","NORMAL","HEROIC","MYTHIC"}
+ local function performanceClock()
+  if type(GetTimePreciseSec)=="function"then return GetTimePreciseSec()end
+  if type(GetTime)=="function"then return GetTime()end
+  return os.clock()
+ end
+ local function withinRaidSlice(work,budget,started)
+  return work<budget and(work==0 or performanceClock()-started<RAID_SCAN_SLICE_SECONDS)
+ end
  local function raidKey(name)
   if type(name)~="string"then return nil end
   local normalized=(name:gsub("\194\160"," "):gsub("’", "'")):lower():gsub("[%s%p%c]+","")
@@ -68,6 +78,7 @@ HolyStorm:RegisterModule(metadata,function(Module)
   self.raidJournalIndex,self.raidJournalIndexKey=result,signature;return result
  end
  function Module:CollectRaidCatalogChunk(state,maxWork)
+  local sliceStarted=performanceClock()
   local api,reason=ensureEncounterJournal();if not api then return nil,reason end
   if not state.journal then
    local tierCount=tonumber(api.EJ_GetNumTiers())or 0;if tierCount<1 then return nil,"Raid catalog unavailable: Encounter Journal data pending"end
@@ -75,7 +86,7 @@ HolyStorm:RegisterModule(metadata,function(Module)
    state.journal={api=api,tierCount=tierCount,currentTier=currentTier,restoreTier=previousTier,tier=1,instance=1,encounter=1,allByName={},raidsByTier={},work=setupWork,setupWork=setupWork,selectedTier=nil,pendingInstance=nil}
   end
   local journal=state.journal;local work=journal.setupWork or 0;journal.setupWork=nil;local budget=math.max(1,tonumber(maxWork)or RAID_SCAN_WORK_BUDGET)
-  while journal.tier<=journal.tierCount and work<budget do
+  while journal.tier<=journal.tierCount and withinRaidSlice(work,budget,sliceStarted)do
    if journal.selectedTier~=journal.tier then api.EJ_SelectTier(journal.tier);journal.selectedTier=journal.tier;work=work+1;journal.work=journal.work+1
    elseif journal.pendingInstance then
     if work+2>budget then break end
@@ -97,7 +108,7 @@ HolyStorm:RegisterModule(metadata,function(Module)
   end
   if journal.tier<=journal.tierCount then return nil,"IN_PROGRESS",journal.work end
   if journal.restoreTier and not journal.restoredTier then
-   if work>=budget then return nil,"IN_PROGRESS",journal.work end
+   if work>=budget or not withinRaidSlice(work,budget,sliceStarted)then return nil,"IN_PROGRESS",journal.work end
    api.EJ_SelectTier(journal.restoreTier);journal.restoredTier=true;journal.work=journal.work+1
   end
   local raids=journal.raidsByTier[journal.currentTier]or{};if #raids==0 or not next(journal.allByName)then return nil,"Raid catalog unavailable: Encounter Journal data pending",journal.work end
@@ -197,6 +208,7 @@ HolyStorm:RegisterModule(metadata,function(Module)
   self:InvalidateLifetimeStatisticCache(reason or"CATALOG_INVALIDATED")
  end
  local function collectLifetimeCandidatesChunked(module,raids,manual,tierName,state,maxWork)
+  local sliceStarted=performanceClock()
   local cacheKey,difficultyNames
   if state and state.key then cacheKey,difficultyNames=state.key,state.difficultyNames else cacheKey,difficultyNames=makeLifetimeCacheKey(raids,tierName)end
   local cache=module.lifetimeStatisticCache
@@ -212,7 +224,7 @@ HolyStorm:RegisterModule(metadata,function(Module)
   local budget=math.max(1,tonumber(maxWork)or RAID_SCAN_WORK_BUDGET);local work=0
   local function pending()return nil,"STATISTIC_DISCOVERY_IN_PROGRESS",audit,state end
   if state.stage=="tokens"then
-   while state.tokenRaidCursor<=#(raids or{})and work<budget do
+   while state.tokenRaidCursor<=#(raids or{})and withinRaidSlice(work,budget,sliceStarted)do
     local raid=raids[state.tokenRaidCursor]
     if state.tokenBossCursor==0 then local token=raidKey(raid.name);if token then state.raidTokens=state.raidTokens or{};state.raidTokenSet=state.raidTokenSet or{};state.raidTokens[#state.raidTokens+1]=token;state.raidTokenSet[token]=true end;state.tokenBossCursor=1;work=work+1
     else
@@ -225,7 +237,7 @@ HolyStorm:RegisterModule(metadata,function(Module)
    return pending()
   end
   if state.stage=="metadata"then
-   while state.categoryCursor<=#state.categories and work<budget do
+   while state.categoryCursor<=#state.categories and withinRaidSlice(work,budget,sliceStarted)do
     local id=state.categories[state.categoryCursor];state.categoryCursor=state.categoryCursor+1;work=work+1
     if type(GetCategoryInfo)=="function"then audit.categoryInfoReads=audit.categoryInfoReads+1;local ok,name,parent=pcall(GetCategoryInfo,id);if ok then state.categoryNames[id]={name=safeText(name),parent=safeNumber(parent)}else audit.apiFailures=audit.apiFailures+1 end end
    end
@@ -243,17 +255,17 @@ HolyStorm:RegisterModule(metadata,function(Module)
     local visited={};while id and not visited[id]do visited[id]=true;local item=state.categoryNames[id];if not item then break end;local token=raidKey(item.name);if token and((state.tierToken and token:find(state.tierToken,1,true))or relevant(item.name))then return true end;id=item.parent end;return false
    end
    state.categoryRelevant=state.categoryRelevant or{};state.categoryHadRelevant=state.categoryHadRelevant or{}
-   while state.categoryCursor<=#state.categories and work<budget do local id=state.categories[state.categoryCursor];state.categoryCursor=state.categoryCursor+1;work=work+1;if relevantCategory(id)then state.categoryRelevant[id]=true;audit.relevantCategories=audit.relevantCategories+1 end end
+   while state.categoryCursor<=#state.categories and withinRaidSlice(work,budget,sliceStarted)do local id=state.categories[state.categoryCursor];state.categoryCursor=state.categoryCursor+1;work=work+1;if relevantCategory(id)then state.categoryRelevant[id]=true;audit.relevantCategories=audit.relevantCategories+1 end end
    if state.categoryCursor>#state.categories then state.stage="statistics";state.categoryCursor=1;state.entryCursor=1;state.entryCount=nil end
    return pending()
   end
   if state.stage=="statistics"then
-   while state.categoryCursor<=#state.categories and work<budget do
+   while state.categoryCursor<=#state.categories and withinRaidSlice(work,budget,sliceStarted)do
     local categoryId=state.categories[state.categoryCursor]
     if state.entryCount==nil then
      local countOk,count=pcall(GetCategoryNumAchievements,categoryId);work=work+1;audit.categoriesEnumerated=audit.categoriesEnumerated+1;if not countOk then audit.apiFailures=audit.apiFailures+1 end;state.entryCount=countOk and safeNumber(count)or 0;state.entryCursor=1;if not countOk then state.entryCount=0 end
     elseif state.entryCursor>state.entryCount then state.categoryCursor=state.categoryCursor+1;state.entryCount=nil
-    elseif work+2<=budget then
+    elseif work+2<=budget and withinRaidSlice(work,budget,sliceStarted)then
      local index=state.entryCursor;state.entryCursor=index+1;work=work+1;audit.entries=audit.entries+1
      local statOk,_,skip,statisticId=pcall(GetStatistic,categoryId,index);if not statOk then audit.apiFailures=audit.apiFailures+1 end;statisticId=statOk and safeNumber(statisticId)or nil
      if statisticId and not skip and not state.seen[statisticId]then
@@ -273,17 +285,17 @@ HolyStorm:RegisterModule(metadata,function(Module)
   end
   if state.stage=="mapping_init"then
    local lookup=state.lookup
-   while state.mapRaidCursor<=#(raids or{})and work<budget do
+   while state.mapRaidCursor<=#(raids or{})and withinRaidSlice(work,budget,sliceStarted)do
     local raid=raids[state.mapRaidCursor]
     if state.mapBossCursor==0 then local token=raidKey(raid.name);if token then lookup.raidTokens[token]=true end;state.mapBossCursor=1;work=work+1
     else local boss=(raid.bosses or{})[state.mapBossCursor];if boss then local token=raidKey(boss.name);if token then lookup.bossTokens[token]=true end;state.mapBossCursor=state.mapBossCursor+1;work=work+1 else state.mapRaidCursor=state.mapRaidCursor+1;state.mapBossCursor=0 end end
    end
-   if state.mapRaidCursor>#(raids or{})then state.difficultyTokenCursor=state.difficultyTokenCursor or 1;while state.difficultyTokenCursor<=#lifetimeDifficultyOrder and work<budget do local difficulty=lifetimeDifficultyOrder[state.difficultyTokenCursor];local token=raidKey(difficultyNames[difficulty]);if token then lookup.difficultyTokens[token]=true end;state.difficultyTokenCursor=state.difficultyTokenCursor+1;work=work+1 end;if state.difficultyTokenCursor>#lifetimeDifficultyOrder then state.stage="mapping_slots";state.mapRaidCursor,state.mapBossCursor,state.mapDifficultyCursor=1,1,1 end end
+   if state.mapRaidCursor>#(raids or{})then state.difficultyTokenCursor=state.difficultyTokenCursor or 1;while state.difficultyTokenCursor<=#lifetimeDifficultyOrder and withinRaidSlice(work,budget,sliceStarted)do local difficulty=lifetimeDifficultyOrder[state.difficultyTokenCursor];local token=raidKey(difficultyNames[difficulty]);if token then lookup.difficultyTokens[token]=true end;state.difficultyTokenCursor=state.difficultyTokenCursor+1;work=work+1 end;if state.difficultyTokenCursor>#lifetimeDifficultyOrder then state.stage="mapping_slots";state.mapRaidCursor,state.mapBossCursor,state.mapDifficultyCursor=1,1,1 end end
    return pending()
   end
   if state.stage=="mapping_slots"then
    local lookup=state.lookup
-   while state.mapRaidCursor<=#(raids or{})and work<budget do
+   while state.mapRaidCursor<=#(raids or{})and withinRaidSlice(work,budget,sliceStarted)do
     local raid=raids[state.mapRaidCursor];local boss=(raid.bosses or{})[state.mapBossCursor]
     if not boss then state.mapRaidCursor=state.mapRaidCursor+1;state.mapBossCursor,state.mapDifficultyCursor=1,1
     else local raidToken,bossToken=raidKey(raid.name),raidKey(boss.name);local difficulty=lifetimeDifficultyOrder[state.mapDifficultyCursor];local difficultyToken=raidKey(difficultyNames[difficulty]);lookup.slots=lookup.slots+1;work=work+1;if raidToken and bossToken and difficultyToken then local key=slotKey(raidToken,bossToken,difficultyToken);lookup.bySlot[key]=lookup.bySlot[key]or{}end;state.mapDifficultyCursor=state.mapDifficultyCursor+1;if state.mapDifficultyCursor>#lifetimeDifficultyOrder then state.mapDifficultyCursor=1;state.mapBossCursor=state.mapBossCursor+1 end end
@@ -293,14 +305,14 @@ HolyStorm:RegisterModule(metadata,function(Module)
   end
   if state.stage=="mapping_candidates"then
    local lookup=state.lookup
-   while state.mapCandidateCursor<=#state.result and work<budget do local candidate=state.result[state.mapCandidateCursor];state.mapCandidateCursor=state.mapCandidateCursor+1;work=work+1;local key=slotKey(candidate.raidToken,candidate.bossToken,candidate.difficultyToken);local matches=lookup.bySlot[key];if matches then matches[#matches+1]=candidate;lookup.candidateComparisons=lookup.candidateComparisons+1;if not lookup.mappedSlots[key]then lookup.mappedSlots[key]=true;lookup.exactMappings=lookup.exactMappings+1 end end end
+   while state.mapCandidateCursor<=#state.result and withinRaidSlice(work,budget,sliceStarted)do local candidate=state.result[state.mapCandidateCursor];state.mapCandidateCursor=state.mapCandidateCursor+1;work=work+1;local key=slotKey(candidate.raidToken,candidate.bossToken,candidate.difficultyToken);local matches=lookup.bySlot[key];if matches then matches[#matches+1]=candidate;lookup.candidateComparisons=lookup.candidateComparisons+1;if not lookup.mappedSlots[key]then lookup.mappedSlots[key]=true;lookup.exactMappings=lookup.exactMappings+1 end end end
    if state.mapCandidateCursor<=#state.result then return pending()end
    lookup.mappedSlots=nil;audit.slots=lookup.slots;audit.exactMappings=lookup.exactMappings;audit.mappingProbes=lookup.slots;audit.candidateComparisons=lookup.candidateComparisons
    state.stage=manual and"category_logs"or"finish";state.categoryCursor=1;state.categoryLogged=0
    return pending()
   end
   if state.stage=="category_logs"then
-   while state.categoryCursor<=#state.categories and work<budget and state.categoryLogged<16 do local id=state.categories[state.categoryCursor];state.categoryCursor=state.categoryCursor+1;work=work+1;if state.categoryRelevant[id]or state.categoryHadRelevant[id]then state.categoryLogged=state.categoryLogged+1;local item=state.categoryNames[id];HolyStorm.Logger:Write("DEBUG","Raids","lifetime-discovery","RAID_LIFETIME_CATEGORY",{categoryId=id,name=item and item.name,parentId=item and item.parent})end end
+   while state.categoryCursor<=#state.categories and withinRaidSlice(work,budget,sliceStarted)and state.categoryLogged<16 do local id=state.categories[state.categoryCursor];state.categoryCursor=state.categoryCursor+1;work=work+1;if state.categoryRelevant[id]or state.categoryHadRelevant[id]then state.categoryLogged=state.categoryLogged+1;local item=state.categoryNames[id];HolyStorm.Logger:Write("DEBUG","Raids","lifetime-discovery","RAID_LIFETIME_CATEGORY",{categoryId=id,name=item and item.name,parentId=item and item.parent})end end
    audit.categoryLogsTruncated=manual and math.max(0,audit.relevantCategories-state.categoryLogged)or 0
    if state.categoryCursor<=#state.categories and state.categoryLogged<16 then return pending()end
    state.stage="finish";return pending()
@@ -514,13 +526,13 @@ HolyStorm:RegisterModule(metadata,function(Module)
    local audit=state.audit;audit.reason=state.candidateReason or"OK";audit.recognized=0;audit.valueReads=0;audit.reads=0;audit.positive=0;audit.zero=0;audit.unavailable=0;audit.mappedBosses=0;audit.unmapped=0;audit.missingMappings=0;audit.slots=0
    state.difficultyNames=state.cache and state.cache.difficultyNames or{};state.lookup=state.cache and state.cache.lookup;state.mappedIds={};state.mappedBossIds={};state.detailCount=0;state.raidCursor=1;state.bossCursor=1;state.difficultyCursor=1;state.stage="slots"
   end
-  local budget=RAID_SCAN_WORK_BUDGET;local work=0;local audit=state.audit;local lifetime=state.lifetime
+  local budget=RAID_SCAN_WORK_BUDGET;local work=0;local sliceStarted=performanceClock();local audit=state.audit;local lifetime=state.lifetime
   if state.stage=="retained_summary"then
-   while work<budget do local key,boss=next(lifetime.bosses,state.summaryCursor);if key==nil then state.done=true;return lifetime,nil,audit end;state.summaryCursor=key;work=work+1;audit.records=audit.records+1;local found=false;for _,entry in pairs(type(boss)=="table"and type(boss.difficulties)=="table"and boss.difficulties or{})do if type(entry)=="table"and entry.source=="blizzard-statistic"and tonumber(entry.statisticId)and(tonumber(entry.kills)or 0)>0 then found=true end end;if found then audit.positiveBosses=audit.positiveBosses+1 end end
+   while withinRaidSlice(work,budget,sliceStarted)do local key,boss=next(lifetime.bosses,state.summaryCursor);if key==nil then state.done=true;return lifetime,nil,audit end;state.summaryCursor=key;work=work+1;audit.records=audit.records+1;local found=false;for _,entry in pairs(type(boss)=="table"and type(boss.difficulties)=="table"and boss.difficulties or{})do if type(entry)=="table"and entry.source=="blizzard-statistic"and tonumber(entry.statisticId)and(tonumber(entry.kills)or 0)>0 then found=true end end;if found then audit.positiveBosses=audit.positiveBosses+1 end end
    return nil,"IN_PROGRESS"
   end
   if state.stage=="slots"then
-   while state.raidCursor<=#workState.raids and work<budget do
+   while state.raidCursor<=#workState.raids and withinRaidSlice(work,budget,sliceStarted)do
     local raid=workState.raids[state.raidCursor];local boss=(raid.bosses or{})[state.bossCursor]
     if not boss then state.raidCursor=state.raidCursor+1;state.bossCursor,state.difficultyCursor=1,1
     else
@@ -545,19 +557,19 @@ HolyStorm:RegisterModule(metadata,function(Module)
    return nil,"IN_PROGRESS"
   end
   if state.stage=="unmapped"then
-   while state.candidateCursor<=#(state.candidates or{})and work<budget do local candidate=state.candidates[state.candidateCursor];state.candidateCursor=state.candidateCursor+1;work=work+1;audit.unmappedCandidateChecks=(audit.unmappedCandidateChecks or 0)+1
+   while state.candidateCursor<=#(state.candidates or{})and withinRaidSlice(work,budget,sliceStarted)do local candidate=state.candidates[state.candidateCursor];state.candidateCursor=state.candidateCursor+1;work=work+1;audit.unmappedCandidateChecks=(audit.unmappedCandidateChecks or 0)+1
     if not state.mappedIds[candidate.statisticId]then local raidMatch=state.lookup.raidTokens[candidate.raidToken]==true;local bossMatch=state.lookup.bossTokens[candidate.bossToken]==true;local difficultyMatch=state.lookup.difficultyTokens[candidate.difficultyToken]==true;if raidMatch or bossMatch then audit.unmapped=audit.unmapped+1;local reason=not raidMatch and"RAID_NAME_NOT_FOUND"or not bossMatch and"BOSS_NAME_NOT_FOUND"or not difficultyMatch and"DIFFICULTY_NAME_NOT_FOUND"or"AMBIGUOUS_STATISTIC";if manual and state.unmappedLogged<24 then state.unmappedLogged=(state.unmappedLogged or 0)+1;HolyStorm.Logger:Write("DEBUG","Raids","lifetime","RAID_LIFETIME_UNMAPPED",{categoryId=candidate.categoryId,statisticId=candidate.statisticId,name=candidate.name,reason=reason})end end end
    end
    if state.candidateCursor>#(state.candidates or{})then state.stage="summary";state.summaryCursor=nil;state.records,state.positiveBosses=0,0;state.reliable=false end
    return nil,"IN_PROGRESS"
   end
   if state.stage=="summary"then
-   while work<budget do local key,boss=next(lifetime.bosses,state.summaryCursor);if key==nil then state.stage=manual and"raid_summary"or"finish";state.raidSummaryCursor,state.raidSummaryBossCursor=1,1;state.raidSummaryMapped,state.raidSummaryPositive=0,0;break end;state.summaryCursor=key;work=work+1;state.records=state.records+1;local found=false;for _,entry in pairs(type(boss)=="table"and type(boss.difficulties)=="table"and boss.difficulties or{})do if type(entry)=="table"and entry.source=="blizzard-statistic"and tonumber(entry.statisticId)and(tonumber(entry.kills)or 0)>0 then found=true end;if type(entry)=="table"and entry.source=="blizzard-statistic"and tonumber(entry.statisticId)then state.reliable=true end end;if found then state.positiveBosses=state.positiveBosses+1 end end
+   while withinRaidSlice(work,budget,sliceStarted)do local key,boss=next(lifetime.bosses,state.summaryCursor);if key==nil then state.stage=manual and"raid_summary"or"finish";state.raidSummaryCursor,state.raidSummaryBossCursor=1,1;state.raidSummaryMapped,state.raidSummaryPositive=0,0;break end;state.summaryCursor=key;work=work+1;state.records=state.records+1;local found=false;for _,entry in pairs(type(boss)=="table"and type(boss.difficulties)=="table"and boss.difficulties or{})do if type(entry)=="table"and entry.source=="blizzard-statistic"and tonumber(entry.statisticId)and(tonumber(entry.kills)or 0)>0 then found=true end;if type(entry)=="table"and entry.source=="blizzard-statistic"and tonumber(entry.statisticId)then state.reliable=true end end;if found then state.positiveBosses=state.positiveBosses+1 end end
    if state.stage=="summary"then return nil,"IN_PROGRESS"end
    return nil,"IN_PROGRESS"
   end
   if state.stage=="raid_summary"then
-   while state.raidSummaryCursor<=#workState.raids and work<budget do local raid=workState.raids[state.raidSummaryCursor];local boss=(raid.bosses or{})[state.raidSummaryBossCursor]
+   while state.raidSummaryCursor<=#workState.raids and withinRaidSlice(work,budget,sliceStarted)do local raid=workState.raids[state.raidSummaryCursor];local boss=(raid.bosses or{})[state.raidSummaryBossCursor]
     if not boss then HolyStorm.Logger:Write("DEBUG","Raids","lifetime","RAID_LIFETIME_RAID_SUMMARY",{raidInstanceId=raid.id,raidName=raid.name,catalogBosses=#(raid.bosses or{}),lifetimeBosses=state.raidSummaryMapped,positiveBosses=state.raidSummaryPositive});state.raidSummaryCursor=state.raidSummaryCursor+1;state.raidSummaryBossCursor=1;state.raidSummaryMapped,state.raidSummaryPositive=0,0
     else state.raidSummaryBossCursor=state.raidSummaryBossCursor+1;work=work+1;local stored=lifetime.bosses[boss.id or boss.name];if stored and tonumber(stored.raidInstanceId)==tonumber(raid.id)then state.raidSummaryMapped=state.raidSummaryMapped+1;for _,entry in pairs(stored.difficulties or{})do if type(entry)=="table"and entry.source=="blizzard-statistic"and tonumber(entry.statisticId)and(tonumber(entry.kills)or 0)>0 then state.raidSummaryPositive=state.raidSummaryPositive+1;break end end end end
    end
@@ -570,8 +582,8 @@ HolyStorm:RegisterModule(metadata,function(Module)
   return lifetime,nil,audit
  end
  local function collectLockoutsChunk(state,budget)
-  local work=0
-  while work<budget do
+  local work=0;local sliceStarted=performanceClock()
+  while withinRaidSlice(work,budget,sliceStarted)do
    if state.current then
     local current=state.current
     if current.bossCursor<=current.total then local x=current.bossCursor;current.bossCursor=x+1;local bossName,bossId,done=GetSavedInstanceEncounterInfo(current.index,x);bossName=bossName or(current.name.." #"..x);bossId=bossId or(current.name..":"..x);current.bosses[x]={name=bossName,id=bossId,killed=done==true};if done then current.killed=current.killed+1 end;work=work+1
@@ -670,19 +682,19 @@ HolyStorm:RegisterModule(metadata,function(Module)
   -- UPDATE_INSTANCE_INFO is the response to RequestRaidInfo(). Requesting the
   -- data again from that event creates a loop and keeps extending the debounce.
   local run={generation=self.raidScanGeneration or 0,workState={chunked=true},steps=0,luaDuration=0,queueWait=0,maxStep=0}
-  local function scanClock()return tonumber(GetTime and GetTime())or os.clock()end
+  local scanClock=performanceClock
   local function scanner(task)
    local started=scanClock();run.startedClock=run.startedClock or started;run.steps=run.steps+1;run.queueWait=run.queueWait+math.max(0,tonumber(task and task.queueWait)or 0)
    if run.generation~=(Module.raidScanGeneration or 0)then run.generation=Module.raidScanGeneration or 0;run.workState={chunked=true};run.startedClock=started;run.steps=1;run.luaDuration=0;run.queueWait=math.max(0,tonumber(task and task.queueWait)or 0);run.maxStep=0 end
    run.workState.generation=run.generation
    local snapshot,status=Module:Collect(manual,run.workState)
    local finished=scanClock();local stepDuration=math.max(0,finished-started);run.luaDuration=run.luaDuration+stepDuration;run.maxStep=math.max(run.maxStep,stepDuration)
-   if status=="IN_PROGRESS"then return{workflowAction="GOTO",gotoStep=1,delay=HolyStorm.Tasks and HolyStorm.Tasks.schedulerYieldDelay or 1/60}end
-   run.snapshotGeneration=run.generation;run.scanComplete=true;run.lifetimeAudit=run.workState.capture and run.workState.capture.audit;run.workState={chunked=true};HolyStorm.Logger:Write("INFO","Raids","scan","RAID_SCAN_PERFORMANCE",{workflowId=run.workflowId,schedulerSteps=run.steps,elapsedSeconds=math.max(0,finished-(run.startedClock or finished)),luaExecutionSeconds=run.luaDuration,queueWaitSeconds=run.queueWait,longestStepSeconds=run.maxStep,pending=type(snapshot)=="table"and snapshot.pending==true or false});return snapshot
+   if status=="IN_PROGRESS"then return{workflowAction="GOTO",gotoStep=1,delay=RAID_SCAN_YIELD_DELAY}end
+   run.snapshotGeneration=run.generation;run.scanComplete=true;run.lifetimeAudit=run.workState.capture and run.workState.capture.audit;run.workState={chunked=true};HolyStorm.Logger:Write("INFO","Raids","scan","RAID_SCAN_PERFORMANCE",{workflowId=run.workflowId,schedulerSteps=run.steps,elapsedSeconds=math.max(0,finished-(run.startedClock or finished)),luaExecutionSeconds=run.luaDuration,queueWaitSeconds=run.queueWait,longestStepSeconds=run.maxStep,sliceBudgetSeconds=RAID_SCAN_SLICE_SECONDS,yieldDelaySeconds=RAID_SCAN_YIELD_DELAY,pending=type(snapshot)=="table"and snapshot.pending==true or false});return snapshot
   end
   local function validator(s)if run.snapshotGeneration~=(Module.raidScanGeneration or 0)then return false,"RAID_SCAN_STALE"end;return Module:Validate(s)end
   local function commit(s,f)
-   if run.snapshotGeneration~=(Module.raidScanGeneration or 0)then return{workflowAction="RETRY",gotoStep=1,delay=HolyStorm.Tasks and HolyStorm.Tasks.schedulerYieldDelay or 1/60,maxRetries=5,reason="RAID_SCAN_STALE"}end
+   if run.snapshotGeneration~=(Module.raidScanGeneration or 0)then return{workflowAction="RETRY",gotoStep=1,delay=RAID_SCAN_YIELD_DELAY,maxRetries=5,reason="RAID_SCAN_STALE"}end
    run.commitStarted=true;local committed,commitReason=Module:Commit(s,f,sync,run.lifetimeAudit);run.committed=committed~=false
    return committed,commitReason
   end
@@ -726,13 +738,15 @@ HolyStorm:RegisterModule(metadata,function(Module)
   local now=tonumber(GetTime and GetTime())or 0
   local requestedResponse=event=="UPDATE_INSTANCE_INFO"and Module.raidInfoRequestPendingUntil and Module.raidInfoRequestPendingUntil>=now
   if requestedResponse then Module.raidInfoRequestPendingUntil=nil end
-  Module.raidScanGeneration=(Module.raidScanGeneration or 0)+1
   local active=HolyStorm.CharacterScans and HolyStorm.CharacterScans.active;local run=Module.activeRaidRun
   local activeScan=run and not run.commitStarted and(not active or active.block=="raid"and active.workflowId==run.workflowId)
   if activeScan then
-   HolyStorm.Logger:Write("DEBUG","Raids","trigger",requestedResponse and"Raid info response folded into active refresh"or"Raid refresh merged into active scan",{event=event,workflowId=run.workflowId,generation=Module.raidScanGeneration},run.workflowId)
+   if requestedResponse then HolyStorm.Logger:Write("DEBUG","Raids","trigger","Raid info response folded into active refresh",{event=event,workflowId=run.workflowId,generation=Module.raidScanGeneration},run.workflowId);return true end
+   HolyStorm.CharacterScans:Request("raid",event,true,{order=30})
+   HolyStorm.Logger:Write("DEBUG","Raids","trigger","Raid refresh queued after active scan",{event=event,workflowId=run.workflowId,generation=Module.raidScanGeneration},run.workflowId)
    return true
   end
+  Module.raidScanGeneration=(Module.raidScanGeneration or 0)+1
   HolyStorm.Logger:Write("DEBUG","Raids","trigger","Raid refresh requested",{event=event,loadContext=loadContext==true,generation=Module.raidScanGeneration})
   return HolyStorm.CharacterScans:Request("raid",event,true,{order=30})
  end
