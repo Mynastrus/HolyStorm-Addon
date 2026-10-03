@@ -55,6 +55,25 @@ local function isLocalSource(sender,guid)
  if HolyStorm.Comms and type(HolyStorm.Comms.IsSelfSender)=="function"then return HolyStorm.Comms:IsSelfSender(sender)end
  return samePlayerName(sender,playerName())
 end
+local function sameSource(leftName,leftGuid,rightName,rightGuid)
+ if leftGuid and rightGuid then return leftGuid==rightGuid end
+ return type(leftName)=="string"and type(rightName)=="string"and string.lower(leftName)==string.lower(rightName)
+end
+local function sourceExhausted(job,source)
+ for _,exhausted in ipairs(job.exhaustedSources or{})do if sameSource(source.sender,source.senderGuid,exhausted.sender,exhausted.senderGuid)then return true end end
+ return false
+end
+local function exhaustSource(job,sender,guid)
+ job.exhaustedSources=job.exhaustedSources or{}
+ local source={sender=sender,senderGuid=guid}
+ if not sourceExhausted(job,source)then job.exhaustedSources[#job.exhaustedSources+1]=source end
+ for index=#(job.sourceCandidates or{}),1,-1 do local candidate=job.sourceCandidates[index];if sameSource(candidate.sender,candidate.senderGuid,sender,guid)then table.remove(job.sourceCandidates,index)end end
+end
+local function recordRetry(sync,job)
+ sync.runtimeMetrics.retried=sync.runtimeMetrics.retried+1
+ incrementMetric(sync.runtimeMetrics.byDomain,job.domain,"retried")
+ incrementMetric(sync.runtimeMetrics.byReason,job.reason,"retried")
+end
 local function matchesFetchPayload(transfer,domainId,data,sender)
  if not transfer or transfer.kind~="FETCH"or transfer.domain~=domainId or transfer.objectId~=data.objectId or not samePlayerName(transfer.selectedSource,sender)or(data.requestId~=nil and data.requestId~=transfer.requestId)then return false end
  local resolvedGuid=senderGuid(sender);return not transfer.selectedSourceGuid or not resolvedGuid or transfer.selectedSourceGuid==resolvedGuid
@@ -271,8 +290,12 @@ function Sync:QueueFetch(domainId,objectId,target,knownVersion,reason,knownRevis
   local characterUUID,block=splitCharacterId(objectId);job={key=dedupeKey,kind="FETCH",domain=domainId,objectId=objectId,characterUUID=characterUUID,block=block,entity=objectId,requiredVersion=version,requiredRevision=revision,knownVersion=knownVersion,knownRevisionID=knownRevisionID,sourceCandidates={},priorityClass=class,priority=priorities[class]or priorities.BACKGROUND_CATCHUP,state="QUEUED",queuedAt=now(),retryCount=0,maxRetries=self.maxRetries,requestId=requestId or self:NewRequestId(),reason=reason or"DISCOVERY",notBefore=now()+((class=="USER_INTERACTIVE")and.15 or 1.5)}
   self.catchUpIndex[dedupeKey]=job;self.catchUpJobs[#self.catchUpJobs+1]=job;recordJobMetric(self,job,"requested")
  end
- local found=false;for _,source in ipairs(job.sourceCandidates)do if string.lower(source.sender)==string.lower(target)then found=true;source.direct=source.direct or candidate.direct;if candidate.version and(not source.version or candidate.version>source.version)then source.version=candidate.version;source.revisionID=candidate.revisionID;source.owner=candidate.owner;source.meta=candidate.meta end;break end end
- if not found then if#job.sourceCandidates<5 then job.sourceCandidates[#job.sourceCandidates+1]=candidate elseif candidate.direct then for index,source in ipairs(job.sourceCandidates)do if not source.direct then job.sourceCandidates[index]=candidate;break end end end end
+ job.exhaustedSources=job.exhaustedSources or{}
+ local found=false
+ if not sourceExhausted(job,candidate)then
+  for _,source in ipairs(job.sourceCandidates)do if sameSource(source.sender,source.senderGuid,candidate.sender,candidate.senderGuid)then found=true;source.direct=source.direct or candidate.direct;if candidate.version and(not source.version or candidate.version>source.version)then source.version=candidate.version;source.revisionID=candidate.revisionID;source.owner=candidate.owner;source.meta=candidate.meta end;break end end
+  if not found then if#job.sourceCandidates<5 then job.sourceCandidates[#job.sourceCandidates+1]=candidate elseif candidate.direct then for index,source in ipairs(job.sourceCandidates)do if not source.direct then job.sourceCandidates[index]=candidate;break end end end end
+ end
  if(priorities[class]or 90)<job.priority then job.priorityClass=class;job.priority=priorities[class];job.notBefore=math.min(job.notBefore,now()+.15)end
  job.requestId=requestId or job.requestId;self:QueuePump(math.max(0,job.notBefore-now()));self:NotifyActivity();return job.key,"MERGED"
 end
@@ -290,7 +313,7 @@ function Sync:OnFetch(domainId,data,sender)
  return self:QueueOutbound(domainId,data,sender,meta)~=nil
 end
 function Sync:BestSource(job)
- local best;for _,candidate in ipairs(job.sourceCandidates or{})do if not isLocalSource(candidate.sender,candidate.senderGuid)then if not best or(candidate.direct and not best.direct)then best=candidate elseif candidate.direct==best.direct then local decision=HolyStorm.PlayerData:CompareMetadata(best.meta or{},candidate.meta or{});if decision>0 then best=candidate end end end end;return best
+ local best;for _,candidate in ipairs(job.sourceCandidates or{})do if not sourceExhausted(job,candidate)and not isLocalSource(candidate.sender,candidate.senderGuid)then if not best or(candidate.direct and not best.direct)then best=candidate elseif candidate.direct==best.direct then local decision=HolyStorm.PlayerData:CompareMetadata(best.meta or{},candidate.meta or{});if decision>0 then best=candidate end end end end;return best
 end
 function Sync:ActivityPhase(transfer,phase)
  if not transfer then return end;transfer.phase=phase;transfer.lastActivityAt=now();self:NotifyActivity()
@@ -300,12 +323,29 @@ function Sync:ReleaseTransfer(result,reason)
  if transfer.timeoutTimer then transfer.timeoutTimer:Cancel();transfer.timeoutTimer=nil end
  local job=transfer.job;self.activeTransfer=nil
  if job then
-  if result==false and job.retryCount<job.maxRetries then
-   job.retryCount=job.retryCount+1;self.runtimeMetrics.retried=self.runtimeMetrics.retried+1;incrementMetric(self.runtimeMetrics.byDomain,job.domain,"retried");incrementMetric(self.runtimeMetrics.byReason,job.reason,"retried");job.state="QUEUED";job.notBefore=now()+math.min(16,2^job.retryCount);if transfer.kind=="FETCH"and transfer.selectedSource then for i=#job.sourceCandidates,1,-1 do if string.lower(job.sourceCandidates[i].sender)==string.lower(transfer.selectedSource)and#job.sourceCandidates>1 then table.remove(job.sourceCandidates,i);break end end end;self.catchUpJobs[#self.catchUpJobs+1]=job
-   log("WARN","retries","Sync domain transfer deferred for retry",{requestId=job.requestId,objectId=job.objectId,characterUUID=job.characterUUID,domain=job.domain,revision=job.requiredRevision,source=transfer.selectedSource,recipient=job.target,priority=job.priorityClass,retryCount=job.retryCount,maxRetries=job.maxRetries,result=reason or"TRANSFER_FAILED"})
+  local retryLimit=tonumber(job.maxRetries)or self.maxRetries
+  if result==false and transfer.kind=="FETCH"then
+   if job.retryCount<retryLimit then
+    job.retryCount=job.retryCount+1;recordRetry(self,job);job.state="QUEUED";job.notBefore=now()+math.min(16,2^job.retryCount);self.catchUpJobs[#self.catchUpJobs+1]=job
+    log("WARN","retries","Sync fetch timed out or failed; retrying the same source",{requestId=job.requestId,objectId=job.objectId,characterUUID=job.characterUUID,domain=job.domain,revision=job.requiredRevision,source=transfer.selectedSource,recipient=job.target,priority=job.priorityClass,retryCount=job.retryCount,maxRetries=retryLimit,result=reason or"TRANSFER_FAILED"})
+   else
+    exhaustSource(job,transfer.selectedSource,transfer.selectedSourceGuid)
+    job.retryCount=0
+    local nextSource=self:BestSource(job)
+    if nextSource then
+     recordRetry(self,job);job.state="QUEUED";job.notBefore=now();self.catchUpJobs[#self.catchUpJobs+1]=job
+     log("WARN","selection","Sync fetch source exhausted; trying another source",{requestId=job.requestId,objectId=job.objectId,characterUUID=job.characterUUID,domain=job.domain,revision=job.requiredRevision,source=transfer.selectedSource,nextSource=nextSource.sender,priority=job.priorityClass,maxRetries=retryLimit,result=reason or"TRANSFER_FAILED"})
+    else
+     job.state="FAILED";recordJobMetric(self,job,"failed");self.catchUpIndex[job.key]=nil
+     log("WARN","selection","Sync fetch skipped after all sources were exhausted; existing snapshot retained",{requestId=job.requestId,objectId=job.objectId,characterUUID=job.characterUUID,domain=job.domain,revision=job.requiredRevision,source=transfer.selectedSource,priority=job.priorityClass,retryCount=job.retryCount,maxRetries=retryLimit,result=reason or"NO_SOURCE"})
+    end
+   end
+  elseif result==false and job.retryCount<retryLimit then
+   job.retryCount=job.retryCount+1;recordRetry(self,job);job.state="QUEUED";job.notBefore=now()+math.min(16,2^job.retryCount);self.catchUpJobs[#self.catchUpJobs+1]=job
+   log("WARN","retries","Sync domain transfer deferred for retry",{requestId=job.requestId,objectId=job.objectId,characterUUID=job.characterUUID,domain=job.domain,revision=job.requiredRevision,source=transfer.selectedSource,recipient=job.target,priority=job.priorityClass,retryCount=job.retryCount,maxRetries=retryLimit,result=reason or"TRANSFER_FAILED"})
   else
    job.state=result==false and"FAILED"or"COMPLETED";recordJobMetric(self,job,result==false and"failed"or"completed");self.catchUpIndex[job.key]=nil
-   log(result==false and"WARN"or"DEBUG","payload",result==false and"Sync domain transfer failed; existing snapshot retained"or"Sync domain transfer completed",{requestId=job.requestId,objectId=job.objectId,characterUUID=job.characterUUID,domain=job.domain,revision=job.requiredRevision,source=transfer.selectedSource,recipient=job.target,priority=job.priorityClass,retryCount=job.retryCount,maxRetries=job.maxRetries,duration=now()-(transfer.startedAt or now()),bytes=transfer.bytes,fragments=transfer.fragmentsTotal,result=result==false and(reason or"FAILED")or"COMPLETED"})
+   log(result==false and"WARN"or"DEBUG","payload",result==false and"Sync domain transfer failed; existing snapshot retained"or"Sync domain transfer completed",{requestId=job.requestId,objectId=job.objectId,characterUUID=job.characterUUID,domain=job.domain,revision=job.requiredRevision,source=transfer.selectedSource,recipient=job.target,priority=job.priorityClass,retryCount=job.retryCount,maxRetries=retryLimit,duration=now()-(transfer.startedAt or now()),bytes=transfer.bytes,fragments=transfer.fragmentsTotal,result=result==false and(reason or"FAILED")or"COMPLETED"})
   end
  end
  self:NotifyActivity(true);self:QueuePump();if#self.pendingPayloadOrder>0 then self:SchedulePayloadPump()end;return true

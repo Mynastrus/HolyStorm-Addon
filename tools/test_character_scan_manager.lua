@@ -1,7 +1,7 @@
 local root=(arg[0]:gsub("tools[/\\]test_character_scan_manager.lua$","")).."LIVE/Holy_Storm/"
 local repository=arg[0]:gsub("tools[/\\]test_character_scan_manager.lua$","")
 unpack=unpack or table.unpack
-local queued,logs,listeners,emitted={},{},{},{}
+local queued,logs,listeners,emitted,startupMetrics={},{},{},{},{}
 local clock=100000
 local HolyStorm={Utils={},Tasks={definitions={}},Events={},PlayerData={},AddonLoader={}}
 function HolyStorm:GetAddon()return self end
@@ -13,6 +13,7 @@ function HolyStorm.Utils.SafeCall(_,callback,...)return pcall(callback,...)end
 HolyStorm.Logger={Write=function(_,level,source,category,message,context)logs[#logs+1]={level=level,source=source,category=category,message=message,context=context}end}
 function HolyStorm.Tasks:RegisterTaskType(id,definition)self.definitions[id]=definition end
 function HolyStorm.Tasks:Queue(id,options)queued[#queued+1]={id=id,options=options};return"task-"..#queued,"QUEUED"end
+function HolyStorm.Tasks:RecordStartupMetric(key,amount)startupMetrics[key]=(startupMetrics[key]or 0)+(amount or 1)end
 function HolyStorm.Events:Register(event,_,callback)listeners[event]=callback end
 function HolyStorm.Events:Emit(event,...)emitted[#emitted+1]={event=event,args={...}}end
 function HolyStorm.AddonLoader:GetCharacterDataDefinitions()return{{block="equipment",capability="character.scan.equipment",addonId="equipment",order=10},{block="mythicPlus",capability="character.scan.mythicplus",addonId="mythicPlus",order=20},{block="raid",capability="character.scan.raids",addonId="raids",order=30},{block="delves",capability="character.scan.delves",addonId="delves",order=40},{block="stats",capability="character.scan.stats",addonId="characters",order=50}}end
@@ -49,11 +50,17 @@ assert(scans:Finish({workflowId=scans.active.workflowId},"COMPLETED"));assert(sc
 assert(scans:Finish({workflowId=scans.active.workflowId,lastError="EXPECTED_DIAGNOSTIC"},"FAILED")and scans:GetRuntimeState("Player-Local","raid").state=="ERROR"and scans:GetRuntimeState("Player-Local","raid").lastError=="EXPECTED_DIAGNOSTIC","failed refresh retains its diagnostic in the ERROR runtime state")
 assert(scans:Advance()and scans.active.block=="equipment"and started[#started].reason=="SOCKET_INFO_UPDATE","same-producer follow-up remains serialized after higher-priority blocks")
 assert(scans:GetRuntimeState("Player-Remote","raid")==nil,"local scan state is not exposed as a remote character state")
-local producerMetrics=scans:GetRuntimeMetrics().byBlock;assert(producerMetrics.equipment.requested==2 and producerMetrics.equipment.automatic==2 and producerMetrics.equipment.completed==1,"automatic producer requests and completions are attributed by block");assert(producerMetrics.mythicPlus.manual==1 and producerMetrics.mythicPlus.completed==1 and producerMetrics.raid.manual==1 and producerMetrics.raid.failed==1,"manual producer requests and failed/completed outcomes are attributed by block")
+local producerMetrics=scans:GetRuntimeMetrics().byBlock;assert(producerMetrics.equipment.requested==2 and producerMetrics.equipment.automatic==2 and producerMetrics.equipment.started==2 and producerMetrics.equipment.completed==1,"accepted automatic producer workflows count as started and completed by block");assert(producerMetrics.mythicPlus.manual==1 and producerMetrics.mythicPlus.started==1 and producerMetrics.mythicPlus.completed==1 and producerMetrics.raid.manual==1 and producerMetrics.raid.started==1 and producerMetrics.raid.failed==1,"workflow failures are counted only after an accepted producer start")
 local activeBeforeReset,queuedBeforeReset=scans.active,#scans.queue;assert(scans:ResetRuntimeMetrics()and scans.active==activeBeforeReset and#scans.queue==queuedBeforeReset and scans:GetRuntimeMetrics().byBlock.equipment.requested==0 and scans:GetRuntimeMetrics().loginProducerScans==0,"producer metric reset preserves active/queued work while restoring visible zero rows")
 local tileOk,tileCount=scans:RequestBlocks({"stats"},"MANUAL",true);assert(tileOk and tileCount==1 and scans.pending.stats and not scans.pending.equipment,"a single tile request remains limited to its one selected producer")
 local allOk,allCount=scans:RequestAll("MANUAL",true);assert(allOk and allCount==5,"RequestAll targets every declaration")
 for _,block in ipairs({"equipment","mythicPlus","raid","delves","stats"})do local request=scans.pending[block];assert(request and request.reason=="MANUAL"and request.sync and request.manual,"all producer requests remain explicit and manual regardless of cache freshness")end
+
+scans.active=nil;scans.queue={};scans.pending={};scans:ResetRuntimeMetrics();for key in pairs(startupMetrics)do startupMetrics[key]=nil end;scans.providers.delves=nil
+assert(scans:Request("delves","MANUAL_COMMAND",true,{manual=true})and scans:Advance()==false,"an unavailable Delves producer fails before creating a workflow")
+local failedStart=scans:GetRuntimeMetrics().byBlock.delves;local delvesState=scans:GetDiagnostics().runtimeStates.delves
+assert(failedStart.requested==1 and failedStart.started==0 and failedStart.failed==0 and failedStart.startFailed==1,"pre-start producer failures stay separate from scans that actually ran")
+assert(delvesState.state=="ERROR"and delvesState.lastError=="PROVIDER_UNAVAILABLE"and startupMetrics.producerScanStartFailures==1 and not startupMetrics.producerScansFailed,"the pre-start reason is preserved and startup totals use distinct counters")
 
 local contracts={
  {path="LIVE/Holy_Storm_Equipment/Equipment.lua",events={"PLAYER_EQUIPMENT_CHANGED","UNIT_INVENTORY_CHANGED","SOCKET_INFO_UPDATE"}},

@@ -13,7 +13,7 @@ function Snapshots:Register(id)
  if self.registered[id]then return true end;local prefix="Snapshot."..id
 	HolyStorm.Tasks:RegisterTaskType(prefix..".Scan",{name=string.format(L["TASK_SNAPSHOT_SCAN"],id),localizedNameKey="TASK_SNAPSHOT_SCAN",module=id,priority=50,executionMode="MULTI",execute=function(task)
 		local c=context(task);if not c then error("missing workflow context")end
-		local result,reason,diagnostics=c.data.scanner()
+		local result,reason,diagnostics=c.data.scanner(task)
 		if type(result)=="table"and result.workflowAction then return result end
 		return{snapshot=result,reason=reason,diagnostics=diagnostics}
 	end})

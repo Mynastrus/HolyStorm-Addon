@@ -244,4 +244,39 @@ Sync.activeTransfer=nil;Sync.catchUpJobs={};Sync.catchUpIndex={};Sync:NotifyActi
 assert(activityEvents>0,"central activity changes emit update events")
 local syncMetrics=Sync:GetRuntimeMetrics();assert(syncMetrics.requested>0 and syncMetrics.started>0 and syncMetrics.completed>0 and syncMetrics.retried>0 and next(syncMetrics.byDomain)and next(syncMetrics.byReason),"sync lifecycle metrics include bounded domain and reason aggregates")
 local requestsBeforeReset=Sync.requests;assert(Sync:ResetRuntimeMetrics()and Sync:GetRuntimeMetrics().requested==0 and next(Sync:GetRuntimeMetrics().byDomain)==nil and Sync.requests==requestsBeforeReset,"sync metrics reset preserves protocol request state")
+
+-- A silent background-catch-up source gets three retries, is then excluded,
+-- and another advertised peer can finish the same object.
+names["Timeout-Source-One-Realm"]="Player-RelayOne";names["Timeout-Source-Two-Realm"]="Player-RelayTwo"
+local timeoutMeta={version=8,revisionID="poi-r8",owner="Player-Remote",direct=false}
+local timeoutKey=assert(Sync:QueueFetch("character","timeout-poi-object","Timeout-Source-One-Realm",-1,"LOGIN_CATCHUP",nil,"poi-timeout-request",timeoutMeta))
+local timeoutJob=Sync.catchUpIndex[timeoutKey]
+assert(Sync:QueueFetch("character","timeout-poi-object","Timeout-Source-Two-Realm",-1,"LOGIN_CATCHUP",nil,"poi-timeout-request",timeoutMeta)==timeoutKey and #timeoutJob.sourceCandidates==2,"additional peers merge into the same catch-up fetch")
+timeoutJob.notBefore=clock;assert(Sync:RunQueuePump()and Sync.activeTransfer.selectedSource=="Timeout-Source-One-Realm","the first eligible peer receives the background request")
+for attempt=1,4 do
+ local transfer=Sync.activeTransfer;assert(transfer and transfer.selectedSource=="Timeout-Source-One-Realm"and transfer.phase=="REQUEST"and transfer.fragments==0,"the first source remains selected during its bounded timeout retries")
+ local expire=transfer.timeoutTimer.callback;clock=clock+30;expire()
+ if attempt<=3 then
+  assert(timeoutJob.retryCount==attempt and timeoutJob.state=="QUEUED","each unanswered request advances the retry counter")
+  clock=timeoutJob.notBefore;assert(Sync:RunQueuePump()and Sync.activeTransfer.selectedSource=="Timeout-Source-One-Realm","retry reuses the current source until its configured limit")
+ else
+  assert(timeoutJob.retryCount==0 and timeoutJob.state=="QUEUED"and #timeoutJob.sourceCandidates==1,"exhausted peer is removed and retry allowance resets for failover")
+  clock=timeoutJob.notBefore;assert(Sync:RunQueuePump()and Sync.activeTransfer.selectedSource=="Timeout-Source-Two-Realm","an alternate source takes over after maxRetries")
+ end
+end
+assert(Sync:ReleaseTransfer(true,"TEST_COMMIT")and timeoutJob.state=="COMPLETED"and Sync.catchUpIndex[timeoutKey]==nil,"a successful alternate-source response releases the catch-up entry")
+
+-- A job with no alternate source is skipped after its retry limit and the
+-- next queued catch-up item becomes runnable immediately.
+local blockedKey=assert(Sync:QueueFetch("character","timeout-no-peer","Timeout-Source-One-Realm",-1,"LOGIN_CATCHUP",nil,"poi-no-peer-request",timeoutMeta))
+local followingKey=assert(Sync:QueueFetch("character","timeout-next-peer","Timeout-Source-Two-Realm",-1,"LOGIN_CATCHUP",nil,"poi-next-peer-request",timeoutMeta))
+local blockedJob=Sync.catchUpIndex[blockedKey];local followingJob=Sync.catchUpIndex[followingKey];blockedJob.maxRetries=0;blockedJob.notBefore=clock;followingJob.notBefore=clock
+assert(Sync:RunQueuePump()and Sync.activeTransfer.job==blockedJob,"the earlier no-alternative catch-up starts first")
+local noPeerTimeout=Sync.activeTransfer.timeoutTimer.callback;clock=clock+30;noPeerTimeout()
+assert(not Sync.activeTransfer and blockedJob.state=="FAILED"and Sync.catchUpIndex[blockedKey]==nil,"a silent last peer is finalized without leaving active transfer state behind")
+clock=math.max(clock,followingJob.notBefore);assert(Sync:RunQueuePump()and Sync.activeTransfer.job==followingJob,"the following catch-up job starts after a terminal timeout")
+assert(Sync:ReleaseTransfer(true,"TEST_COMMIT")and followingJob.state=="COMPLETED","the next queued job can complete normally")
+local selfTimeoutKey,selfTimeoutReason=Sync:QueueFetch("character","timeout-self-source","Local-Realm",-1,"LOGIN_CATCHUP",nil,"poi-self-timeout-request",{version=8,revisionID="poi-r8",owner="Player-Local",senderGuid="Player-Local"})
+assert(not selfTimeoutKey and selfTimeoutReason=="SELF_SOURCE","catch-up never accepts this client as its own source")
+Sync.catchUpJobs={};Sync.catchUpIndex={};Sync.activeTransfer=nil;Sync:NotifyActivity(true)
 print("Sync v2 large-guild queue, paging, priority, serialization and atomic receive tests passed")

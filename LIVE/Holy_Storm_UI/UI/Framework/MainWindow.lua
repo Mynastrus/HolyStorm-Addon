@@ -115,7 +115,8 @@ function UI:OnInitialize()
     local syncLabel = syncActivity:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
     syncLabel:SetPoint("LEFT", syncSpinner, "RIGHT", 5, 0); syncLabel:SetText(L["SYNC_RUNNING"])
     local syncRotation = 0
-    syncActivity:SetScript("OnUpdate", function(_, elapsed) syncRotation = (syncRotation + elapsed * 5) % (math.pi * 2); syncSpinner:SetRotation(syncRotation) end)
+    -- WoW Texture:SetRotation uses negative angles for clockwise motion.
+    syncActivity:SetScript("OnUpdate", function(_, elapsed) syncRotation = (syncRotation - elapsed * 5) % (math.pi * 2); syncSpinner:SetRotation(syncRotation) end)
     local syncTooltip = GameTooltip
     syncActivity:SetScript("OnEnter", function(button)
         local activity = HolyStorm.Sync and HolyStorm.Sync:GetActivity()

@@ -6,7 +6,7 @@ local L=LibStub("AceLocale-3.0"):GetLocale("Holy_Storm")
 -- enqueue producer work; cached freshness is read by the shared CharacterUI API.
 local function emptyMetrics()
  local byBlock={}
- for _,block in ipairs({"equipment","mythicPlus","raid","delves","stats"})do byBlock[block]={requested=0,automatic=0,manual=0,completed=0,failed=0,triggers={}}end
+ for _,block in ipairs({"equipment","mythicPlus","raid","delves","stats"})do byBlock[block]={requested=0,automatic=0,manual=0,started=0,completed=0,failed=0,startFailed=0,triggers={}}end
  return{byBlock=byBlock,loginProducerScans=0}
 end
 local CharacterScans={version=addonVersion,providers={},pending={},queue={},active=nil,runtimeStates={},initialized=false,loginSession=0,releaseDelay=1.25,loginWindowSeconds=4,metrics=emptyMetrics()}
@@ -18,7 +18,7 @@ local function scanMetric(block)
  block=tostring(block or"UNKNOWN");if#block>96 then block=block:sub(1,96)end
  local metrics=CharacterScans.metrics.byBlock;local item=metrics[block]
  if not item then local count=0;for _ in pairs(metrics)do count=count+1 end;if count>=64 then block="OTHER";item=metrics[block]end end
- if not item then item={requested=0,automatic=0,manual=0,completed=0,failed=0,triggers={}};metrics[block]=item end
+ if not item then item={requested=0,automatic=0,manual=0,started=0,completed=0,failed=0,startFailed=0,triggers={}};metrics[block]=item end
  return item
 end
 local function recordRequest(request)
@@ -104,16 +104,18 @@ function CharacterScans:Advance()
  if self.active then return true end
  local request=table.remove(self.queue,1);if not request then return true end;self.pending[request.block]=nil
  local provider=self:ResolveProvider(request);if not provider then
-  local item=scanMetric(request.block);item.failed=item.failed+1;if HolyStorm.Tasks and HolyStorm.Tasks.RecordStartupMetric then HolyStorm.Tasks:RecordStartupMetric("producerScansFailed")end
+  local item=scanMetric(request.block);item.startFailed=item.startFailed+1;if HolyStorm.Tasks and HolyStorm.Tasks.RecordStartupMetric then HolyStorm.Tasks:RecordStartupMetric("producerScanStartFailures")end
   HolyStorm.Logger:Write("WARN","CharacterScan","provider","Character scan provider unavailable",{block=request.block,capability=request.capability,addonId=request.addonId,reason=request.reason})
   self:SetRuntimeState(request.block,"ERROR",request.reason,"PROVIDER_UNAVAILABLE");HolyStorm.Tasks:Queue("CharacterScan.Advance",{delay=self.releaseDelay,priority=30,triggerSource="CHARACTER_SCAN_PROVIDER_UNAVAILABLE"});return false
  end
  local ok,workflowId,state=HolyStorm.Utils.SafeCall("character-scan:"..request.block,provider.request,request.sync,request.reason,copy(request.reasons))
  if not ok or not valid(workflowId)then
-  local item=scanMetric(request.block);item.failed=item.failed+1;if HolyStorm.Tasks and HolyStorm.Tasks.RecordStartupMetric then HolyStorm.Tasks:RecordStartupMetric("producerScansFailed")end
+  local item=scanMetric(request.block);item.startFailed=item.startFailed+1;if HolyStorm.Tasks and HolyStorm.Tasks.RecordStartupMetric then HolyStorm.Tasks:RecordStartupMetric("producerScanStartFailures")end
   HolyStorm.Logger:Write("WARN","CharacterScan","workflow","Character scan did not start",{block=request.block,capability=provider.capability,reason=request.reason,error=not ok and tostring(workflowId)or tostring(state)})
   self:SetRuntimeState(request.block,"ERROR",request.reason,not ok and tostring(workflowId)or tostring(state));HolyStorm.Tasks:Queue("CharacterScan.Advance",{delay=self.releaseDelay,priority=30,triggerSource="CHARACTER_SCAN_START_FAILED"});return false
  end
+ local item=scanMetric(request.block);item.started=item.started+1
+ if HolyStorm.Tasks and HolyStorm.Tasks.RecordStartupMetric then HolyStorm.Tasks:RecordStartupMetric("producerScansStarted")end
  if HolyStorm.Tasks and HolyStorm.Tasks.IsStartupActive and HolyStorm.Tasks:IsStartupActive()and not manualRequest(request)then self.metrics.loginProducerScans=self.metrics.loginProducerScans+1 end
  self.active={block=request.block,workflowId=workflowId,reason=request.reason,reasons=request.reasons,sync=request.sync,startedAt=HolyStorm.Utils.Now()}
  self:SetRuntimeState(request.block,"REFRESHING",request.reason)
