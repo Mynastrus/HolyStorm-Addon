@@ -76,6 +76,22 @@ function CharacterScans:Request(block,reason,sync,options)
  return true,"QUEUED"
 end
 
+function CharacterScans:RequestBlocks(blocks,reason,sync,options)
+ local wanted={};for _,entry in ipairs(blocks or{})do local block=type(entry)=="table"and entry.block or entry;if valid(block)then wanted[block]=true end end
+ local requested=0;options=options or{}
+ for _,definition in ipairs(self:GetDeclarations())do
+  if wanted[definition.block]then
+   local requestOptions=copy(options);requestOptions.order=requestOptions.order or definition.order;requestOptions.addonId=requestOptions.addonId or definition.addonId;requestOptions.capability=requestOptions.capability or definition.capability
+   local ok=self:Request(definition.block,reason or"MANUAL",sync~=false,requestOptions);if ok then requested=requested+1 end;wanted[definition.block]=nil
+  end
+ end
+ return requested>0,requested
+end
+
+function CharacterScans:RequestAll(reason,sync,options)
+ return self:RequestBlocks(self:GetDeclarations(),reason or"MANUAL",sync,options)
+end
+
 function CharacterScans:ResolveProvider(request)
  local provider=self.providers[request.block];if provider and(not HolyStorm.IsModuleAvailable or HolyStorm:IsModuleAvailable(provider.owner,true))then return provider end
  local addonId=request.addonId
@@ -109,7 +125,7 @@ function CharacterScans:Finish(workflow,status)
  local active=self.active;if not active or not workflow or workflow.workflowId~=active.workflowId then return false end
  self.active=nil;local queuedAgain=self.pending[active.block]~=nil
  if status=="COMPLETED"then local item=scanMetric(active.block);item.completed=item.completed+1;if HolyStorm.Tasks and HolyStorm.Tasks.RecordStartupMetric then HolyStorm.Tasks:RecordStartupMetric("producerScansCompleted")end;self:SetRuntimeState(active.block,queuedAgain and"DIRTY"or"CURRENT",queuedAgain and"EVENT_QUEUED"or active.reason)
- elseif status=="FAILED"then local item=scanMetric(active.block);item.failed=item.failed+1;if HolyStorm.Tasks and HolyStorm.Tasks.RecordStartupMetric then HolyStorm.Tasks:RecordStartupMetric("producerScansFailed")end;self:SetRuntimeState(active.block,"ERROR",active.reason,"WORKFLOW_FAILED")
+ elseif status=="FAILED"then local item=scanMetric(active.block);item.failed=item.failed+1;if HolyStorm.Tasks and HolyStorm.Tasks.RecordStartupMetric then HolyStorm.Tasks:RecordStartupMetric("producerScansFailed")end;self:SetRuntimeState(active.block,"ERROR",active.reason,workflow and workflow.lastError or"WORKFLOW_FAILED")
  elseif not queuedAgain then self:SetRuntimeState(active.block,"STALE",active.reason,"WORKFLOW_CANCELLED")end
  HolyStorm.Logger:Write(status=="FAILED"and"WARN"or"DEBUG","CharacterScan","workflow","Character scan released",{block=active.block,workflowId=active.workflowId,status=status,reason=active.reason,resource="CHARACTER_SCAN"},active.workflowId)
  HolyStorm.Events:Emit("HS_CHARACTER_SCAN_COMPLETED",active.block,status,copy(active.reasons),active.workflowId)

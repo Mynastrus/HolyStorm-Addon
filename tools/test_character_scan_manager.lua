@@ -46,11 +46,14 @@ assert(queued[#queued].options.priority==15,"an interactive request raises the s
 assert(scans:Finish({workflowId=activeId},"COMPLETED")and scans:GetRuntimeState("Player-Local","equipment").state=="DIRTY","an event received during a scan remains dirty until its queued follow-up starts")
 assert(scans:Advance()and scans.active.block=="mythicPlus"and started[#started].reason=="MANUAL","manual Mythic+ scans stay serialized")
 assert(scans:Finish({workflowId=scans.active.workflowId},"COMPLETED"));assert(scans:Advance()and scans.active.block=="raid"and started[#started].reason=="ENCOUNTER_END"and started[#started].reasons.MANUAL_COMMAND,"a manual Raid request merges with the pending event")
-assert(scans:Finish({workflowId=scans.active.workflowId},"FAILED")and scans:GetRuntimeState("Player-Local","raid").state=="ERROR","failed refresh retains an ERROR runtime state")
+assert(scans:Finish({workflowId=scans.active.workflowId,lastError="EXPECTED_DIAGNOSTIC"},"FAILED")and scans:GetRuntimeState("Player-Local","raid").state=="ERROR"and scans:GetRuntimeState("Player-Local","raid").lastError=="EXPECTED_DIAGNOSTIC","failed refresh retains its diagnostic in the ERROR runtime state")
 assert(scans:Advance()and scans.active.block=="equipment"and started[#started].reason=="SOCKET_INFO_UPDATE","same-producer follow-up remains serialized after higher-priority blocks")
 assert(scans:GetRuntimeState("Player-Remote","raid")==nil,"local scan state is not exposed as a remote character state")
 local producerMetrics=scans:GetRuntimeMetrics().byBlock;assert(producerMetrics.equipment.requested==2 and producerMetrics.equipment.automatic==2 and producerMetrics.equipment.completed==1,"automatic producer requests and completions are attributed by block");assert(producerMetrics.mythicPlus.manual==1 and producerMetrics.mythicPlus.completed==1 and producerMetrics.raid.manual==1 and producerMetrics.raid.failed==1,"manual producer requests and failed/completed outcomes are attributed by block")
 local activeBeforeReset,queuedBeforeReset=scans.active,#scans.queue;assert(scans:ResetRuntimeMetrics()and scans.active==activeBeforeReset and#scans.queue==queuedBeforeReset and scans:GetRuntimeMetrics().byBlock.equipment.requested==0 and scans:GetRuntimeMetrics().loginProducerScans==0,"producer metric reset preserves active/queued work while restoring visible zero rows")
+local tileOk,tileCount=scans:RequestBlocks({"stats"},"MANUAL",true);assert(tileOk and tileCount==1 and scans.pending.stats and not scans.pending.equipment,"a single tile request remains limited to its one selected producer")
+local allOk,allCount=scans:RequestAll("MANUAL",true);assert(allOk and allCount==5,"RequestAll targets every declaration")
+for _,block in ipairs({"equipment","mythicPlus","raid","delves","stats"})do local request=scans.pending[block];assert(request and request.reason=="MANUAL"and request.sync and request.manual,"all producer requests remain explicit and manual regardless of cache freshness")end
 
 local contracts={
  {path="LIVE/Holy_Storm_Equipment/Equipment.lua",events={"PLAYER_EQUIPMENT_CHANGED","UNIT_INVENTORY_CHANGED","SOCKET_INFO_UPDATE"}},

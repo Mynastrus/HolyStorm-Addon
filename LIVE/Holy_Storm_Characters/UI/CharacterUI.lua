@@ -250,7 +250,18 @@ end
 function CharacterUI:RunRefresh(characterUUID,blocks,options)
  options=options or{};local reason=options.reason or"MANUAL"
  local wanted={};for _,block in ipairs(blocks or{})do wanted[block]=true end;local all=next(wanted)==nil
- if characterUUID==UnitGUID("player")then if all or wanted.identity then HolyStorm.Data.CharacterStore:CaptureCurrent()end;if all or wanted.equipment then HolyStorm:CallCapability("character.scan.equipment",true,reason)end;if all or wanted.raid then HolyStorm:CallCapability("character.scan.raids",true,reason)end;if all or wanted.mythicPlus then HolyStorm:CallCapability("character.scan.mythicplus",true,reason)end;if all or wanted.delves then HolyStorm:CallCapability("character.scan.delves",true,reason)end;if all or wanted.stats then HolyStorm:CallCapability("character.scan.stats",true,reason)end;return true end
+ if characterUUID==UnitGUID("player")then
+  if all or wanted.identity then HolyStorm.Data.CharacterStore:CaptureCurrent()end
+  local scans=HolyStorm.CharacterScans
+  if scans then
+   local declarations=scans:GetDeclarations();local producerBlocks={};local allProducers=#declarations>0
+   for _,definition in ipairs(declarations)do if wanted[definition.block]then producerBlocks[#producerBlocks+1]=definition.block else allProducers=false end end
+   if all or allProducers then return scans:RequestAll(reason,true)end
+   if #producerBlocks==0 then return all or wanted.identity end
+   return scans:RequestBlocks(producerBlocks,reason,true)
+  end
+  return false
+ end
  options.force=reason=="MANUAL"or options.force==true;return HolyStorm.Data.CharacterStore:RequestRefresh(characterUUID,blocks,options)
 end
 function CharacterUI:RequestRefresh(characterUUID,blocks,reason)

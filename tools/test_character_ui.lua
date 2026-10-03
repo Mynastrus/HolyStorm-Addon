@@ -3,7 +3,7 @@ local featureRoot=(arg[0]:gsub("tools[/\\]test_character_ui.lua$","")).."LIVE/Ho
 local function deepCopy(value,seen)if type(value)~="table"then return value end;seen=seen or{};if seen[value]then return seen[value]end;local out={};seen[value]=out;for key,child in pairs(value)do out[deepCopy(key,seen)]=deepCopy(child,seen)end;return out end
 local records={A={guid="A",name="Alpha",realm="Realm",classFile="PALADIN",level=80,equipment={snapshotVersion=4,equippedItemLevel=710,itemLevel=710,slots={}},itemLevel=710,stats={spec={id=70,name="Retribution",icon=98765,index=3,role="DAMAGER"}}},B={guid="B",name="Beta-OtherRealm",classFile="MAGE",class="Mage",level=75,faction="Horde"},C={guid="C",name="Gamma",stats={snapshotVersion=2,schemaVersion=2,primary={},secondary={},armor={}}},D={guid="D",name="Delta",realm="Realm",classFile="DRUID",level=70}}
 local metas={A={equipment={version=2,updatedAt=100}}}
-local refreshes={}
+local refreshes,scanCalls={},{}
 local HolyStorm={Utils={DeepCopy=deepCopy},Data={CharacterStore={},GuildStore={},PlayerStore={}},PlayerData={},Tasks={registry={},queued={}},Policy={}}
 function HolyStorm:GetAddon()return self end
 function LibStub()return HolyStorm end
@@ -12,11 +12,12 @@ LOCALIZED_CLASS_NAMES_MALE={PALADIN="Paladin",MAGE="Mage",DRUID="Druid"}
 function HolyStorm.Data.CharacterStore:Get(guid)return records[guid]end
 function HolyStorm.Data.CharacterStore:GetBlock(guid,block)local record=records[guid];if not record then return nil end;if block=="equipment"then return{equipment=record.equipment,itemLevel=record.itemLevel},deepCopy(metas[guid]and metas[guid][block])end;return record[block],deepCopy(metas[guid]and metas[guid][block])end
 function HolyStorm.Data.CharacterStore:RequestRefresh(guid,blocks,options)refreshes[#refreshes+1]={guid=guid,blocks=blocks,options=options};return true end
-function HolyStorm.Data.CharacterStore:CaptureCurrent()return records.LOCAL end
+function HolyStorm.Data.CharacterStore:CaptureCurrent()self.captureCount=(self.captureCount or 0)+1;return records.LOCAL end
 function HolyStorm.Data.GuildStore:GetCurrent()return{id="guild",roster={A={name="Alpha",rank="Officer",rankIndex=1,classFile="PALADIN",level=80},D={name="Delta",rank="Member",class="Druid",classFile="DRUID",level=70}}}end
 function HolyStorm.Data.PlayerStore:GetCharacterOwner(guid)return"account-"..guid end
 function HolyStorm.PlayerData:IsStale(guid,block)return guid=="A"and block=="equipment"end
 HolyStorm.TwinkCore={GetAccountUUIDForCharacter=function(_,guid)return"account-"..guid end,GetRosterIdentity=function(_,guid)return guid=="B"and{accountMain="A",guildMain="A"}or nil end}
+HolyStorm.CharacterScans={GetDeclarations=function()return{{block="equipment"},{block="mythicPlus"},{block="raid"},{block="delves"},{block="stats"}}end,RequestAll=function(_,reason,sync)scanCalls[#scanCalls+1]={kind="all",reason=reason,sync=sync};return true,5 end,RequestBlocks=function(_,blocks,reason,sync)scanCalls[#scanCalls+1]={kind="blocks",blocks=deepCopy(blocks),reason=reason,sync=sync};return true,#blocks end}
 function HolyStorm.Tasks:GetTaskType(id)return self.registry[id]end
 function HolyStorm.Tasks:Queue(id,options)self.queued[#self.queued+1]={id=id,options=deepCopy(options)};return"task-"..#self.queued end
 function HolyStorm.Policy:Can()return true end
@@ -25,6 +26,11 @@ RAID_CLASS_COLORS={PALADIN={r=1,g=.5,b=.8,WrapTextInColorCode=function(_,text)re
 
 assert(loadfile(featureRoot.."UI/CharacterUI.lua"))()
 local C=HolyStorm.CharacterUI
+
+assert(C:RequestRefresh("LOCAL",{"identity","equipment","mythicPlus","raid","delves","stats"},"MANUAL"))
+assert(#scanCalls==1 and scanCalls[1].kind=="all"and scanCalls[1].reason=="MANUAL"and scanCalls[1].sync==true and HolyStorm.Data.CharacterStore.captureCount==1,"global local refresh captures identity and routes all declared producer scans through RequestAll")
+assert(C:RequestRefresh("LOCAL",{"stats"},"MANUAL"))
+assert(#scanCalls==2 and scanCalls[2].kind=="blocks"and #scanCalls[2].blocks==1 and scanCalls[2].blocks[1]=="stats","a single tile refresh requests only its selected producer block")
 
 local dummy=function()end
 assert(C:RegisterTab({id="raid",order=40,labelKey="RAID",build=dummy,refresh=dummy}))

@@ -42,7 +42,10 @@ C_WeeklyRewards.GetActivities=function()return{}end
 snapshot=HolyStorm.Snapshots.scanner();assert(HolyStorm.Snapshots.validator(snapshot),"API-confirmed empty activity list is valid")
 assert(snapshot.greatVaultWorld.progress==0 and#snapshot.greatVaultWorld.activities==0,"known empty World activities remain a valid zero")
 C_WeeklyRewards.GetActivities=function()return nil end
-assert(HolyStorm.Snapshots.scanner()==nil,"unavailable activity data does not become empty")
+local unavailableSnapshot,unavailableReason,unavailableDiagnostics=HolyStorm.Snapshots.scanner()
+assert(unavailableSnapshot==nil and unavailableReason=="DELVES_WORLD_ACTIVITIES_UNAVAILABLE"and unavailableDiagnostics.stage=="WORLD_ACTIVITIES","unavailable activity data keeps a stage-specific diagnostic instead of becoming empty")
+local unavailableValid,validationReason,retryable=HolyStorm.Snapshots.validator(unavailableSnapshot,unavailableReason,unavailableDiagnostics,0,3)
+assert(not unavailableValid and validationReason==unavailableReason and retryable==false,"unavailable Delves inputs fail once with a retained reason instead of repeating the same collection three times")
 C_WeeklyRewards.GetActivities=function()error("API unavailable")end
 assert(HolyStorm.Snapshots.scanner()==nil,"API errors do not create a snapshot")
 C_WeeklyRewards.GetActivities=function()return activities end

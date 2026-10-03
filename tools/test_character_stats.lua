@@ -57,32 +57,37 @@ assert(clean.secondary.versatility.baseline==3 and clean.secondary.leech.baselin
 assert(Stats:Validate(clean));assert(Stats:Commit(clean));assert(#writes==1 and writes[1].source=="blizzard")
 local malformed={snapshotVersion=2,schemaVersion=2,primary={},armor=clean.armor,secondary=clean.secondary,capture=clean.capture};for key,value in pairs(clean.primary)do malformed.primary[key]=value end;malformed.primary.strength={baseline="95"};assert(not Stats:Validate(malformed),"snapshot validation rejects malformed numeric fields")
 
--- Timed helpful or harmful auras make a baseline commit ineligible.
+-- Timed auras retain safe primary baselines while excluding transient fields.
 auraState.HELPFUL={{duration=30,expirationTime=runtime+30}}
 now=1010
-local buffed=Stats:Collect();assert(not buffed.capture.eligible and buffed.capture.reason=="TIMED_AURA_ACTIVE")
-local valid,reason=Stats:Validate(buffed);assert(not valid and reason=="TIMED_AURA_ACTIVE")
-assert(not Stats:Commit(buffed)and#writes==1,"a scan during a temporary aura never persists or synchronizes a new baseline")
+local buffed=Stats:Collect();assert(buffed.capture.eligible and buffed.capture.partial and buffed.capture.reason=="TIMED_AURA_ACTIVE")
+assert(buffed.primary.strength.baseline==95 and buffed.armor.baseline==nil,"primary stats stay available while potentially transient armor is omitted")
+for _,stat in pairs(buffed.secondary)do assert(stat.rating==nil and stat.baseline==nil and stat.coefficient==nil,"all potentially buff-modified secondary values are omitted")end
+local valid,reason=Stats:Validate(buffed);assert(valid,reason)
+assert(Stats:Commit(buffed)and#writes==2 and Stats.baselineDirty,"safe partial primary baseline commits during a temporary aura and remains dirty for a later clean capture")
 
 -- Effective secondary values remain transient and unknown/unavailable stays nil.
 function GetMasteryEffect()return"SECRET",1.15 end
 function GetSpeed()return"SECRET"end
 function GetSpecializationInfo()return 102,"SECRET",nil,55,"SECRET"end
 local live=Stats:CollectLive();assert(live.secondary.mastery.effective==nil and live.secondary.speed.effective==nil and live.spec.name==nil and live.spec.role==nil,"secret and unavailable API values remain unknown")
+auraState.HELPFUL={}
+local optionalMissing=Stats:Collect();assert(optionalMissing.capture.partial==false and optionalMissing.secondary.mastery.baseline==nil and optionalMissing.secondary.speed.baseline==nil and Stats:Validate(optionalMissing),"missing optional effective values do not reject otherwise usable persistent stats")
 function GetMasteryEffect()return 22,1.15 end;function GetSpeed()return 0 end
 function GetSpecializationInfo()return 102,"Balance",nil,55,"DAMAGER"end
+auraState.HELPFUL={{duration=30,expirationTime=runtime+30}}
 
 -- Aura bursts coalesce only while the Stats view is visible.
 Stats.baselineDirty=false;callbacks={};listeners.UNIT_AURA["character-stats-live"]("UNIT_AURA","player");assert(#callbacks==0,"hidden Stats view does not recompute the live overlay")
 HolyStorm.UI.visible=true;listeners.UNIT_AURA["character-stats-live"]("UNIT_AURA","player");listeners.UNIT_AURA["character-stats-live"]("UNIT_AURA","player");assert(#callbacks==1,"visible UNIT_AURA bursts are debounced")
-callbacks[1].callback();callbacks={};assert(#writes==1,"live aura refresh does not write PlayerData")
+callbacks[1].callback();callbacks={};assert(#writes==2,"live aura refresh does not write PlayerData")
 local last;for _,entry in ipairs(emitted)do if entry.event=="HS_STATS_LIVE_UPDATED"then last=entry end end
 assert(last and last.args[1]=="Player-Local"and last.args[2].secondary.criticalStrike.effective==25,"the live layer publishes effective values through the internal event bus")
 
 -- A config change during an aura dirties the baseline; aura removal schedules one later baseline request.
 Stats.baselineDirty=false;auraState.HELPFUL={{duration=30,expirationTime=runtime+30}};listeners.PLAYER_EQUIPMENT_CHANGED["character-stats"]("PLAYER_EQUIPMENT_CHANGED",1)
 assert(Stats.baselineDirty and #callbacks==2,"durable configuration changes debounce live and baseline requests")
-callbacks[1].callback();callbacks[2].callback();assert(#writes==1,"an active timed aura blocks the dirty baseline")
+callbacks[1].callback();callbacks[2].callback();assert(#writes==2,"an active timed aura never adds transient values to the baseline")
 auraState.HELPFUL={};callbacks={};listeners.UNIT_AURA["character-stats-live"]("UNIT_AURA","player");assert(#callbacks==1);callbacks[1].callback();assert(#callbacks==2,"clean aura removal schedules a baseline refresh after the coalesced live read");callbacks[2].callback()
 assert(HolyStorm.CharacterScans.requests and #HolyStorm.CharacterScans.requests>0,"baseline refresh resumes after the temporary aura ends through CharacterScanManager")
 print("Character Stats Retail API, baseline, live overlay and debounce tests passed")

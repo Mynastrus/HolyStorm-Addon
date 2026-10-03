@@ -127,36 +127,43 @@ HolyStorm:RegisterModule(metadata,function(Module)
  function Module:Collect()
   local live=self:CollectLive();local allowed,reason=baselineSafety()
   if not allowed then self.baselineDirty=true end
-  local snapshot={snapshotVersion=2,schemaVersion=2,updatedAt=HolyStorm.Utils.Now(),spec=live.spec,primary={},secondary={},capture={eligible=allowed,reason=reason}}
+  local partial=not allowed
+  local snapshot={snapshotVersion=2,schemaVersion=2,updatedAt=HolyStorm.Utils.Now(),spec=live.spec,primary={},secondary={},capture={eligible=true,partial=partial,reason=reason}}
   for _,definition in ipairs(primaryStats)do local value=live.primary[definition.key];snapshot.primary[definition.key]={baseline=value.baseline}end
-  snapshot.armor={baseline=live.armor.effective}
-  for _,definition in ipairs(secondaryStats)do local value=live.secondary[definition.key];snapshot.secondary[definition.key]={rating=value.rating,baseline=value.effective,coefficient=value.coefficient}end
+  snapshot.armor={};if not partial then snapshot.armor.baseline=live.armor.effective end
+  for _,definition in ipairs(secondaryStats)do local value=live.secondary[definition.key];snapshot.secondary[definition.key]=partial and{}or{rating=value.rating,baseline=value.effective,coefficient=value.coefficient}end
   return snapshot
  end
  function Module:Validate(snapshot)
-  if type(snapshot)~="table"or snapshot.snapshotVersion~=2 or snapshot.schemaVersion~=2 or type(snapshot.primary)~="table"or type(snapshot.secondary)~="table"or type(snapshot.armor)~="table"or type(snapshot.capture)~="table"or type(snapshot.capture.reason)~="string"then return false,"INVALID_STATS_SNAPSHOT"end
-  if snapshot.capture.eligible~=true then return false,snapshot.capture.reason or"BASELINE_UNSAFE"end
+  if type(snapshot)~="table"or snapshot.snapshotVersion~=2 or snapshot.schemaVersion~=2 or type(snapshot.primary)~="table"or type(snapshot.secondary)~="table"or type(snapshot.armor)~="table"or type(snapshot.capture)~="table"or type(snapshot.capture.reason)~="string"or type(snapshot.capture.partial)~="boolean"then return false,"INVALID_STATS_SNAPSHOT",false end
+  if snapshot.capture.eligible~=true then return false,snapshot.capture.reason or"BASELINE_UNSAFE",false end
   local function optionalNumber(value)return value==nil or safeNumber(value)~=nil end
   local count=0
-  for _,definition in ipairs(primaryStats)do local stat=snapshot.primary[definition.key];if type(stat)~="table"or not optionalNumber(stat.baseline)then return false,"INVALID_PRIMARY_STAT"end;if stat.baseline~=nil then count=count+1 end end
-  if not optionalNumber(snapshot.armor.baseline)then return false,"INVALID_ARMOR_BASELINE"end;if snapshot.armor.baseline~=nil then count=count+1 end
-  for _,definition in ipairs(secondaryStats)do local stat=snapshot.secondary[definition.key];if type(stat)~="table"or not optionalNumber(stat.rating)or not optionalNumber(stat.baseline)or not optionalNumber(stat.coefficient)then return false,"INVALID_SECONDARY_STAT"end;if stat.rating~=nil or stat.baseline~=nil then count=count+1 end end
+  for _,definition in ipairs(primaryStats)do local stat=snapshot.primary[definition.key];if type(stat)~="table"or not optionalNumber(stat.baseline)then return false,"INVALID_PRIMARY_STAT",false end;if stat.baseline~=nil then count=count+1 end end
+  if not optionalNumber(snapshot.armor.baseline)then return false,"INVALID_ARMOR_BASELINE",false end;if snapshot.armor.baseline~=nil then count=count+1 end
+  for _,definition in ipairs(secondaryStats)do local stat=snapshot.secondary[definition.key];if type(stat)~="table"or not optionalNumber(stat.rating)or not optionalNumber(stat.baseline)or not optionalNumber(stat.coefficient)then return false,"INVALID_SECONDARY_STAT",false end;if stat.rating~=nil or stat.baseline~=nil then count=count+1 end end
   local stored=HolyStorm.Data.CharacterStore:GetBlock(UnitGUID("player"),"stats")
   if type(stored)=="table"and stored.snapshotVersion==2 then
    local candidate={primary=snapshot.primary,secondary=snapshot.secondary,armor=snapshot.armor,spec=snapshot.spec}
    local previous={primary=stored.primary,secondary=stored.secondary,armor=stored.armor,spec=stored.spec}
    if HolyStorm.Serializer:Serialize(candidate)==HolyStorm.Serializer:Serialize(previous)then self.baselineDirty=false end
   end
-  return count>0,"STATS_UNAVAILABLE"
+  if snapshot.capture.partial then
+   if snapshot.armor.baseline~=nil then return false,"PARTIAL_STATS_CONTAINS_ARMOR",false end
+   for _,definition in ipairs(secondaryStats)do local stat=snapshot.secondary[definition.key];if stat.rating~=nil or stat.baseline~=nil or stat.coefficient~=nil then return false,"PARTIAL_STATS_CONTAINS_TRANSIENT_FIELDS",false end end
+  end
+  return count>0,"STATS_UNAVAILABLE",false
  end
  function Module:Commit(snapshot)
-  local allowed,reason=baselineSafety();if not allowed then self.baselineDirty=true;return false,reason end
+  local partial=type(snapshot)=="table"and type(snapshot.capture)=="table"and snapshot.capture.partial==true
+  local allowed,reason=baselineSafety();if not allowed and not partial then self.baselineDirty=true;return false,reason end
   local guid=UnitGUID("player");local ok,writeReason=HolyStorm.PlayerData:WriteOwnedBlock(guid,"stats",snapshot,"blizzard")
-  if ok or writeReason=="UNCHANGED"then self.baselineDirty=false;HolyStorm.Events:Emit("HS_STATS_BASELINE_UPDATED",guid,snapshot)end
+  if partial then self.baselineDirty=true elseif ok or writeReason=="UNCHANGED"then self.baselineDirty=false end
+  if not partial and(ok or writeReason=="UNCHANGED")then HolyStorm.Events:Emit("HS_STATS_BASELINE_UPDATED",guid,snapshot)end
   if ok or writeReason=="UNCHANGED"then self:CollectLive()end
   return ok,writeReason
  end
- function Module:Queue(sync)return HolyStorm.Snapshots:Queue("stats",function()return Module:Collect()end,function(snapshot)return Module:Validate(snapshot)end,function(snapshot)return Module:Commit(snapshot)end,{source="CharacterStats",delay=1,retryDelay=2.5,priority=5})end
+ function Module:Queue(sync)return HolyStorm.Snapshots:Queue("stats",function()return Module:Collect()end,function(snapshot,scanReason,diagnostics,attempt,maximum)return Module:Validate(snapshot,scanReason,diagnostics,attempt,maximum)end,function(snapshot)return Module:Commit(snapshot)end,{source="CharacterStats",delay=1,retryDelay=2.5,priority=5})end
  function Module:RequestBaseline(reason)
   local allowed=baselineSafety();if not allowed then self.baselineDirty=true;return false,"BASELINE_UNSAFE"end
   self.baselineDirty=true

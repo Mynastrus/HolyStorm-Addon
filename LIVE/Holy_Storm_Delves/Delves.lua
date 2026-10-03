@@ -43,43 +43,48 @@ local function currentContext()
  if not seasonOk or not weekOk or not season or not week then return nil end
  return season,week
 end
+local function unavailable(stage,reason)return nil,"DELVES_"..reason,{producer="delves",stage=stage}end
 
 HolyStorm:RegisterModule(metadata,function(Module)
  HolyStorm:ApplyModuleMetadata(Module,metadata)
  function Module:GetCharacterSnapshot(guid)return HolyStorm.Data.CharacterStore:GetBlock(guid,"delves")end
  function Module:Collect()
   local delves,weekly,dateTime=C_DelvesUI,C_WeeklyRewards,C_DateAndTime
-  if type(delves)~="table"or type(weekly)~="table"or type(dateTime)~="table"then return nil end
+  if type(delves)~="table"or type(weekly)~="table"or type(dateTime)~="table"then return unavailable("APIS","API_UNAVAILABLE")end
   local seasonOk,season=safeCall(delves.GetCurrentDelvesSeasonNumber)
   season=safeNumber(season)
-  if not seasonOk or not season or season<1 or season%1~=0 then return nil end
+  if not seasonOk or not season or season<1 or season%1~=0 then return unavailable("SEASON","SEASON_UNAVAILABLE")end
   local resetOk,weeklyIdentity=safeCall(dateTime.GetWeeklyResetStartTime)
   weeklyIdentity=safeNumber(weeklyIdentity)
-  if not resetOk or not weeklyIdentity or weeklyIdentity<1 or weeklyIdentity%1~=0 then return nil end
+  if not resetOk or not weeklyIdentity or weeklyIdentity<1 or weeklyIdentity%1~=0 then return unavailable("WEEKLY_RESET","WEEKLY_RESET_UNAVAILABLE")end
   local enum=Enum and Enum.WeeklyRewardChestThresholdType;local world=enum and enum.World
-  if world==nil or type(weekly.GetActivities)~="function"or type(weekly.AreRewardsForCurrentRewardPeriod)~="function"or type(weekly.HasAvailableRewards)~="function"then return nil end
+  if world==nil or type(weekly.GetActivities)~="function"or type(weekly.AreRewardsForCurrentRewardPeriod)~="function"or type(weekly.HasAvailableRewards)~="function"then return unavailable("WEEKLY_REWARDS","WEEKLY_REWARDS_API_UNAVAILABLE")end
   local periodOk,isCurrentPeriod=safeCall(weekly.AreRewardsForCurrentRewardPeriod)
-  if not periodOk or isCurrentPeriod~=true then return nil end
+  if not periodOk or isCurrentPeriod~=true then return unavailable("WEEKLY_REWARDS","REWARD_PERIOD_UNAVAILABLE")end
   local activitiesOk,rawActivities=safeCall(weekly.GetActivities,world)
-  if not activitiesOk or type(rawActivities)~="table"then return nil end
+  if not activitiesOk or type(rawActivities)~="table"then return unavailable("WORLD_ACTIVITIES","WORLD_ACTIVITIES_UNAVAILABLE")end
   local rewardOk,rewardAvailable=safeCall(weekly.HasAvailableRewards)
-  if not rewardOk or type(rewardAvailable)~="boolean"then return nil end
+  if not rewardOk or type(rewardAvailable)~="boolean"then return unavailable("WEEKLY_REWARDS","REWARD_AVAILABILITY_UNAVAILABLE")end
   local worldProgress={activities={},completed={},progress=0}
   for _,activityInfo in ipairs(rawActivities)do
-   if type(activityInfo)~="table"then return nil end
+   if type(activityInfo)~="table"then return unavailable("WORLD_ACTIVITIES","INVALID_ACTIVITY")end
    local id,index,progress,threshold=safeNumber(activityInfo.id),safeNumber(activityInfo.index),safeNumber(activityInfo.progress),safeNumber(activityInfo.threshold)
-   if not id or id<1 or id%1~=0 or not index or index<1 or index%1~=0 or not progress or progress<0 or not threshold or threshold<0 then return nil end
+   if not id or id<1 or id%1~=0 or not index or index<1 or index%1~=0 or not progress or progress<0 or not threshold or threshold<0 then return unavailable("WORLD_ACTIVITIES","INVALID_ACTIVITY")end
    local activity={id=id,index=index,type=safeNumber(activityInfo.type),activityTierID=safeNumber(activityInfo.activityTierID),progress=progress,threshold=threshold,level=safeNumber(activityInfo.level)}
    worldProgress.activities[#worldProgress.activities+1]=activity
    if progress>=threshold then worldProgress.completed[#worldProgress.completed+1]=index end
   end
   worldProgress.progress=#worldProgress.completed
   local snapshot={snapshotVersion=3,schemaVersion=3,seasonNumber=season,weeklyIdentity=weeklyIdentity,greatVault={currentPeriod=true,rewardAvailable=rewardAvailable},greatVaultWorld=worldProgress,updatedAt=HolyStorm.Utils.Now()}
-  return validSnapshot(snapshot)and snapshot or nil
+  local valid,reason=validSnapshot(snapshot);if not valid then return unavailable("VALIDATION",reason or"INVALID_SNAPSHOT")end
+  return snapshot
  end
- function Module:Validate(snapshot)return validSnapshot(snapshot)end
+ function Module:Validate(snapshot,scanReason)
+  if type(snapshot)~="table"then return false,scanReason or"DELVES_COLLECTION_UNAVAILABLE",false end
+  local valid,reason=validSnapshot(snapshot);return valid,reason,false
+ end
  function Module:Commit(snapshot)local guid=UnitGUID("player");return HolyStorm.PlayerData:WriteOwnedBlock(guid,"delves",snapshot,"blizzard")end
- function Module:Queue(sync)return HolyStorm.Snapshots:Queue("delves",function()return Module:Collect()end,function(snapshot)return Module:Validate(snapshot)end,function(snapshot,force)return Module:Commit(snapshot,force,sync)end,{source="Delves",delay=1,retryDelay=2.5,priority=6})end
+ function Module:Queue(sync)return HolyStorm.Snapshots:Queue("delves",function()return Module:Collect()end,function(snapshot,scanReason,diagnostics,attempt,maximum)return Module:Validate(snapshot,scanReason,diagnostics,attempt,maximum)end,function(snapshot,force)return Module:Commit(snapshot,force,sync)end,{source="Delves",delay=1,retryDelay=2.5,priority=6})end
  function Module:OnInitialize()
   HolyStorm.CharacterScans:RegisterProvider("Delves",{block="delves",capability="character.scan.delves",addonId="delves",order=40,request=function(sync)local queued,workflowId=Module:Queue(sync);if not queued then return nil end;return workflowId end})
   HolyStorm:RegisterCapability("Delves","character.scan.delves",function(_,sync,reason)return HolyStorm.CharacterScans:Request("delves",reason or"CAPABILITY",sync,{order=40})end)
