@@ -43,11 +43,13 @@ snapshot=HolyStorm.Snapshots.scanner();assert(HolyStorm.Snapshots.validator(snap
 assert(snapshot.greatVaultWorld.progress==0 and#snapshot.greatVaultWorld.activities==0,"known empty World activities remain a valid zero")
 C_WeeklyRewards.GetActivities=function()return nil end
 local unavailableSnapshot,unavailableReason,unavailableDiagnostics=HolyStorm.Snapshots.scanner()
-assert(unavailableSnapshot==nil and unavailableReason=="DELVES_WORLD_ACTIVITIES_UNAVAILABLE"and unavailableDiagnostics.stage=="WORLD_ACTIVITIES","unavailable activity data keeps a stage-specific diagnostic instead of becoming empty")
+assert(type(unavailableSnapshot)=="table"and unavailableSnapshot.greatVaultWorld==nil and unavailableReason=="DELVES_WORLD_ACTIVITIES_UNAVAILABLE"and unavailableDiagnostics.stage=="WORLD_ACTIVITIES"and unavailableDiagnostics.optional and unavailableDiagnostics.callSucceeded and unavailableDiagnostics.resultType=="nil","unavailable optional activity data stays unknown and keeps a stage-specific transient diagnostic")
 local unavailableValid,validationReason,retryable=HolyStorm.Snapshots.validator(unavailableSnapshot,unavailableReason,unavailableDiagnostics,0,3)
-assert(not unavailableValid and validationReason==unavailableReason and retryable==false,"unavailable Delves inputs fail once with a retained reason instead of repeating the same collection three times")
+assert(unavailableValid and validationReason==nil and retryable==false,"missing optional World progress does not fail an otherwise valid Delves snapshot")
+C_WeeklyRewards.GetActivities=nil
+local unsupportedSnapshot,unsupportedReason,unsupportedDiagnostics=HolyStorm.Snapshots.scanner();assert(type(unsupportedSnapshot)=="table"and unsupportedReason=="DELVES_WORLD_ACTIVITIES_UNAVAILABLE"and not unsupportedDiagnostics.apiAvailable and unsupportedDiagnostics.optional and HolyStorm.Snapshots.validator(unsupportedSnapshot,unsupportedReason,unsupportedDiagnostics),"an unsupported optional World activity API does not block core Delves data")
 C_WeeklyRewards.GetActivities=function()error("API unavailable")end
-assert(HolyStorm.Snapshots.scanner()==nil,"API errors do not create a snapshot")
+local apiErrorSnapshot,apiErrorReason,apiErrorDiagnostics=HolyStorm.Snapshots.scanner();assert(type(apiErrorSnapshot)=="table"and apiErrorReason=="DELVES_WORLD_ACTIVITIES_UNAVAILABLE"and apiErrorDiagnostics.callSucceeded==false and apiErrorDiagnostics.error:find("API unavailable",1,true)and HolyStorm.Snapshots.validator(apiErrorSnapshot,apiErrorReason,apiErrorDiagnostics),"a temporarily failing optional activity API preserves the core snapshot and reports its transient failure")
 C_WeeklyRewards.GetActivities=function()return activities end
 C_WeeklyRewards.AreRewardsForCurrentRewardPeriod=function()return false end
 assert(HolyStorm.Snapshots.scanner()==nil,"previous-period Great Vault data is not committed as current")
@@ -57,7 +59,7 @@ assert(HolyStorm.Snapshots.scanner()==nil,"missing reset identity is unknown, no
 C_DateAndTime.GetWeeklyResetStartTime=function()return 1790812800 end
 C_DelvesUI.GetCurrentDelvesSeasonNumber=function()return nil end
 assert(HolyStorm.Snapshots.scanner()==nil,"season not ready cannot overwrite current snapshot")
-assert(#commits==1 and commits[1].snapshot==lastValid,"unknown results preserve last valid committed snapshot")
+assert(#commits==1 and commits[1].snapshot==lastValid,"unavailable mandatory inputs preserve the last valid committed snapshot")
 C_DelvesUI.GetCurrentDelvesSeasonNumber=function()return 4 end
 local invalid={snapshotVersion=3,schemaVersion=3,seasonNumber=4,weeklyIdentity=1790812800,greatVault={currentPeriod=true,rewardAvailable=false},greatVaultWorld={progress=0,activities={},completed={1}}}
 assert(not HolyStorm.Snapshots.validator(invalid),"inconsistent completion list fails validation")

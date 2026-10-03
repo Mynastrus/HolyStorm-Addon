@@ -9,18 +9,20 @@ local function validSnapshot(snapshot)
  if not validNumber(snapshot.seasonNumber,1,true)or not validNumber(snapshot.weeklyIdentity,1,true)then return false,"INVALID_DELVES_CONTEXT"end
  local greatVault,world=snapshot.greatVault,snapshot.greatVaultWorld
  if type(greatVault)~="table"or greatVault.currentPeriod~=true or type(greatVault.rewardAvailable)~="boolean"then return false,"INVALID_DELVES_VAULT"end
- if type(world)~="table"or not validNumber(world.progress,0,true)or type(world.completed)~="table"or type(world.activities)~="table"then return false,"INVALID_DELVES_WORLD_PROGRESS"end
- local ids,indexes,completed={}, {},{}
- for _,activity in ipairs(world.activities)do
-  if type(activity)~="table"or not validNumber(activity.id,1,true)or not validNumber(activity.index,1,true)or not validNumber(activity.progress,0,false)or not validNumber(activity.threshold,0,false)then return false,"INVALID_DELVES_ACTIVITY"end
-  if ids[activity.id]or indexes[activity.index]then return false,"DUPLICATE_DELVES_ACTIVITY"end
-  ids[activity.id]=true;indexes[activity.index]=true
-  if activity.progress>=activity.threshold then completed[activity.index]=true end
+ if world~=nil then
+  if type(world)~="table"or not validNumber(world.progress,0,true)or type(world.completed)~="table"or type(world.activities)~="table"then return false,"INVALID_DELVES_WORLD_PROGRESS"end
+  local ids,indexes,completed={}, {},{}
+  for _,activity in ipairs(world.activities)do
+   if type(activity)~="table"or not validNumber(activity.id,1,true)or not validNumber(activity.index,1,true)or not validNumber(activity.progress,0,false)or not validNumber(activity.threshold,0,false)then return false,"INVALID_DELVES_ACTIVITY"end
+   if ids[activity.id]or indexes[activity.index]then return false,"DUPLICATE_DELVES_ACTIVITY"end
+   ids[activity.id]=true;indexes[activity.index]=true
+   if activity.progress>=activity.threshold then completed[activity.index]=true end
+  end
+  local seen,count={},0
+  for _,index in ipairs(world.completed)do if not validNumber(index,1,true)or not completed[index]or seen[index]then return false,"INVALID_DELVES_COMPLETION"end;seen[index]=true;count=count+1 end
+  if count~=world.progress then return false,"INVALID_DELVES_PROGRESS"end
+  for index in pairs(completed)do if not seen[index]then return false,"INVALID_DELVES_COMPLETION"end end
  end
- local seen,count={},0
- for _,index in ipairs(world.completed)do if not validNumber(index,1,true)or not completed[index]or seen[index]then return false,"INVALID_DELVES_COMPLETION"end;seen[index]=true;count=count+1 end
- if count~=world.progress then return false,"INVALID_DELVES_PROGRESS"end
- for index in pairs(completed)do if not seen[index]then return false,"INVALID_DELVES_COMPLETION"end end
  return true
 end
 
@@ -32,8 +34,8 @@ local function safeNumber(value)
  return value
 end
 local function safeCall(fn,...)
- if type(fn)~="function"then return false,nil end
- local ok,value=pcall(fn,...);if not ok then return false,nil end
+ if type(fn)~="function"then return false,nil,"API_UNAVAILABLE"end
+ local ok,value=pcall(fn,...);if not ok then return false,nil,tostring(value)end
  return true,value
 end
 local function currentContext()
@@ -58,26 +60,33 @@ HolyStorm:RegisterModule(metadata,function(Module)
   weeklyIdentity=safeNumber(weeklyIdentity)
   if not resetOk or not weeklyIdentity or weeklyIdentity<1 or weeklyIdentity%1~=0 then return unavailable("WEEKLY_RESET","WEEKLY_RESET_UNAVAILABLE")end
   local enum=Enum and Enum.WeeklyRewardChestThresholdType;local world=enum and enum.World
-  if world==nil or type(weekly.GetActivities)~="function"or type(weekly.AreRewardsForCurrentRewardPeriod)~="function"or type(weekly.HasAvailableRewards)~="function"then return unavailable("WEEKLY_REWARDS","WEEKLY_REWARDS_API_UNAVAILABLE")end
+  if type(weekly.AreRewardsForCurrentRewardPeriod)~="function"or type(weekly.HasAvailableRewards)~="function"then return unavailable("WEEKLY_REWARDS","WEEKLY_REWARDS_API_UNAVAILABLE")end
   local periodOk,isCurrentPeriod=safeCall(weekly.AreRewardsForCurrentRewardPeriod)
   if not periodOk or isCurrentPeriod~=true then return unavailable("WEEKLY_REWARDS","REWARD_PERIOD_UNAVAILABLE")end
-  local activitiesOk,rawActivities=safeCall(weekly.GetActivities,world)
-  if not activitiesOk or type(rawActivities)~="table"then return unavailable("WORLD_ACTIVITIES","WORLD_ACTIVITIES_UNAVAILABLE")end
   local rewardOk,rewardAvailable=safeCall(weekly.HasAvailableRewards)
   if not rewardOk or type(rewardAvailable)~="boolean"then return unavailable("WEEKLY_REWARDS","REWARD_AVAILABILITY_UNAVAILABLE")end
-  local worldProgress={activities={},completed={},progress=0}
-  for _,activityInfo in ipairs(rawActivities)do
-   if type(activityInfo)~="table"then return unavailable("WORLD_ACTIVITIES","INVALID_ACTIVITY")end
-   local id,index,progress,threshold=safeNumber(activityInfo.id),safeNumber(activityInfo.index),safeNumber(activityInfo.progress),safeNumber(activityInfo.threshold)
-   if not id or id<1 or id%1~=0 or not index or index<1 or index%1~=0 or not progress or progress<0 or not threshold or threshold<0 then return unavailable("WORLD_ACTIVITIES","INVALID_ACTIVITY")end
-   local activity={id=id,index=index,type=safeNumber(activityInfo.type),activityTierID=safeNumber(activityInfo.activityTierID),progress=progress,threshold=threshold,level=safeNumber(activityInfo.level)}
-   worldProgress.activities[#worldProgress.activities+1]=activity
-   if progress>=threshold then worldProgress.completed[#worldProgress.completed+1]=index end
+  local worldProgress,worldDiagnostics
+  local activitiesOk,rawActivities,activitiesError=false,nil,nil
+  if world~=nil and type(weekly.GetActivities)=="function"then activitiesOk,rawActivities,activitiesError=safeCall(weekly.GetActivities,world)end
+  if not activitiesOk or type(rawActivities)~="table"then
+   -- Weekly World activities enrich the snapshot; the core Delves context and
+   -- Great Vault reward state remain valid while Blizzard's optional list is absent.
+   worldDiagnostics={producer="delves",stage="WORLD_ACTIVITIES",optional=true,api="C_WeeklyRewards.GetActivities",apiAvailable=type(weekly.GetActivities)=="function",worldThresholdAvailable=world~=nil,callSucceeded=activitiesOk,resultType=type(rawActivities),error=activitiesError and activitiesError:sub(1,160)or nil}
+  else
+   worldProgress={activities={},completed={},progress=0}
+   for _,activityInfo in ipairs(rawActivities)do
+    if type(activityInfo)~="table"then return unavailable("WORLD_ACTIVITIES","INVALID_ACTIVITY")end
+    local id,index,progress,threshold=safeNumber(activityInfo.id),safeNumber(activityInfo.index),safeNumber(activityInfo.progress),safeNumber(activityInfo.threshold)
+    if not id or id<1 or id%1~=0 or not index or index<1 or index%1~=0 or not progress or progress<0 or not threshold or threshold<0 then return unavailable("WORLD_ACTIVITIES","INVALID_ACTIVITY")end
+    local activity={id=id,index=index,type=safeNumber(activityInfo.type),activityTierID=safeNumber(activityInfo.activityTierID),progress=progress,threshold=threshold,level=safeNumber(activityInfo.level)}
+    worldProgress.activities[#worldProgress.activities+1]=activity
+    if progress>=threshold then worldProgress.completed[#worldProgress.completed+1]=index end
+   end
+   worldProgress.progress=#worldProgress.completed
   end
-  worldProgress.progress=#worldProgress.completed
   local snapshot={snapshotVersion=3,schemaVersion=3,seasonNumber=season,weeklyIdentity=weeklyIdentity,greatVault={currentPeriod=true,rewardAvailable=rewardAvailable},greatVaultWorld=worldProgress,updatedAt=HolyStorm.Utils.Now()}
   local valid,reason=validSnapshot(snapshot);if not valid then return unavailable("VALIDATION",reason or"INVALID_SNAPSHOT")end
-  return snapshot
+  return snapshot,worldDiagnostics and"DELVES_WORLD_ACTIVITIES_UNAVAILABLE"or nil,worldDiagnostics
  end
  function Module:Validate(snapshot,scanReason)
   if type(snapshot)~="table"then return false,scanReason or"DELVES_COLLECTION_UNAVAILABLE",false end

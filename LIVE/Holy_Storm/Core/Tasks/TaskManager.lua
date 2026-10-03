@@ -134,8 +134,9 @@ function Tasks:CheckConditions(task)
   elseif kind=="NOT_LOADING"then value=not HolyStorm.State:Is("loading")
   elseif kind=="NOT_ZONING"then value=not HolyStorm.State:Is("zoning")
   elseif kind=="GUILD_AVAILABLE"then value=HolyStorm.State:Is("guildAvailable")
+  elseif kind=="GUILD_ROSTER_READY"then value=HolyStorm.State:Is("guildRosterReady")==expected
   elseif kind and HolyStorm.State:Get(kind)~=nil then value=HolyStorm.State:Is(kind)==expected end
-  if kind and not fn and kind~="NOT_IN_COMBAT"and kind~="PLAYER_LOGGED_IN"and kind~="PLAYER_READY"and kind~="NOT_LOADING"and kind~="NOT_ZONING"and kind~="GUILD_AVAILABLE"and HolyStorm.State:Get(kind)==nil then value,reason=false,"UNKNOWN_CONDITION:"..kind end
+  if kind and not fn and kind~="NOT_IN_COMBAT"and kind~="PLAYER_LOGGED_IN"and kind~="PLAYER_READY"and kind~="NOT_LOADING"and kind~="NOT_ZONING"and kind~="GUILD_AVAILABLE"and kind~="GUILD_ROSTER_READY"and HolyStorm.State:Get(kind)==nil then value,reason=false,"UNKNOWN_CONDITION:"..kind end
   if not ok or not value then return false,reason or kind or"CUSTOM_CONDITION"end
  end return true
 end

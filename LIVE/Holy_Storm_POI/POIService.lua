@@ -2,7 +2,7 @@ local addonVersion="1.1.0"
 local HolyStorm=LibStub("AceAddon-3.0"):GetAddon("Holy_Storm")
 local L=LibStub("AceLocale-3.0"):GetLocale("Holy_Storm_POI")
 local DataManager=HolyStorm.DataManager
-local POI={version=addonVersion,categories={},icons={},targets={PERSONAL=true,GUILD=true,GROUP=true,RAID=true},statuses={ACTIVE=true,DELETED=true},sequence=0,maxEntries=1000,maxName=120,maxDescription=4000,maxCustomCategory=80,tombstoneRetention=180*24*60*60,maxGuildTombstones=2000,currentContext=nil,lastResync=nil,expiredNotified={}}
+local POI={version=addonVersion,categories={},icons={},targets={PERSONAL=true,GUILD=true,GROUP=true,RAID=true},statuses={ACTIVE=true,DELETED=true},sequence=0,maxEntries=1000,maxName=120,maxDescription=4000,maxCustomCategory=80,tombstoneRetention=180*24*60*60,maxGuildTombstones=2000,currentContext=nil,lastResync=nil,guildDiscoveryStarted=false,expiredNotified={}}
 local defaults={schemaVersion=1,worldMapEnabled=true,minimapEnabled=true,worldMapSize=22,minimapSize=18,maxSynced=500,hidden={},categoryVisible={},targetVisible={}}
 
 local function copy(value)return HolyStorm.Utils.DeepCopy(value)end
@@ -345,7 +345,7 @@ function POI:RegisterSyncDomain()
   import=function(id,entry,meta,senderGuid,sender)return POI:Import(id,entry,meta,senderGuid,sender)end,updateEvent="HS_POI_SYNCED"})
 end
 function POI:RunStartup()
- self:CleanupExpired();for guildId in pairs(HolyStorm.Data.POIStore:GetRoot().guilds)do self:PruneTombstones(guildId)end;self:HandleGroupContext();if self:IsModuleEnabled("GUILD")then HolyStorm.Sync:Discover("poi",nil,{channel="GUILD",scope="GUILD",reason="POI_LOGIN",priority=94,startupPhase=4})end;return true
+ self:CleanupExpired();for guildId in pairs(HolyStorm.Data.POIStore:GetRoot().guilds)do self:PruneTombstones(guildId)end;self:HandleGroupContext();if not self.guildDiscoveryStarted and self:IsModuleEnabled("GUILD")then local requestId=HolyStorm.Sync:Discover("poi",nil,{channel="GUILD",scope="GUILD",reason="POI_LOGIN",priority=94,startupPhase=4});self.guildDiscoveryStarted=requestId~=nil and requestId~=false end;return true
 end
 function POI:Initialize()
  local stored,storeError=HolyStorm.Data.POIStore:Initialize();if not stored then log("ERROR","POI store unavailable",{reason=storeError});return false,storeError end
