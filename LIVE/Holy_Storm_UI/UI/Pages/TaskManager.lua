@@ -7,7 +7,7 @@ local views={"LIVE_TASKS","QUEUE","WORKFLOWS","HISTORY","PERFORMANCE","EVENT_MON
 local ROW_HEIGHT=20
 local MAX_VISIBLE_ROWS=32
 local REFRESH_DELAY=.1
-local refreshEvents={"HS_TASK_QUEUED","HS_TASK_MERGED","HS_TASK_STARTED","HS_TASK_WAITING","HS_TASK_BLOCKED","HS_TASK_COMPLETED","HS_TASK_FAILED","HS_TASK_CANCELLED","HS_TASK_QUEUE_PAUSED","HS_TASK_QUEUE_RESUMED","HS_WORKFLOW_QUEUED","HS_WORKFLOW_STARTED","HS_WORKFLOW_STEP_CHANGED","HS_WORKFLOW_WAITING","HS_WORKFLOW_PAUSED","HS_WORKFLOW_COMPLETED","HS_WORKFLOW_FAILED","HS_WORKFLOW_CANCELLED","HS_WORKFLOW_RESTART_PENDING","HS_SYNC_ACTIVITY_UPDATED","HS_CHARACTER_SCAN_COMPLETED","HS_CHARACTER_SNAPSHOT_STATUS_CHANGED"}
+local refreshEvents={"HS_TASK_QUEUED","HS_TASK_MERGED","HS_TASK_STARTED","HS_TASK_RESUMED","HS_TASK_WAITING","HS_TASK_BLOCKED","HS_TASK_COMPLETED","HS_TASK_FAILED","HS_TASK_CANCELLED","HS_TASK_QUEUE_PAUSED","HS_TASK_QUEUE_RESUMED","HS_WORKFLOW_QUEUED","HS_WORKFLOW_STARTED","HS_WORKFLOW_STEP_CHANGED","HS_WORKFLOW_WAITING","HS_WORKFLOW_PAUSED","HS_WORKFLOW_COMPLETED","HS_WORKFLOW_FAILED","HS_WORKFLOW_CANCELLED","HS_WORKFLOW_RESTART_PENDING","HS_SYNC_ACTIVITY_UPDATED","HS_CHARACTER_SCAN_COMPLETED","HS_CHARACTER_SNAPSHOT_STATUS_CHANGED"}
 local columns={
  LIVE_TASKS={{"status","COL_STATUS",86},{"name","COL_TASK",150},{"module","COL_MODULE",90},{"workflow","COL_WORKFLOW",135},{"priority","COL_PRIORITY",58},{"triggers","COL_TRIGGERS",58},{"created","COL_CREATED",72},{"waiting","COL_WAITING",62},{"runtime","COL_RUNTIME",62},{"block","COL_BLOCK",150}},
  QUEUE={{"position","QUEUE",45},{"status","COL_STATUS",78},{"name","COL_TASK",170},{"module","COL_MODULE",90},{"workflow","COL_WORKFLOW",140},{"priority","COL_PRIORITY",58},{"triggers","COL_TRIGGERS",58},{"waiting","COL_WAITING",70},{"block","COL_BLOCK",165}},
@@ -105,6 +105,20 @@ function Page:BuildData()
   for key,state in pairs(runtimeStates)do if string.lower(tostring(key))=="delves"then delvesState=state;break end end
   for block,counters in pairs(scan.byBlock or{})do local isDelves=string.lower(tostring(block))=="delves";local label=L["PRODUCER_"..string.upper(block)]or block;local producerRow=metricRow(L["PRODUCER_SCANS"].." "..label,"CharacterScan","Producer",{requested=counters.requested,automatic=counters.automatic,manual=counters.manual,started=counters.started,completed=counters.completed,failed=counters.failed,startFailed=counters.startFailed});producerRow.details=producerRow.details.."\n"..L["PRODUCER_LOGIN_SCANS"]..": "..(scan.loginProducerScans or 0).."\n"..L["PRODUCER_TRIGGERS"]..": "..flatten(counters.triggers);if isDelves then producerRow.details=producerRow.details.."\n"..L["PRODUCER_DELVES_LAST_ERROR"]..": "..compactDiagnostic(delvesState.lastError)end;rows[#rows+1]=producerRow end
   if next(delvesState)then local delvesRuntimeRow=metricRow(L["PRODUCER_DELVES_RUNTIME"],"CharacterScan",status(delvesState.state));delvesRuntimeRow.details=table.concat({L["PRODUCER_DELVES_STATE"]..": "..tostring(delvesState.state or"-"),L["PRODUCER_DELVES_REASON"]..": "..compactDiagnostic(delvesState.reason),L["PRODUCER_DELVES_LAST_ERROR"]..": "..compactDiagnostic(delvesState.lastError)},"\n");rows[#rows+1]=delvesRuntimeRow end
+  local raidModule=HolyStorm.GetLoadedModuleById and HolyStorm:GetLoadedModuleById("raids")
+  local raidSummary=raidModule and raidModule.GetScanPerformance and raidModule:GetScanPerformance()
+  if raidSummary then
+   local raidRow=metricRow(L["RAID_SCAN_PERFORMANCE"],"Raid",status(raidSummary.status),{runs=1,averageDuration=raidSummary.totalLuaMs/1000,maxDuration=raidSummary.maxSliceMs/1000})
+   local function values(keys)local out={};for _,key in ipairs(keys)do out[#out+1]=key.."="..tostring(raidSummary[key]or 0)end;return table.concat(out,", ")end
+   raidRow.object=raidSummary
+   raidRow.details=table.concat({
+    L["RAID_SCAN_TIME"]..": "..values({"totalWallMs","totalLuaMs","maxSliceMs"}),
+    L["RAID_SCAN_WORK"]..": "..values({"slices","taskLifecycleCount","restarts"}),
+    L["RAID_SCAN_APIS"]..": "..values({"catalogBuilds","ejCalls","statisticCalls","savedInstanceCalls"}),
+    L["RAID_SCAN_EVENTS"]..": "..values({"followUpQueued","expectedInstanceInfoEvents","unexpectedRaidEvents"}),
+   },"\n")
+   rows[#rows+1]=raidRow
+  end
   for id,p in pairs(HolyStorm.Tasks:GetPerformance())do rows[#rows+1]=metricRow(id,p.module,L["TASK_KIND"],p)end
   for id,p in pairs(HolyStorm.Workflows:GetPerformance())do rows[#rows+1]=metricRow(id,p.module,L["WORKFLOW_KIND"],p)end
  elseif self.view=="EVENT_MONITOR"then

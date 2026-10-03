@@ -14,6 +14,7 @@ function Snapshots:Register(id)
 	HolyStorm.Tasks:RegisterTaskType(prefix..".Scan",{name=string.format(L["TASK_SNAPSHOT_SCAN"],id),localizedNameKey="TASK_SNAPSHOT_SCAN",module=id,priority=50,executionMode="MULTI",execute=function(task)
 		local c=context(task);if not c then error("missing workflow context")end
 		local result,reason,diagnostics=c.data.scanner(task)
+		if result==HolyStorm.Tasks.YIELD or result==HolyStorm.Tasks.ASYNC then return result end
 		if type(result)=="table"and result.workflowAction then return result end
 		return{snapshot=result,reason=reason,diagnostics=diagnostics}
 	end})
@@ -35,7 +36,7 @@ function Snapshots:Register(id)
 			if not willRetry then return{workflowAction="FAIL",reason=reason}end
 			return{workflowAction="RETRY",gotoStep=1,delay=c.data.options.retryDelay or 2.5,maxRetries=maximum,reason=reason}
 		end
-		local fp=Snapshots:Fingerprint(scan.snapshot);if not fp then error("snapshot fingerprint failed")end
+		local fp;if c.data.options.fingerprint~=false then fp=Snapshots:Fingerprint(scan.snapshot);if not fp then error("snapshot fingerprint failed")end end
 		c.data.fingerprint=fp;return{valid=true,status="VALID"}
 	end})
  HolyStorm.Tasks:RegisterTaskType(prefix..".Commit",{name=string.format(L["TASK_SNAPSHOT_COMMIT"],id),localizedNameKey="TASK_SNAPSHOT_COMMIT",module=id,priority=50,executionMode="MULTI",execute=function(task)local c=context(task);local scan=c and c.results.scan;if not c or not c.data or type(scan)~="table"then error("missing validated scan result")end;local committed,reason=c.data.commit(scan.snapshot,c.data.fingerprint);if type(committed)=="table"and committed.workflowAction then return committed end;if committed==false then if reason=="UNCHANGED"then return{workflowAction="COMPLETE",unchanged=true,status="UNCHANGED"}end;error("snapshot commit failed: "..tostring(reason or"UNKNOWN"))end;return{committed=true,status="COMMITTED"}end})

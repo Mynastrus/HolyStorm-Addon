@@ -42,6 +42,10 @@ HolyStorm.CharacterScans={
  IsIdle=function()return true end,
 }
 
+function HolyStorm:GetLoadedModuleById(id)
+ if id~="raids"then return end
+ return{GetScanPerformance=function()return{totalWallMs=1000,totalLuaMs=12,slices=57,maxSliceMs=.6,taskLifecycleCount=3,catalogBuilds=1,ejCalls=18,statisticCalls=22,savedInstanceCalls=17,restarts=0,followUpQueued=1,expectedInstanceInfoEvents=1,unexpectedRaidEvents=8,status="COMPLETED"}end}
+end
 local page=modules.TaskManagerUI
 page.view="PERFORMANCE"
 page.search={GetText=function()return""end}
@@ -71,4 +75,8 @@ page.detail={SetText=function(self,value)self.text=value end};page.data=rows;pag
 local selectedBeforeRefresh=delvesRow;delvesLastError="PROVIDER_UNAVAILABLE";local refreshedRows=page:BuildData();page.data=refreshedRows;page:ShowDetails(selectedBeforeRefresh)
 assert(page.selected~=selectedBeforeRefresh and page.detail.text:find("PROVIDER_UNAVAILABLE",1,true),"refreshing a selected Producer detail replaces stale row data with current runtime diagnostics")
 
-print("TaskManager sync and Delves diagnostics are visible and bounded")
+local raidSummaryRow
+for _,row in ipairs(rows)do if row.name=="RAID_SCAN_PERFORMANCE"then raidSummaryRow=row end end
+assert(raidSummaryRow and raidSummaryRow.module=="Raid")
+for _,key in ipairs({"totalWallMs","totalLuaMs","slices","maxSliceMs","taskLifecycleCount","catalogBuilds","ejCalls","statisticCalls","savedInstanceCalls","restarts","followUpQueued","expectedInstanceInfoEvents","unexpectedRaidEvents"})do assert(raidSummaryRow.details:find(key.."=",1,true),"Raid summary misses "..key)end
+print("TaskManager existing diagnostics and the completed Raid summary are visible and bounded")

@@ -23,6 +23,9 @@ local Tasks = {
 Tasks.ExecutionMode={UNIQUE="UNIQUE",MERGE="UNIQUE",MULTI="MULTI",MERGE_BY_KEY="MERGE_BY_KEY"}
 Tasks.Status={REGISTERED="REGISTERED",QUEUED="QUEUED",WAITING="WAITING",BLOCKED="BLOCKED",READY="READY",RUNNING="RUNNING",WAITING_ASYNC="WAITING_ASYNC",COMPLETED="COMPLETED",FAILED="FAILED",CANCELLED="CANCELLED"}
 Tasks.ASYNC={}
+Tasks.YIELD={}
+Tasks.suspendedCount=0
+local function executionClock()return GetTimePreciseSec and GetTimePreciseSec()or GetTime and GetTime()or 0 end
 local function clock()return GetTime and GetTime()or 0 end
 local function wall()return HolyStorm.Utils.Now()end
 local function copy(v)return HolyStorm.Utils.DeepCopy(v)end
@@ -104,7 +107,7 @@ function Tasks:Queue(id,o)
  self.runtimeMetrics.requested=self.runtimeMetrics.requested+1;increment(self.runtimeMetrics.byModule,module,"requested");increment(self.runtimeMetrics.byTrigger,category..":"..triggerName,"requested");self:RecordStartupMetric("tasksRequested")
  if HolyStorm.Events and HolyStorm.Events.RecordFollowOn then HolyStorm.Events:RecordFollowOn(triggerName,"tasksRequested")end
  local index=mergeId(id,mode,key);local existing=index and self.tasks[self.mergeIndex[index]]
- if existing and(existing.status=="QUEUED"or existing.status=="WAITING"or existing.status=="BLOCKED"or existing.status=="READY")then
+ if existing and not existing.startedAt and(existing.status=="QUEUED"or existing.status=="WAITING"or existing.status=="BLOCKED"or existing.status=="READY")then
   trigger(self,existing,source,o.triggerMetadata);if o.debounce~=nil or o.delay~=nil then existing.notBefore=clock()+math.max(0,tonumber(o.debounce or o.delay)or 0);self:MarkQueueChanged()end
   local p=self.performance[id]or{runs=0,totalDuration=0,maxDuration=0,errors=0,merges=0,triggers=0,requested=0,started=0,completed=0,cancelled=0,retried=0};p.requested=(p.requested or 0)+1;p.merges=p.merges+1;self.performance[id]=p;self.startup.merged=self.startup.merged+1
   HolyStorm.Logger:Write("DEBUG",existing.module,"task","Task merged: "..id,taskContext(existing,{triggerCount=existing.triggerCount,triggerSource=o.triggerSource}),existing.workflowId or existing.uniqueId);if o.triggerSource then self:RecordEvent(o.triggerSource,existing.module,{taskId=existing.uniqueId,workflowId=existing.workflowId,triggeredTask=id})end;HolyStorm.Events:Emit("HS_TASK_MERGED",existing);self:Schedule();return existing.uniqueId,"MERGED"
@@ -124,6 +127,9 @@ function Tasks:Enqueue(id,callback,o)o=o or{};if not self.registry[id]then local
 -- prueft danach weitere Tasks. EN: Failed conditions are waiting states, not
 -- errors. The scheduler proceeds to inspect other tasks.
 function Tasks:CheckConditions(task)
+ -- GetTime is constant within a rendered frame. A late timer never catches up
+ -- several slices of the same task, even if Process is called again directly.
+ if task.lastSliceFrame==clock()then task.notBefore=math.max(task.notBefore,clock()+self.schedulerYieldDelay)end
  if task.cooldown and task.cooldown>0 and self.lastRun[task.registryId]then task.notBefore=math.max(task.notBefore,self.lastRun[task.registryId]+task.cooldown)end
  if task.notBefore>clock()then return false,task.startupPhase and self.startup.active and "STARTUP_PHASE:PHASE_"..tostring(task.startupPhase)or"DEBOUNCE"end
  for _,c in ipairs(task.conditions or{})do local kind,expected,fn;if type(c)=="string"then kind,expected=c,true elseif type(c)=="function"then fn=c elseif type(c)=="table"then kind,expected,fn=c.type or c.state,c.expected~=false,c.check end;local ok,value,reason=true,true,nil
@@ -158,13 +164,13 @@ function Tasks:SelectRunnable()
   local task=self.queue[index];checks=checks+1;self.schedulerMetrics.queueChecks=(self.schedulerMetrics.queueChecks or 0)+1;local ok,reason=self:CheckConditions(task);if ok then ok,reason=self:CheckDependencies(task)end
   if self.queueGeneration~=generation or self.wakeGeneration~=wakeGeneration then self.scanCursor=1;self.scanGeneration=-1;self.lastProcessMetrics={queueChecks=checks,elapsed=math.max(0,clock()-started),continued=true,queueSize=#self.queue};return nil,nil,true end
   if ok then task.status,task.blockReason="READY",nil;self.lastProcessMetrics={queueChecks=checks,elapsed=math.max(0,clock()-started),continued=false,queueSize=#self.queue};return task end
-  local startupWaiting=type(reason)=="string"and reason:match("^STARTUP_PHASE:")~=nil;local newStatus=(reason=="DEBOUNCE"or startupWaiting)and"WAITING"or"BLOCKED";local changed=task.status~=newStatus or task.blockReason~=reason;task.status,task.blockReason=newStatus,reason;if task.notBefore>clock()then earliest=earliest and math.min(earliest,task.notBefore)or task.notBefore end;if changed then HolyStorm.Events:Emit(newStatus=="BLOCKED"and"HS_TASK_BLOCKED"or"HS_TASK_WAITING",task,reason)end
+  local startupWaiting=type(reason)=="string"and reason:match("^STARTUP_PHASE:")~=nil;local newStatus=(reason=="DEBOUNCE"or startupWaiting)and"WAITING"or"BLOCKED";local changed=task.status~=newStatus or task.blockReason~=reason;task.status,task.blockReason=newStatus,reason;if task.notBefore>clock()then earliest=earliest and math.min(earliest,task.notBefore)or task.notBefore end;if changed and not(task.startedAt and reason=="DEBOUNCE")then HolyStorm.Events:Emit(newStatus=="BLOCKED"and"HS_TASK_BLOCKED"or"HS_TASK_WAITING",task,reason)end
   if clock()-started>=self.queueCheckBudgetSeconds then last=index;break end
  end
  if last<#self.queue then self.scanCursor=last+1;self.scanGeneration=self.queueGeneration;self.scanWakeGeneration=self.wakeGeneration;self.lastProcessMetrics={queueChecks=checks,elapsed=math.max(0,clock()-started),continued=true,queueSize=#self.queue};return nil,earliest,true end
  self.scanCursor=1;self.scanGeneration=self.queueGeneration;self.scanWakeGeneration=self.wakeGeneration;self.lastProcessMetrics={queueChecks=checks,elapsed=math.max(0,clock()-started),continued=false,queueSize=#self.queue};return nil,earliest,false
 end
-function Tasks:RemoveQueued(task)for i,x in ipairs(self.queue)do if x==task then table.remove(self.queue,i);self.queueGeneration=self.queueGeneration+1;self.scanCursor=1;self.scanGeneration=-1;self.continuingScan=false;return end end end
+function Tasks:RemoveQueued(task)for i,x in ipairs(self.queue)do if x==task then task.resumeQueuePosition=i;table.remove(self.queue,i);self.queueGeneration=self.queueGeneration+1;self.scanCursor=1;self.scanGeneration=-1;self.continuingScan=false;return end end end
 function Tasks:Schedule(at)
  if self.paused or self.runningTaskId or#self.queue==0 then return end;local due=at or clock();self.schedulerMetrics.wakeRequested=self.schedulerMetrics.wakeRequested+1
  if self.processing then if self.pendingScheduleAt then self.schedulerMetrics.coalescedWakes=self.schedulerMetrics.coalescedWakes+1;if due<self.pendingScheduleAt then self.pendingScheduleAt=due end else self.pendingScheduleAt=due end;return end
@@ -188,11 +194,48 @@ function Tasks:Process()
  local function finishProcess()local due=self.pendingScheduleAt;self.pendingScheduleAt=nil;self.processing=false;queueWakeSummary(self);if due then self:Schedule(due)end;self:UpdateIdleTransition()end
  self:UpdateStartupWindow()
  local task,earliest,more=self:SelectRunnable();if not task then if more then self.schedulerMetrics.budgetExhaustions=self.schedulerMetrics.budgetExhaustions+1;self.continuingScan=true;local yieldUntil=clock()+self.schedulerYieldDelay;if not self.pendingScheduleAt or self.pendingScheduleAt<yieldUntil then self.pendingScheduleAt=yieldUntil end elseif earliest then self.continuingScan=false;self:Schedule(earliest)end;finishProcess();return end
- self.schedulerMetrics.tasksSelected=self.schedulerMetrics.tasksSelected+1;self:RemoveQueued(task);self.runningTaskId=task.uniqueId;task.status,task.startedAt,task.startedClock="RUNNING",wall(),clock();task.queueWait=math.max(0,(task.startedClock or 0)-(task.queuedClock or task.startedClock));task.callbackStartedClock=task.startedClock;self.startup.executed=self.startup.executed+1;self.runtimeMetrics.started=self.runtimeMetrics.started+1;increment(self.runtimeMetrics.byModule,task.module,"started");increment(self.runtimeMetrics.byTrigger,(task.triggerCategory or"SYSTEM")..":"..(task.triggerName or"SYSTEM"),"started");local p=self.performance[task.registryId]or{runs=0,totalDuration=0,totalQueueWait=0,maxDuration=0,maxQueueWait=0,errors=0,merges=0,triggers=0,requested=0,started=0,completed=0,cancelled=0,retried=0};p.started=(p.started or 0)+1;self.performance[task.registryId]=p;self:RecordStartupMetric("tasksStarted");if HolyStorm.Events.RecordFollowOn then HolyStorm.Events:RecordFollowOn(task.triggerName,"tasksStarted")end;if task.startupPhase==1 and not self.startup.coreReadyAt then self.startup.coreReadyAt=clock()end;HolyStorm.Events:Emit("HS_TASK_STARTED",task);HolyStorm.Logger:Write("DEBUG",task.module,"task","Task started: "..task.registryId,taskContext(task),task.workflowId or task.uniqueId)
- local ok,result,extra=HolyStorm.Utils.SafeCall("task:"..task.registryId,task.callback,task);task.executionDuration=(task.executionDuration or 0)+math.max(0,clock()-(task.callbackStartedClock or clock()));task.callbackStartedClock=nil;if ok and result==self.ASYNC then task.status="WAITING_ASYNC";task.asyncStartedClock=clock();if task.timeoutSeconds then local uid=task.uniqueId;task.timeoutTimer=C_Timer.NewTimer(task.timeoutSeconds,function()local current=Tasks.tasks[uid];if current then current.timeoutTimer=nil end;Tasks:Complete(uid,false,"TASK_TIMEOUT",{timeoutSeconds=task.timeoutSeconds})end)end;HolyStorm.Events:Emit("HS_TASK_WAITING",task,"ASYNC");finishProcess();return end;self:Complete(task.uniqueId,ok,result,extra);finishProcess()
+ self.schedulerMetrics.tasksSelected=self.schedulerMetrics.tasksSelected+1;self:RemoveQueued(task);self.runningTaskId=task.uniqueId;task.status="RUNNING"
+ if not task.startedAt then
+  task.startedAt,task.startedClock=wall(),clock();task.queueWait=math.max(0,task.startedClock-(task.queuedClock or task.startedClock))
+  self.startup.executed=self.startup.executed+1;self.runtimeMetrics.started=self.runtimeMetrics.started+1;increment(self.runtimeMetrics.byModule,task.module,"started");increment(self.runtimeMetrics.byTrigger,(task.triggerCategory or"SYSTEM")..":"..(task.triggerName or"SYSTEM"),"started");local p=self.performance[task.registryId]or{runs=0,totalDuration=0,totalQueueWait=0,maxDuration=0,maxQueueWait=0,errors=0,merges=0,triggers=0,requested=0,started=0,completed=0,cancelled=0,retried=0};p.started=(p.started or 0)+1;self.performance[task.registryId]=p;self:RecordStartupMetric("tasksStarted");if HolyStorm.Events.RecordFollowOn then HolyStorm.Events:RecordFollowOn(task.triggerName,"tasksStarted")end;if task.startupPhase==1 and not self.startup.coreReadyAt then self.startup.coreReadyAt=clock()end;HolyStorm.Events:Emit("HS_TASK_STARTED",task);HolyStorm.Logger:Write("DEBUG",task.module,"task","Task started: "..task.registryId,taskContext(task),task.workflowId or task.uniqueId)
+ end
+ task.lastSliceFrame=clock();task.callbackStartedClock=executionClock()
+ local ok,result,extra=HolyStorm.Utils.SafeCall("task:"..task.registryId,task.callback,task)
+ task.executionDuration=(task.executionDuration or 0)+math.max(0,executionClock()-task.callbackStartedClock);task.callbackStartedClock=nil
+ if ok and result==self.YIELD then
+  self.runningTaskId=nil;self:RequeueContinuation(task,task.resumeDelay or 0);finishProcess();return
+ end
+ if ok and result==self.ASYNC then
+  task.status="WAITING_ASYNC";task.asyncStartedClock=clock()
+  if task.resumeOnSignal then self.runningTaskId=nil;task.suspended=true;self.suspendedCount=self.suspendedCount+1 end
+  if task.timeoutSeconds then local uid=task.uniqueId;task.timeoutTimer=C_Timer.NewTimer(task.timeoutSeconds,function()local current=Tasks.tasks[uid];if current then current.timeoutTimer=nil end;Tasks:Complete(uid,false,"TASK_TIMEOUT",{timeoutSeconds=task.timeoutSeconds})end)end
+  HolyStorm.Events:Emit("HS_TASK_WAITING",task,"ASYNC");self:Schedule(clock());finishProcess();return
+ end
+ self:Complete(task.uniqueId,ok,result,extra);finishProcess()
+end
+-- Lightweight continuation: the callback and workflow context remain owned by
+-- one task. Only the central scheduler timer dispatches the next slice.
+function Tasks:Yield(task,delay)
+ task.resumeDelay=math.max(0,tonumber(delay)or 0);return self.YIELD
+end
+function Tasks:WaitForResume(task,timeoutSeconds)
+ task.resumeOnSignal=true;task.timeoutSeconds=duration(timeoutSeconds)or task.timeoutSeconds;return self.ASYNC
+end
+function Tasks:RequeueContinuation(task,delay)
+ task.status,task.blockReason="WAITING","DEBOUNCE";task.notBefore=clock()+math.max(0,delay or 0)
+ table.insert(self.queue,math.min(task.resumeQueuePosition or(#self.queue+1),#self.queue+1),task)
+ self.queueGeneration=self.queueGeneration+1;self.scanCursor=1;self.scanGeneration=-1;self.continuingScan=false
+ self:Schedule(task.notBefore)
+end
+function Tasks:ResumeTask(uid,delay)
+ local task=self.tasks[uid];if not task or task.status~="WAITING_ASYNC"or not task.resumeOnSignal then return false end
+ if task.timeoutTimer then task.timeoutTimer:Cancel();task.timeoutTimer=nil end
+ if task.suspended then task.suspended=nil;self.suspendedCount=self.suspendedCount-1 end
+ task.asyncWaitDuration=(task.asyncWaitDuration or 0)+math.max(0,clock()-(task.asyncStartedClock or clock()));task.asyncStartedClock=nil
+ self:RequeueContinuation(task,delay);self.queueDirty=true;HolyStorm.Events:Emit("HS_TASK_RESUMED",task);self:UpdateIdleTransition();return true
 end
 function Tasks:Complete(uid,success,result,extra)
- local task=self.tasks[uid];if not task or(task.status~="RUNNING"and task.status~="WAITING_ASYNC")then return false end;if task.timeoutTimer then task.timeoutTimer:Cancel();task.timeoutTimer=nil end;task.finishedAt,task.finishedClock=wall(),clock();if task.asyncStartedClock then task.asyncWaitDuration=math.max(0,task.finishedClock-task.asyncStartedClock);task.asyncStartedClock=nil end;task.duration=task.executionDuration or math.max(0,task.finishedClock-(task.startedClock or task.finishedClock));task.queueWait=task.queueWait or math.max(0,(task.startedClock or task.finishedClock)-(task.queuedClock or task.startedClock));task.result,task.extraResult=result,extra;task.status=success and"COMPLETED"or"FAILED";task.lastError=success and nil or tostring(result);self.lastRun[task.registryId]=task.finishedClock;if task.indexKey and self.mergeIndex[task.indexKey]==uid then self.mergeIndex[task.indexKey]=nil end;self.runningTaskId=nil
+ local task=self.tasks[uid];if not task or(task.status~="RUNNING"and task.status~="WAITING_ASYNC")then return false end;if task.timeoutTimer then task.timeoutTimer:Cancel();task.timeoutTimer=nil end;if task.suspended then task.suspended=nil;self.suspendedCount=self.suspendedCount-1 end;task.finishedAt,task.finishedClock=wall(),clock();if task.asyncStartedClock then task.asyncWaitDuration=(task.asyncWaitDuration or 0)+math.max(0,task.finishedClock-task.asyncStartedClock);task.asyncStartedClock=nil end;task.duration=task.executionDuration or math.max(0,task.finishedClock-(task.startedClock or task.finishedClock));task.queueWait=task.queueWait or math.max(0,(task.startedClock or task.finishedClock)-(task.queuedClock or task.startedClock));task.result,task.extraResult=result,extra;task.status=success and"COMPLETED"or"FAILED";task.lastError=success and nil or tostring(result);self.lastRun[task.registryId]=task.finishedClock;if task.indexKey and self.mergeIndex[task.indexKey]==uid then self.mergeIndex[task.indexKey]=nil end;if self.runningTaskId==uid then self.runningTaskId=nil end
  local p=self.performance[task.registryId]or{runs=0,totalDuration=0,totalQueueWait=0,maxDuration=0,maxQueueWait=0,errors=0,merges=0,triggers=0,requested=0,started=0,completed=0,cancelled=0,retried=0};p.runs=p.runs+1;p.totalDuration=p.totalDuration+task.duration;p.totalQueueWait=(p.totalQueueWait or 0)+(task.queueWait or 0);p.maxDuration=math.max(p.maxDuration,task.duration);p.maxQueueWait=math.max(p.maxQueueWait or 0,task.queueWait or 0);p.triggers=p.triggers+task.triggerCount;if success then p.completed=(p.completed or 0)+1;self.runtimeMetrics.completed=self.runtimeMetrics.completed+1;increment(self.runtimeMetrics.byModule,task.module,"completed");increment(self.runtimeMetrics.byTrigger,(task.triggerCategory or"SYSTEM")..":"..(task.triggerName or"SYSTEM"),"completed");self:RecordStartupMetric("tasksCompleted");if HolyStorm.Events.RecordFollowOn then HolyStorm.Events:RecordFollowOn(task.triggerName,"tasksCompleted")end else p.errors=p.errors+1;self.runtimeMetrics.failed=self.runtimeMetrics.failed+1;increment(self.runtimeMetrics.byModule,task.module,"failed");increment(self.runtimeMetrics.byTrigger,(task.triggerCategory or"SYSTEM")..":"..(task.triggerName or"SYSTEM"),"failed");self:RecordStartupMetric("tasksFailed");if HolyStorm.Events.RecordFollowOn then HolyStorm.Events:RecordFollowOn(task.triggerName,"tasksFailed")end end;self.performance[task.registryId]=p;archive(self,uid)
   HolyStorm.Logger:Write(success and"DEBUG"or"ERROR",task.module,"task",success and("Task completed: "..task.registryId)or("Task failed: "..task.registryId),taskContext(task,{duration=task.duration,queueWait=task.queueWait,error=task.lastError}),task.workflowId or uid);HolyStorm.Events:Emit(success and"HS_TASK_COMPLETED"or"HS_TASK_FAILED",task,result,extra);compactCompleted(task,referenced(self,uid));self:Schedule(clock());self:UpdateIdleTransition();return true
 end
@@ -207,13 +250,13 @@ queueWakeSummary=function(self)
  HolyStorm.Logger:Write("DEBUG","TaskManager","scheduler","Scheduler wakes coalesced",{triggerCount=self.pendingWakeCount,triggerSources=sources})
  self.pendingWakeCount,self.pendingWakeSources=0,{}
 end
-function Tasks:Cancel(id,reason)local task=self.tasks[id]or(self.mergeIndex[id]and self.tasks[self.mergeIndex[id]]);if not task or task.status=="COMPLETED"or task.status=="FAILED"or task.status=="CANCELLED"then return false end;if task.timeoutTimer then task.timeoutTimer:Cancel();task.timeoutTimer=nil end;if task.uniqueId==self.runningTaskId then self.runningTaskId=nil end;self:RemoveQueued(task);task.status="CANCELLED";task.finishedAt=wall();task.lastError=reason or"CANCELLED";self.runtimeMetrics.cancelled=self.runtimeMetrics.cancelled+1;increment(self.runtimeMetrics.byModule,task.module,"cancelled");increment(self.runtimeMetrics.byTrigger,(task.triggerCategory or"SYSTEM")..":"..(task.triggerName or"SYSTEM"),"cancelled");local p=self.performance[task.registryId];if p then p.cancelled=(p.cancelled or 0)+1 end;self:RecordStartupMetric("tasksCancelled");if task.indexKey and self.mergeIndex[task.indexKey]==task.uniqueId then self.mergeIndex[task.indexKey]=nil end;archive(self,task.uniqueId);HolyStorm.Events:Emit("HS_TASK_CANCELLED",task,reason);compactCompleted(task,false);if#self.queue==0 and not self.runningTaskId and self.timer then self.timer:Cancel();self.timer,self.timerDue=nil,nil end;self:Schedule(clock());self:UpdateIdleTransition();return true end
+function Tasks:Cancel(id,reason)local task=self.tasks[id]or(self.mergeIndex[id]and self.tasks[self.mergeIndex[id]]);if not task or task.status=="COMPLETED"or task.status=="FAILED"or task.status=="CANCELLED"then return false end;if task.timeoutTimer then task.timeoutTimer:Cancel();task.timeoutTimer=nil end;if task.uniqueId==self.runningTaskId then self.runningTaskId=nil end;if task.suspended then task.suspended=nil;self.suspendedCount=self.suspendedCount-1 end;self:RemoveQueued(task);task.status="CANCELLED";task.finishedAt=wall();task.lastError=reason or"CANCELLED";self.runtimeMetrics.cancelled=self.runtimeMetrics.cancelled+1;increment(self.runtimeMetrics.byModule,task.module,"cancelled");increment(self.runtimeMetrics.byTrigger,(task.triggerCategory or"SYSTEM")..":"..(task.triggerName or"SYSTEM"),"cancelled");local p=self.performance[task.registryId];if p then p.cancelled=(p.cancelled or 0)+1 end;self:RecordStartupMetric("tasksCancelled");if task.indexKey and self.mergeIndex[task.indexKey]==task.uniqueId then self.mergeIndex[task.indexKey]=nil end;archive(self,task.uniqueId);HolyStorm.Events:Emit("HS_TASK_CANCELLED",task,reason);compactCompleted(task,false);if#self.queue==0 and not self.runningTaskId and self.timer then self.timer:Cancel();self.timer,self.timerDue=nil,nil end;self:Schedule(clock());self:UpdateIdleTransition();return true end
 -- DE/EN Public controls: Pause/Resume affect dispatch only; Cancel/Clear are eventful and observable.
 function Tasks:Pause()if self.paused then return false end;self.paused=true;if self.timer then self.timer:Cancel();self.timer,self.timerDue=nil,nil end;HolyStorm.Events:Emit("HS_TASK_QUEUE_PAUSED");return true end
 function Tasks:Resume()if not self.paused then return false end;self.paused=false;HolyStorm.Events:Emit("HS_TASK_QUEUE_RESUMED");self:Schedule(clock());return true end
 function Tasks:IsPaused()return self.paused end
 function Tasks:ClearQueue()local ids={};for _,t in ipairs(self.queue)do ids[#ids+1]=t.uniqueId end;for _,id in ipairs(ids)do self:Cancel(id,"QUEUE_CLEARED")end;return#ids end
-function Tasks:CancelAll()self:ClearQueue();for id in pairs(self.recurring)do self:CancelRecurring(id)end;if self.runningTaskId then self:Cancel(self.runningTaskId,"ADDON_DISABLED")end end
+function Tasks:CancelAll()self:ClearQueue();for id in pairs(self.recurring)do self:CancelRecurring(id)end;local ids={};for id,task in pairs(self.tasks)do if task.status=="RUNNING"or task.status=="WAITING_ASYNC"then ids[#ids+1]=id end end;for _,id in ipairs(ids)do self:Cancel(id,"ADDON_DISABLED")end end
 function Tasks:ScheduleRecurring(id,interval,callback,o)interval=tonumber(interval);if type(id)~="string"or type(callback)~="function"or not interval or interval<1 then return false end;self:CancelRecurring(id);o=copy(o or{});self.recurring[id]=C_Timer.NewTicker(interval,function()o.triggerSource="RECURRING:"..id;Tasks:Enqueue(id,callback,o)end);return true end
 function Tasks:CancelRecurring(id)local t=self.recurring[id];if t then t:Cancel();self.recurring[id]=nil;return true end;return false end
 function Tasks:RecordEvent(event,module,context)addLimited(self.eventHistory,{timestamp=wall(),event=event,module=module,workflowId=context and context.workflowId,taskId=context and context.taskId,triggeredTask=context and context.triggeredTask},self.maxEventHistory)end
@@ -223,7 +266,7 @@ function Tasks:GetLiveTasks()local out={};for _,t in pairs(self.tasks)do if t.st
 function Tasks:GetHistory()local out={};for i=#self.history,1,-1 do local t=self.tasks[self.history[i]];if t then out[#out+1]=clean(t)end end;return out end
 function Tasks:GetPerformance()local out={};for id,p in pairs(self.performance)do local totalDuration=p.totalDuration or 0;local totalQueueWait=p.totalQueueWait or 0;out[id]={runs=p.runs,totalDuration=totalDuration,totalQueueWait=totalQueueWait,totalElapsed=totalDuration+totalQueueWait,maxDuration=p.maxDuration,errors=p.errors,merges=p.merges,triggers=p.triggers,requested=p.requested or 0,started=p.started or 0,completed=p.completed or 0,cancelled=p.cancelled or 0,retried=p.retried or 0,averageDuration=p.runs>0 and totalDuration/p.runs or 0,averageQueueWait=p.runs>0 and totalQueueWait/p.runs or 0,maxQueueWait=p.maxQueueWait or 0,module=self.registry[id]and self.registry[id].module or"-"}end;return out end
 function Tasks:GetEventHistory()return copy(self.eventHistory)end
-function Tasks:IsIdle()return not self.runningTaskId and not self.processing and#self.queue==0 and self.pendingWakeCount==0 and not self.pendingScheduleAt and not self.timer end
+function Tasks:IsIdle()return self.suspendedCount==0 and not self.runningTaskId and not self.processing and#self.queue==0 and self.pendingWakeCount==0 and not self.pendingScheduleAt and not self.timer end
 function Tasks:GetRuntimeMetrics()return{tasks=self.runtimeMetrics,scheduler=self.schedulerMetrics,performance=self.performance}end
 function Tasks:ResetRuntimeMetrics()
  self.runtimeMetrics={requested=0,started=0,completed=0,failed=0,cancelled=0,retried=0,byModule={},byTrigger={}};self.performance={}

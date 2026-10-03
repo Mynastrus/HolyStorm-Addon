@@ -12,7 +12,10 @@ function HolyStorm.PlayerData:WriteOwnedBlock(_,block,snapshot)assert(block=="ra
 function HolyStorm:RegisterModule(_,factory)Module={};factory(Module)end
 function HolyStorm:ApplyModuleMetadata(target,metadata)target.metadata=metadata end
 function HolyStorm:RegisterCapability()end
-function HolyStorm.Events:Register()end
+function HolyStorm.Events:Register(event,owner,callback)self.listeners=self.listeners or{};self.listeners[event]=self.listeners[event]or{};self.listeners[event][owner]=callback end
+function HolyStorm.Events:Emit(event,...)for _,fn in pairs(self.listeners[event]or{})do fn(event,...)end end
+HolyStorm.Tasks.YIELD={}
+function HolyStorm.Tasks:Yield()return self.YIELD end
 function HolyStorm.Snapshots:Queue(id,scanner,validator,commit,options)self.id,self.scanner,self.validator,self.commit,self.options=id,scanner,validator,commit,options;return true,"wf-performance"end
 function HolyStorm.Data.CharacterStore:GetBlock()return nil end
 function HolyStorm.Data.CharacterStore:GetBlockMetadata()return nil end
@@ -56,20 +59,21 @@ end
 function GetAchievementInfo(id)calls.apiCalls=calls.apiCalls+1;calls.achievementInfo=calls.achievementInfo+1;local row=statisticsById[id];if row then return id,row.name end end
 
 assert(loadfile(root.."LIVE/Holy_Storm_Raids/Raids.lua"))()
+Module:OnEnable()
 local queued,workflowId=Module:Queue(false,0,false,true,"PERFORMANCE_FIXTURE")
 assert(queued and workflowId=="wf-performance"and HolyStorm.Snapshots.id=="raids","the Raid producer enters the existing snapshot workflow")
 local chunkCount,snapshot=0,nil
 while not snapshot do
- chunkCount=chunkCount+1;assert(chunkCount<1000,"the deterministic scan completes in bounded work units")
+ chunkCount=chunkCount+1;assert(chunkCount<4000,"the deterministic scan completes in bounded work units")
  fakeTime=fakeTime+1/60;local before={apiCalls=calls.apiCalls,categoryInfo=calls.categoryInfo,categoryCounts=calls.categoryCounts,entries=calls.entries,achievementInfo=calls.achievementInfo};local sliceStarted=GetTimePreciseSec()
  local result=HolyStorm.Snapshots.scanner();local sliceDuration=GetTimePreciseSec()-sliceStarted
- assert(calls.apiCalls-before.apiCalls<=8,"each scheduler step stays within the explicit eight-call work budget (observed "..tostring(calls.apiCalls-before.apiCalls)..")")
+ assert(calls.apiCalls-before.apiCalls<=1,"each scheduler step stays within the explicit one-call work boundary (observed "..tostring(calls.apiCalls-before.apiCalls)..")")
  assert(sliceDuration<=.005,"a scheduler step also stops on its elapsed-time slice (observed "..string.format("%.4f",sliceDuration).."s)")
  assert(calls.categoryInfo-before.categoryInfo<=8,"each scan task reads at most eight category labels")
  assert(calls.categoryCounts-before.categoryCounts<=8,"each scan task counts at most eight categories")
  assert(calls.entries-before.entries<=8,"each scan task enumerates at most eight Statistics rows")
  assert(calls.achievementInfo-before.achievementInfo<=8,"each scan task reads at most eight statistic labels")
- if type(result)=="table"and result.workflowAction=="GOTO"then assert(result.gotoStep==1 and result.delay>=.033,"each bounded chunk resumes through the existing TaskManager workflow at a paced cadence");assert(commitCount==0 and storedSnapshot==nil,"no intermediate catalog, Statistics or lifetime state is committed")else snapshot=result end
+ if result==HolyStorm.Tasks.YIELD then assert(commitCount==0 and storedSnapshot==nil,"no intermediate catalog, Statistics or lifetime state is committed")else snapshot=result end
 end
 assert(chunkCount>100 and calls.categories==1 and calls.categoryInfo==96 and calls.categoryCounts==96 and calls.entries==1025 and calls.achievementInfo==1025,"large Statistics discovery is traversed once, in category and row batches")
 assert(Module:Validate(snapshot),"the chunked Raid snapshot validates only after discovery completes")
@@ -77,12 +81,15 @@ assert(#snapshot.lockouts==2 and #snapshot.lockouts[1].bosses==8 and #snapshot.l
 assert(snapshot.bestProgress.killed==8 and snapshot.bestProgress.total==8 and snapshot.bestProgress.difficultyId==15 and snapshot.bestProgress.raidInstanceId==900,"chunked best-progress selection retains the current Raid's highest difficulty and identity")
 assert(calls.savedInstances==2 and calls.savedEncounters==16,"lockout info and all saved encounters are collected exactly once")
 assert(snapshot.lifetime.bosses[5001].difficulties.NORMAL.kills==9 and snapshot.lifetime.bosses[5001].difficulties.NORMAL.statisticId==700000 and snapshot.lifetime.bosses[5001].difficulties.NORMAL.source=="blizzard-statistic","the runtime mapping retains the Blizzard statistic source and exact value")
-local audit;for _,entry in ipairs(logs)do if entry.message=="RAID_LIFETIME_SCAN_SUMMARY"then audit=entry.context end end
-assert(audit and audit.categories==96 and audit.categoriesListCalls==1 and audit.categoryInfoReads==96 and audit.categoriesEnumerated==96 and audit.entries==1025 and audit.statisticIds==1025 and audit.labelReads==1025 and audit.candidates==1025 and audit.valueReads==1 and audit.mappingProbes==32 and audit.unmappedCandidateChecks==1025 and audit.candidateComparisons<=1100 and audit.workChunks>0 and audit.workChunks<chunkCount,"audit counters show linear index construction, direct value reads and bounded slot probes")
-local performance;for _,entry in ipairs(logs)do if entry.message=="RAID_SCAN_PERFORMANCE"then performance=entry.context end end
-assert(performance and performance.schedulerSteps==chunkCount and performance.elapsedSeconds>0 and performance.luaExecutionSeconds>=0 and performance.queueWaitSeconds>=0 and performance.longestStepSeconds>=0 and performance.sliceBudgetSeconds==.002 and performance.yieldDelaySeconds>=.033,"scan performance reports scheduler steps, wall duration, Lua time, queue wait, longest step and pacing limits")
+local audit=Module.lastRaidDiagnostics.audit
+assert(audit and audit.categories==96 and audit.categoriesListCalls==1 and audit.categoryInfoReads==96 and audit.categoriesEnumerated==96 and audit.entries==1025 and audit.statisticIds==1025 and audit.labelReads==1025 and audit.candidates==1 and audit.valueReads==1 and audit.mappingProbes==32 and audit.unmappedCandidateChecks==1 and audit.candidateComparisons<=1100 and audit.workChunks>0 and audit.workChunks<chunkCount,"audit counters show linear index construction, direct value reads and bounded slot probes")
+assert(#logs==1,"collection slices do not emit Logger entries")
 local valid,validationReason=HolyStorm.Snapshots.validator(snapshot);assert(valid,validationReason)
 assert(HolyStorm.Snapshots.commit(snapshot,"fixture-fingerprint")and commitCount==1 and storedSnapshot.snapshotVersion==3,"only the final validated snapshot reaches the commit stage")
+HolyStorm.Events:Emit("HS_WORKFLOW_COMPLETED",{workflowId=workflowId,status="COMPLETED",completedTasks={}})
+local summaryCount=0;local performance
+for _,entry in ipairs(logs)do if entry.message=="RAID_SCAN_PERFORMANCE"then summaryCount=summaryCount+1;performance=entry.context end end
+assert(summaryCount==1 and performance.slices==chunkCount and performance.catalogBuilds==1 and performance.ejCalls>0 and performance.statisticCalls>0 and performance.savedInstanceCalls==19,"summary counters describe the actual completed collection once")
 local lastValidStored=storedSnapshot
 
 -- Manual and automatic refreshes read current values by the cached IDs without a second tree walk.
@@ -108,10 +115,11 @@ local savedCategoryInfo=GetCategoryInfo
 GetCategoryInfo=function(id)if id==9002 then error("temporary category API failure")end;return savedCategoryInfo(id)end
 local failedQueued,failedWorkflow=Module:Queue(false,0,false,true,"FAILED_DISCOVERY_TEST");assert(failedQueued and failedWorkflow=="wf-performance")
 local failedScan
-for index=1,1000 do fakeTime=fakeTime+1/60;local result=HolyStorm.Snapshots.scanner();if type(result)=="table"and result.workflowAction~="GOTO"then failedScan=result;break end end
+for index=1,4000 do fakeTime=fakeTime+1/60;local result=HolyStorm.Snapshots.scanner();if type(result)=="table"and result~=HolyStorm.Tasks.YIELD then failedScan=result;break end end
 local failedValid=Module:Validate(failedScan)
 assert(failedScan and failedScan.pending and not failedValid and Module.lifetimeStatisticCache==nil and commitCount==1 and storedSnapshot==lastValidStored,"an intermediate discovery failure cannot validate/commit partial data or replace the last valid snapshot")
 GetCategoryInfo=savedCategoryInfo
+HolyStorm.Events:Emit("HS_WORKFLOW_FAILED",{workflowId=workflowId,status="FAILED",completedTasks={}})
 local recovered,recoveredReason=Module:GetLifetimeStatisticCandidates(snapshot.raids,true,"Storm Fixture")
 assert(recovered and not recoveredReason and Module.lifetimeStatisticCache,"a later complete discovery can rebuild the runtime mapping")
 local savedStatistic=GetStatistic
@@ -119,9 +127,9 @@ local injectedFailures=0
 GetStatistic=function(id,index)if index==nil then injectedFailures=injectedFailures+1;error("temporary value read failure")end;return savedStatistic(id,index)end
 local failedValueQueued=Module:Queue(false,0,false,true,"FAILED_VALUE_READ_TEST");assert(failedValueQueued)
 local failedValueScan
-for index=1,1000 do fakeTime=fakeTime+1/60;local before=calls.apiCalls;local result=HolyStorm.Snapshots.scanner();assert(calls.apiCalls-before<=8,"failed value-read work also respects the per-pass API budget");if type(result)=="table"and result.workflowAction~="GOTO"then failedValueScan=result;break end end
+for index=1,4000 do fakeTime=fakeTime+1/60;local before=calls.apiCalls;local result=HolyStorm.Snapshots.scanner();assert(calls.apiCalls-before<=1,"failed value-read work also respects the per-pass API budget");if type(result)=="table"and result~=HolyStorm.Tasks.YIELD then failedValueScan=result;break end end
 local failedValueValid=Module:Validate(failedValueScan)
-local failedValueAudit;for _,entry in ipairs(logs)do if entry.message=="RAID_LIFETIME_SCAN_SUMMARY"then failedValueAudit=entry.context end end
+local failedValueAudit=Module.lastRaidDiagnostics.audit
 assert(failedValueScan and failedValueScan.pending and failedValueScan.pendingReason=="STATISTIC_VALUE_READ_FAILED"and injectedFailures==1 and not failedValueValid and commitCount==1 and storedSnapshot==lastValidStored,"a mid-capture API failure preserves the previously committed snapshot and cannot commit a partial update (reason="..tostring(failedValueScan and failedValueScan.pendingReason)..", pending="..tostring(failedValueScan and failedValueScan.pending)..", valid="..tostring(failedValueValid)..", injected="..tostring(injectedFailures)..", valueReads="..tostring(calls.valueReads)..", mapped="..tostring(failedValueAudit and failedValueAudit.valueReads)..", commits="..tostring(commitCount)..")")
 GetStatistic=savedStatistic
 print("Raid Statistics discovery batches, exact mapping cache and work-count bounds passed")

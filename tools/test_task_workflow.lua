@@ -85,3 +85,54 @@ taskMetrics=HolyStorm.Tasks:GetRuntimeMetrics();assert(taskMetrics.tasks.byTrigg
 local taskHistoryCount,workflowHistoryCount,logHistoryCount,timerCount=#HolyStorm.Tasks.history,#HolyStorm.Workflows.history,#HolyStorm.Logger.history,#timers;assert(HolyStorm.Tasks:ResetRuntimeMetrics());assert(HolyStorm.Tasks:GetRuntimeMetrics().tasks.requested==0 and HolyStorm.Tasks:GetRuntimeMetrics().scheduler.runs==0 and next(HolyStorm.Tasks.performance)==nil and#timers==timerCount,"runtime metric reset clears task and scheduler aggregates without creating scheduler work");assert(#HolyStorm.Tasks.history==taskHistoryCount and#HolyStorm.Workflows.history==workflowHistoryCount and#HolyStorm.Logger.history==logHistoryCount,"runtime metric reset preserves task/workflow history and logs")
 HolyStorm.Tasks:BeginStartup("OBSERVABILITY_TEST");local startupTask=HolyStorm.Tasks:Queue("Test.Unique",{triggerSource="MAINTENANCE_STARTUP_TEST"});processAll();local startupMetrics=HolyStorm.Tasks:GetStartupMetrics();assert(startupTask and startupMetrics.active and startupMetrics.tasksRequested==1 and startupMetrics.tasksStarted==1 and startupMetrics.tasksCompleted==1 and startupMetrics.schedulerRuns==1,"startup window measures task lifecycle and scheduler runs without a separate timer");local startupStartedAt=startupMetrics.startedAt;assert(HolyStorm.Tasks:ResetRuntimeMetrics()and HolyStorm.Tasks.startup.active and HolyStorm.Tasks.startup.startedAt==startupStartedAt and HolyStorm.Tasks:GetStartupMetrics().tasksRequested==0,"runtime reset clears startup counters but preserves its lightweight measurement window")
 print("Task/workflow tests passed")
+
+-- Same-task continuations retain callback/context and have one lifecycle. A
+-- scheduler backlog or repeated Process call in one frame must never burst.
+local slices,contextRef=0,{}
+HolyStorm.Tasks:RegisterTaskType("Test.Continuation",{executionMode="MULTI",execute=function(task)
+ slices=slices+1;assert(task.uniqueId==contextRef.id)
+ if slices<4 then return HolyStorm.Tasks:Yield(task)end
+ return "done"
+end})
+contextRef.id=HolyStorm.Tasks:Queue("Test.Continuation")
+HolyStorm.Tasks:Process();assert(slices==1)
+for _=1,10 do HolyStorm.Tasks:Process()end;assert(slices==1,"same frame cannot dispatch a second slice")
+monotonic=monotonic+100;HolyStorm.Tasks:Process();assert(slices==2)
+for _=1,10 do HolyStorm.Tasks:Process()end;assert(slices==2,"late continuations cannot catch up")
+processAll()
+local continuationPerf=HolyStorm.Tasks:GetPerformance()["Test.Continuation"]
+assert(slices==4 and continuationPerf.requested==1 and continuationPerf.started==1 and continuationPerf.completed==1)
+
+local signalCalls=0
+HolyStorm.Tasks:RegisterTaskType("Test.Signal",{execute=function(task)signalCalls=signalCalls+1;if signalCalls==1 then return HolyStorm.Tasks:WaitForResume(task,.5)end;return true end})
+local signalId=HolyStorm.Tasks:Queue("Test.Signal");processAll()
+assert(HolyStorm.Tasks.suspendedCount==1 and not HolyStorm.Tasks:IsIdle()and not HolyStorm.Tasks.runningTaskId)
+local unrelated=HolyStorm.Tasks:Queue("Test.Multi");processAll();assert(HolyStorm.Tasks.tasks[unrelated].status=="COMPLETED","a suspended task releases the scheduler")
+HolyStorm.Tasks:Pause();assert(HolyStorm.Tasks:ResumeTask(signalId));assert(not HolyStorm.Tasks:ResumeTask(signalId),"duplicate signal does not duplicate the queue entry")
+assert(HolyStorm.Tasks.suspendedCount==0);HolyStorm.Tasks:Process();assert(signalCalls==1)
+HolyStorm.Tasks:Resume();processAll();assert(signalCalls==2 and HolyStorm.Tasks.tasks[signalId].status=="COMPLETED")
+local timeoutId=HolyStorm.Tasks:Queue("Test.Signal",{executionMode="MULTI",execute=function(task)return HolyStorm.Tasks:WaitForResume(task,.5)end});processAll()
+local timeoutTask=HolyStorm.Tasks.tasks[timeoutId];assert(timeoutTask.timeoutTimer)
+timeoutTask.timeoutTimer.callback();assert(timeoutTask.status=="FAILED"and timeoutTask.lastError=="TASK_TIMEOUT"and HolyStorm.Tasks.suspendedCount==0)
+local cancelId=HolyStorm.Tasks:Queue("Test.Signal",{executionMode="MULTI",execute=function(task)return HolyStorm.Tasks:WaitForResume(task,.5)end});processAll();HolyStorm.Tasks:CancelAll();assert(HolyStorm.Tasks.tasks[cancelId].status=="CANCELLED"and HolyStorm.Tasks.suspendedCount==0)
+
+-- A yielded first step has already started; later workflow requests coalesce
+-- one follow-up instead of mutating its debounce or replacing its context.
+local workflowSlices=0
+HolyStorm.Tasks:RegisterTaskType("Test.YieldStep",{execute=function(task)workflowSlices=workflowSlices+1;if workflowSlices==1 then return HolyStorm.Tasks:Yield(task)end;return true end})
+HolyStorm.Workflows:Register("YIELD_WORKFLOW",{steps={{id="yield",taskType="Test.YieldStep"}}})
+local yieldWorkflow=HolyStorm.Workflows:Request("YIELD_WORKFLOW");HolyStorm.Tasks:Process()
+local _,requestState=HolyStorm.Workflows:Request("YIELD_WORKFLOW")
+assert(requestState=="RESTART_PENDING"and HolyStorm.Workflows.workflows[yieldWorkflow].pendingRestart)
+processAll();assert(workflowSlices==3)
+print("Task continuation, frame guard, async resume/timeout/cancel and workflow coalescing tests passed")
+
+local workflowSignalCalls=0
+HolyStorm.Tasks:RegisterTaskType("Test.WorkflowSignal",{execute=function(task)workflowSignalCalls=workflowSignalCalls+1;if workflowSignalCalls==1 then return HolyStorm.Tasks:WaitForResume(task,2)end;return true end})
+HolyStorm.Workflows:Register("SIGNAL_WORKFLOW",{steps={{id="signal",taskType="Test.WorkflowSignal"}}})
+local signalWorkflow=HolyStorm.Workflows:Request("SIGNAL_WORKFLOW");processAll()
+local signalW=HolyStorm.Workflows.workflows[signalWorkflow];assert(signalW.status=="WAITING_ASYNC")
+HolyStorm.Tasks:Pause();assert(signalW.status=="PAUSED")
+assert(HolyStorm.Tasks:ResumeTask(signalW.currentTaskId)and signalW.status=="PAUSED","a readiness signal must not unpause a workflow")
+HolyStorm.Tasks:Resume();processAll();assert(signalW.status=="COMPLETED"and workflowSignalCalls==2)
+print("A resumed async workflow preserves queue pause state")

@@ -100,17 +100,16 @@ for id=501,506 do assert(snapshot.lifetime.bosses[id].difficulties.NORMAL.kills=
 assert(snapshot.lifetime.bosses[501].difficulties.LFR.kills==1 and snapshot.lifetime.bosses[506].difficulties.LFR.kills==1 and snapshot.lifetime.bosses[506].difficulties.NORMAL.kills==4,"multiple difficulties remain separate")
 assert(snapshot.lifetime.bosses[504].difficulties.HEROIC==nil and snapshot.lifetime.bosses[501].difficulties.HEROIC.kills==1,"-- remains unknown while the positive Heroic lifetime value is retained")
 assert(snapshot.lifetime.bosses[507]==nil and snapshot.lifetime.bosses[508]==nil,"unobserved boss counts are not invented")
-local summary
-for _,entry in ipairs(logs)do if entry.message=="RAID_LIFETIME_SCAN_SUMMARY"then summary=entry.context end end
-assert(summary and summary.categories==1 and summary.relevantCategories==1 and summary.entries==15 and summary.candidates==14 and summary.discoveryRejected==1 and summary.unmapped==3 and summary.reads==9 and summary.positive==9 and summary.zero==0 and summary.unavailable==1 and summary.mappedBosses==6,"manual diagnostic counters must describe discovery and mapping")
+local summary=module.lastRaidDiagnostics.audit
+assert(summary and summary.categories==1 and summary.relevantCategories==1 and summary.entries==15 and summary.candidates==13 and summary.discoveryRejected==1 and summary.unmapped==3 and summary.reads==9 and summary.positive==9 and summary.zero==0 and summary.unavailable==1 and summary.mappedBosses==6,"manual diagnostic counters must describe discovery and mapping")
 local sawUnmapped,sawRejected,sawDifficulty,sawRaid=false,false,false,false
-for _,entry in ipairs(logs)do
+for _,entry in ipairs(module.lastRaidDiagnostics.details)do
  if entry.message=="RAID_LIFETIME_UNMAPPED"and entry.context.statisticId==7011 and entry.context.reason=="BOSS_NAME_NOT_FOUND"then sawUnmapped=true end
  if entry.message=="RAID_LIFETIME_CANDIDATE_REJECTED"and entry.context.statisticId==7012 and entry.context.reason=="UNKNOWN_STATISTIC_FORMAT"then sawRejected=true end
  if entry.message=="RAID_LIFETIME_UNMAPPED"and entry.context.statisticId==7014 and entry.context.reason=="DIFFICULTY_NAME_NOT_FOUND"then sawDifficulty=true end
  if entry.message=="RAID_LIFETIME_UNMAPPED"and entry.context.statisticId==7015 and entry.context.reason=="RAID_NAME_NOT_FOUND"then sawRaid=true end
 end
-assert(sawUnmapped and sawRejected and sawDifficulty and sawRaid,"manual logs must explain unused and rejected raid-like statistics")
+assert(sawUnmapped and sawRejected and sawDifficulty and sawRaid,"retained diagnostics must explain unused and rejected raid-like statistics")
 assert(module:Commit(snapshot),"validated snapshot must commit through PlayerData")
 local canonical=assert(HS_Player_DB.characters["Player-Fixture"].raidLockouts)
 assert(canonical.lifetime.bosses[506].difficulties.NORMAL.statisticId==7008,"canonical HS_Player_DB block must retain statistic provenance")
@@ -166,6 +165,7 @@ statistics[9].value="--"
 local englishDifficulty=GetDifficultyInfo
 GetDifficultyInfo=function(id)return({[17]="Schlachtzugsbrowser",[14]="Normal",[15]="Heroisch",[16]="Mythisch"})[id]end
 for _,stat in ipairs(statistics)do stat.name=stat.name:gsub("Raid Finder:","Schlachtzugsbrowser:"):gsub("Heroic:","Heroisch:")end
+module:InvalidateRaidCatalogCache("FIXTURE_LOCALE_CHANGED")
 local german=module:Collect(true)
 local germanFresh=module:CaptureLifetime(german.raids,nil,true,"Fixture Expansion")
 assert(germanFresh.bosses[501].difficulties.LFR.statisticId==7001 and germanFresh.bosses[506].difficulties.NORMAL.statisticId==7008,"deDE Blizzard difficulty labels map without English literals")
@@ -175,6 +175,7 @@ for index,boss in ipairs(bosses)do boss.name="Fixture Boss "..index end
 statistics={}
 local englishValues={{1,"Raid Finder",1},{1,"Normal",6},{2,"Normal",6},{3,"Normal",6},{4,"Normal",7},{5,"Normal",6},{6,"Raid Finder",1},{6,"Normal",4}}
 for index,row in ipairs(englishValues)do statistics[index]={id=8000+index,name=bosses[row[1]].name.." ("..row[2]..": "..raidName..")",value=tostring(row[3])}end
+module:InvalidateRaidCatalogCache("FIXTURE_LOCALE_CHANGED")
 local english=module:Collect(true)
 local englishFresh=module:CaptureLifetime(english.raids,nil,true,"Fixture Expansion")
 local freshSnapshot=copy(english);freshSnapshot.lifetime=englishFresh

@@ -14,7 +14,7 @@ function LibStub(name)
 end
 HolyStorm.Data={CharacterStore={}}
 local blockReads=0
-function HolyStorm.Data.CharacterStore:GetBlock(guid,blockId)assert(guid=="Player-GUID"and blockId=="raid","Raid snapshot must use the generic raid block API");blockReads=blockReads+1;return oldSnapshot,{version=3}end
+function HolyStorm.Data.CharacterStore:GetBlock(guid,blockId)assert(guid=="Player-GUID"and blockId=="raid","Raid snapshot must use the generic raid block API");blockReads=blockReads+1;return HolyStorm.Utils.DeepCopy(oldSnapshot),{version=3}end
 function HolyStorm.Data.CharacterStore:GetBlockMetadata(guid,blockId)assert(guid=="Player-GUID"and blockId=="raid","Raid metadata must use the generic block API");return{version=3}end
 
 function UnitGUID()return"Player-GUID"end
@@ -26,7 +26,7 @@ local raidCatalog={{id=100,name="Raid One",icon=12345}}
 local raidCatalogByTier={}
 function EJ_GetInstanceByIndex(index,isRaid)local catalog=raidCatalogByTier[selectedTier]or raidCatalog;local raid=isRaid and catalog[index];if raid then return raid.id,raid.name,nil,nil,raid.icon end end
 function EJ_SelectInstance(id)selectedInstance=id end
-function EJ_GetInstanceInfo()local catalog=raidCatalogByTier[selectedTier]or raidCatalog;for _,raid in ipairs(catalog)do if raid.id==selectedInstance then return nil,nil,nil,nil,nil,nil,nil,nil,raid.shouldDisplayDifficulty~=false end end end
+function EJ_GetInstanceInfo(instanceId)local catalog=raidCatalogByTier[selectedTier]or raidCatalog;for _,raid in ipairs(catalog)do if raid.id==(instanceId or selectedInstance) then return nil,nil,nil,nil,nil,nil,nil,nil,raid.shouldDisplayDifficulty~=false end end end
 function EJ_GetEncounterInfoByIndex(index,instanceId)if tonumber(instanceId)==777 then return nil end;if index==1 then return"Boss A",nil,501 elseif index==2 then return"Boss B",nil,502 end end
 
 local lockoutId=9001
@@ -59,6 +59,7 @@ assert(next(nextLockout.lifetime.bosses)==nil,"a new lockout still does not incr
 assert(module:Validate(nextLockout))
 
 raidCatalog={{id=999,name="Outdoor collection",icon=99999,shouldDisplayDifficulty=false},{id=777,name="Midnight",icon=77777},{id=100,name="Raid One",icon=12345},{id=200,name="Raid Two",icon=23456}};lockoutName="Raid Two";instances={{difficultyId=14,difficultyName="Normal",kills={true,false}}};oldSnapshot=nil
+module:InvalidateRaidCatalogCache("FIXTURE_CATALOG_CHANGED")
 local secondCurrent=module:Collect()
 assert(#secondCurrent.raids==2 and secondCurrent.raids[1].id==100 and secondCurrent.raids[2].id==200 and secondCurrent.lockouts[1].isCurrent,"Encounter Journal entries without difficulty metadata or encounters are excluded without name filters")
 assert(secondCurrent.lockouts[1].journalInstanceId==200,"lockout is linked to its encounter-journal raid")
@@ -116,6 +117,6 @@ assert(bossA.difficulties.NORMAL.kills==27 and bossA.difficulties.NORMAL.statist
 assert(bossA.difficulties.HEROIC.kills==1 and bossA.difficulties.MYTHIC==nil and bossA.difficulties.LFR==nil,"unknown or unavailable statistics remain unknown")
 assert(statistical.lifetime.bosses[502]==nil,"ambiguous statistics are rejected instead of guessed")
 local accepted,ambiguous=false,false
-for _,entry in ipairs(logs)do if entry.message=="RAID_LIFETIME_STAT"then local context=entry.context or{};assert(context.raidInstanceId and context.bossId and context.difficulty and context.statisticId~=nil and context.value~=nil and context.accepted~=nil and context.reason,"lifetime debug entries expose the complete mapping decision");accepted=accepted or(context.statisticId==7001 and context.accepted==true and context.value=="27"and context.reason=="ACCEPTED");ambiguous=ambiguous or(context.bossId==502 and context.difficulty=="NORMAL"and context.accepted==false and context.reason=="AMBIGUOUS_STATISTIC")end end
-assert(accepted and ambiguous,"RAID_LIFETIME_STAT logs both accepted and rejected mappings")
+for _,entry in ipairs(module.lastRaidDiagnostics.details)do if entry.message=="RAID_LIFETIME_STAT"then local context=entry.context or{};assert(context.raidInstanceId and context.bossId and context.difficulty and context.statisticId~=nil and context.value~=nil and context.accepted~=nil and context.reason,"lifetime debug entries expose the complete mapping decision");accepted=accepted or(context.statisticId==7001 and context.accepted==true and context.value=="27"and context.reason=="ACCEPTED");ambiguous=ambiguous or(context.bossId==502 and context.difficulty=="NORMAL"and context.accepted==false and context.reason=="AMBIGUOUS_STATISTIC")end end
+assert(accepted and ambiguous,"Volatile RAID_LIFETIME_STAT diagnostics retain both accepted and rejected mappings")
 print("Raid catalog availability, retry preservation, difficulty ordering and lifetime deduplication tests passed")

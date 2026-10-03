@@ -5,7 +5,7 @@ local module,provider,raidLoadCalls,snapshotQueues,statisticsDiscoveries
 module=nil;provider=nil;raidLoadCalls=0;snapshotQueues=0;statisticsDiscoveries=0
 local instanceType="party"
 local function copy(value,seen)if type(value)~="table"then return value end;seen=seen or{};if seen[value]then return seen[value]end;local out={};seen[value]=out;for key,item in pairs(value)do out[copy(key,seen)]=copy(item,seen)end;return out end
-local HolyStorm={Utils={DeepCopy=copy,Now=function()return 100 end},Events={},Logger={},CharacterScans={},Snapshots={},PlayerData={RegisterBlock=function()end},Data={CharacterStore={GetBlock=function()end,GetBlockMetadata=function()end}}}
+local HolyStorm={Utils={DeepCopy=copy,Now=function()return 100 end},Events={},Logger={},CharacterScans={},Snapshots={},Tasks={ResumeTask=function(_,id)assert(id=="task-waiting");return true end},PlayerData={RegisterBlock=function()end},Data={CharacterStore={GetBlock=function()end,GetBlockMetadata=function()end}}}
 function HolyStorm.Logger:Write(level,source,category,message,context)logs[#logs+1]={level=level,source=source,category=category,message=message,context=context}end
 function HolyStorm.Events:Register(event,owner,callback)self.listeners=self.listeners or{};self.listeners[event]=self.listeners[event]or{};self.listeners[event][owner]=callback;callbacks[event]=self.listeners[event]end
 function HolyStorm.Events:UnregisterOwner(owner)for event,bucket in pairs(self.listeners or{})do bucket[owner]=nil end end
@@ -60,12 +60,15 @@ assert(#requests==0,"an unsuccessful Raid encounter does not refresh lifetime pr
 HolyStorm.Events:Emit("ENCOUNTER_END",9001,"Raid Boss",16,20,1)
 assert(#requests==1 and requests[1].block=="raid"and requests[1].reason=="ENCOUNTER_END","a successful Raid encounter requests the Raid character scan")
 local generation=module.raidScanGeneration
-HolyStorm.CharacterScans.active={block="raid",workflowId="wf-active"};module.activeRaidRun={workflowId="wf-active",commitStarted=false}
-module.raidInfoRequestPendingUntil=150
+HolyStorm.CharacterScans.active={block="raid",workflowId="wf-active"};module.activeRaidRun={workflowId="wf-active",commitStarted=false,raidInfoRequested=true,workState={},scanTaskId="task-waiting",expectedInstanceInfoEvents=0,unexpectedRaidEvents=0,followUpQueued=0}
+instanceType="none"
 HolyStorm.Events:Emit("UPDATE_INSTANCE_INFO")
 assert(#requests==1 and module.raidScanGeneration==generation,"the expected RequestRaidInfo response folds into the active scan without invalidating its partial work")
+instanceType="raid"
 HolyStorm.Events:Emit("ENCOUNTER_END",9002,"Next Raid Boss",16,20,1)
 assert(#requests==2 and requests[2].block=="raid"and requests[2].reason=="ENCOUNTER_END"and module.raidScanGeneration==generation,"a newer Raid event is queued once after the active scan while preserving its in-flight progress")
+for _=1,10 do HolyStorm.Events:Emit("ENCOUNTER_END",9002,"Next Raid Boss",16,20,1)end
+assert(#requests==2 and module.activeRaidRun.expectedInstanceInfoEvents==1 and module.activeRaidRun.followUpQueued==1 and module.activeRaidRun.unexpectedRaidEvents==11,"multiple genuine events coalesce into exactly one follow-up")
 HolyStorm.CharacterScans.active=nil;module.activeRaidRun=nil
 HolyStorm.Events:Emit("ENCOUNTER_END",9003,"Following Raid Boss",16,20,1)
 assert(#requests==3 and module.raidScanGeneration==generation+1,"a Raid event outside an active scan advances the scan generation and starts a fresh scan")
