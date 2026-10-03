@@ -35,8 +35,9 @@ function Map:Transform(entry,targetMapID)
  return x,y,mode
 end
 function Map:RefreshMinimap(force)
+ local settings=HolyStorm.POI:GetSettings();if not settings.minimapEnabled or#self.activeEntries==0 then for _,entry in ipairs(self.activeEntries)do self:GetRenderState(entry.poiID).minimapPin=false end;for _,pin in ipairs(self.minimapPins)do pin.entry=nil;pin:Hide()end;return true end
  local time=HolyStorm.Utils.Now();if not force and time-self.lastMinimapRefresh<1 then return false end;self.lastMinimapRefresh=time
- local settings=HolyStorm.POI:GetSettings();local entries=settings.minimapEnabled and self.activeEntries or{};local context=settings.minimapEnabled and HolyStorm.MapLinks:GetMinimapContext()or nil;local used,visible,parts=0,{},{}
+ local entries=self.activeEntries;local context=HolyStorm.MapLinks:GetMinimapContext();local used,visible,parts=0,{},{}
  for _,entry in ipairs(self.activeEntries)do self:GetRenderState(entry.poiID).minimapPin=false end
  if context then for _,entry in ipairs(entries)do
   local tx,ty,mode=self:Transform(entry,context.mapID);local x,y,mapID
@@ -53,29 +54,50 @@ function Map:RefreshMinimap(force)
  for index=used+1,#self.minimapPins do self.minimapPins[index]:Hide();self.minimapPins[index].entry=nil end
  return true
 end
+function Map:UpdateMinimapUpdater()
+ local settings=HolyStorm.POI:GetSettings()
+ return HolyStorm.MapLinks:SetMinimapUpdaterActive("poi",self.initialized and Minimap~=nil and settings.minimapEnabled==true and#self.activeEntries>0)
+end
 function Map:LogWorldMapFailure(reason)
  if self.worldMapUnavailableLogged then return end
  self.worldMapUnavailableLogged=true
  if HolyStorm.Logger then HolyStorm.Logger:Write("WARN","POI","map","World map POI provider unavailable",{reason=reason})end
 end
-function Map:Refresh()if not self.initialized then return false end;self.activeEntries=self:GetEntries();local active={};for _,entry in ipairs(self.activeEntries)do active[entry.poiID]=true end;for id in pairs(self.renderState)do if not active[id]then self.renderState[id]=nil;self.transformCache[id]=nil end end;if self.worldProvider and not self.worldMapFailed and self.worldProvider.RefreshAllData then local ok,reason=pcall(self.worldProvider.RefreshAllData,self.worldProvider);if not ok then self.worldMapFailed=true;self:LogWorldMapFailure(reason)end end;self:RefreshMinimap(true);HolyStorm.Events:Emit("HS_POI_MAP_REFRESHED");return true end
+function Map:IsWorldMapVisible()
+ local frame=WorldMapFrame;if not frame then return false end
+ local query=frame.IsVisible or frame.IsShown;if type(query)~="function"then return false end
+ local ok,visible=pcall(query,frame);return ok and visible==true
+end
+function Map:HookWorldMap()
+ if self.worldMapHooked then if self:IsWorldMapVisible()then self:InstallWorldMap()end;return true end
+ if not WorldMapFrame or type(WorldMapFrame.HookScript)~="function"then return false end
+ self.worldMapShowHook=function()
+  if not Map.initialized then return end
+  Map:InstallWorldMap();Map:Refresh()
+ end
+ WorldMapFrame:HookScript("OnShow",self.worldMapShowHook);self.worldMapHooked=true
+ if self:IsWorldMapVisible()then self:InstallWorldMap();self:Refresh()end
+ return true
+end
+function Map:Refresh()if not self.initialized then return false end;self.activeEntries=self:GetEntries();self:UpdateMinimapUpdater();local active={};for _,entry in ipairs(self.activeEntries)do active[entry.poiID]=true end;for id in pairs(self.renderState)do if not active[id]then self.renderState[id]=nil;self.transformCache[id]=nil end end;local worldVisible=self:IsWorldMapVisible();if worldVisible and not self.worldProvider then self:InstallWorldMap()end;if worldVisible and self.worldProvider and not self.worldMapFailed and self.worldProvider.RefreshAllData then local ok,reason=pcall(self.worldProvider.RefreshAllData,self.worldProvider);if not ok then self.worldMapFailed=true;self:LogWorldMapFailure(reason)end end;self:RefreshMinimap(true);HolyStorm.Events:Emit("HS_POI_MAP_REFRESHED");return true end
 function Map:InstallWorldMap()
  if self.installed or self.worldMapFailed then return false end
+ if not self:IsWorldMapVisible()then return false,"WORLD_MAP_HIDDEN"end
  if not WorldMapFrame or not MapCanvasDataProviderMixin or not MapCanvasPinMixin or not CreateFromMixins or type(WorldMapFrame.AddDataProvider)~="function" then self:LogWorldMapFailure("MAPCANVAS_NOT_READY");return false end
  local provider=CreateFromMixins(MapCanvasDataProviderMixin)
  function provider:RemoveAllData()local canvas=self:GetMap();if canvas and type(canvas.RemoveAllPinsByTemplate)=="function" then canvas:RemoveAllPinsByTemplate("HolyStormPOIPinTemplate")end end
- function provider:RefreshAllData()self:RemoveAllData();for _,entry in ipairs(Map.activeEntries)do Map:GetRenderState(entry.poiID).worldPin=false end;if not HolyStorm.POI:GetSettings().worldMapEnabled then return end;local canvas=self:GetMap();local viewed=canvas and canvas:GetMapID();if not viewed or type(canvas.AcquirePin)~="function" then return end;for _,entry in ipairs(Map.activeEntries)do local x,y,mode=Map:Transform(entry,viewed);local state=Map:GetRenderState(entry.poiID);state.worldPin=false;state.viewedMapID=viewed;state.transform=mode;if x then local pin=canvas:AcquirePin("HolyStormPOIPinTemplate",entry);if not pin then error("ACQUIRE_PIN_FAILED")end;pin:SetPosition(x,y);state.worldPin=true;state.transformedX=x;state.transformedY=y else local key=entry.poiID..":"..viewed..":"..tostring(mode);if not Map.loggedTransformFailures[key]then Map.loggedTransformFailures[key]=true;HolyStorm.Logger:Write("DEBUG","POI","map","POI coordinate transformation unavailable",{poiID=entry.poiID,sourceMapID=entry.mapID,viewedMapID=viewed,reason=mode})end end end end
+ function provider:RefreshAllData()if not Map:IsWorldMapVisible()then return end;self:RemoveAllData();for _,entry in ipairs(Map.activeEntries)do Map:GetRenderState(entry.poiID).worldPin=false end;if not HolyStorm.POI:GetSettings().worldMapEnabled then return end;local canvas=self:GetMap();local viewed=canvas and canvas:GetMapID();if not viewed or type(canvas.AcquirePin)~="function" then return end;for _,entry in ipairs(Map.activeEntries)do local x,y,mode=Map:Transform(entry,viewed);local state=Map:GetRenderState(entry.poiID);state.worldPin=false;state.viewedMapID=viewed;state.transform=mode;if x then local pin=canvas:AcquirePin("HolyStormPOIPinTemplate",entry);if not pin then error("ACQUIRE_PIN_FAILED")end;pin:SetPosition(x,y);state.worldPin=true;state.transformedX=x;state.transformedY=y else local key=entry.poiID..":"..viewed..":"..tostring(mode);if not Map.loggedTransformFailures[key]then Map.loggedTransformFailures[key]=true;HolyStorm.Logger:Write("DEBUG","POI","map","POI coordinate transformation unavailable",{poiID=entry.poiID,sourceMapID=entry.mapID,viewedMapID=viewed,reason=mode})end end end end
  local ok,reason=pcall(WorldMapFrame.AddDataProvider,WorldMapFrame,provider);if not ok then self:LogWorldMapFailure(reason);return false end;self.worldProvider=provider;self.installed=true;self.worldMapUnavailableLogged=false;return true
 end
 function Map:Initialize()
- if self.initialized then return true end;self.initialized=true;self.worldMapFailed=false;self.lastMinimapSignature=nil;HolyStorm.MapLinks:RegisterPOIProvider("holy-storm-poi",{get=function(id)local entry=HolyStorm.POI:Get(id);return HolyStorm.POI:CanView(entry)and entry or nil end,list=function()return HolyStorm.POI:GetVisible()end,open=function(id)return HolyStorm.POI:Open(id)end});self.activeEntries=self:GetEntries();self:InstallWorldMap();HolyStorm.MapLinks:RegisterMinimapUpdater("poi",function()Map:RefreshMinimap(false)end);HolyStorm.Events:Register("ADDON_LOADED","poi-map-load",function(_,name)if name=="Blizzard_WorldMap"then Map:InstallWorldMap();Map:Refresh()end end);for _,event in ipairs({"HS_POI_CREATED","HS_POI_UPDATED","HS_POI_DELETED","HS_POI_EXPIRED","HS_POI_LIST_CHANGED","HS_POI_VISIBILITY_CHANGED","HS_POI_FILTER_CHANGED","HS_POI_SYNCED","HS_MAP_TEMPORARY_MARKER_CHANGED","ZONE_CHANGED_NEW_AREA"})do HolyStorm.Events:Register(event,"poi-map",function()HolyStorm.POI:Refresh(event)end)end
+ if self.initialized then return true end;self.initialized=true;self.worldMapFailed=false;self.lastMinimapSignature=nil;HolyStorm.MapLinks:RegisterPOIProvider("holy-storm-poi",{get=function(id)local entry=HolyStorm.POI:Get(id);return HolyStorm.POI:CanView(entry)and entry or nil end,list=function()return HolyStorm.POI:GetVisible()end,open=function(id)return HolyStorm.POI:Open(id)end});self.activeEntries=self:GetEntries();self:HookWorldMap();HolyStorm.MapLinks:RegisterMinimapUpdater("poi",function()Map:RefreshMinimap(false)end);self:UpdateMinimapUpdater();HolyStorm.Events:Register("ADDON_LOADED","poi-map-load",function(_,name)if name=="Blizzard_WorldMap"then Map:HookWorldMap();Map:Refresh()end end);for _,event in ipairs({"HS_POI_CREATED","HS_POI_UPDATED","HS_POI_DELETED","HS_POI_EXPIRED","HS_POI_LIST_CHANGED","HS_POI_VISIBILITY_CHANGED","HS_POI_FILTER_CHANGED","HS_POI_SYNCED","HS_MAP_TEMPORARY_MARKER_CHANGED","ZONE_CHANGED_NEW_AREA"})do HolyStorm.Events:Register(event,"poi-map",function()HolyStorm.POI:Refresh(event)end)end
  return true
 end
 function Map:Shutdown()
  if not self.initialized then return false end
  if self.installed and self.worldProvider and WorldMapFrame and type(WorldMapFrame.RemoveDataProvider)=="function"then pcall(WorldMapFrame.RemoveDataProvider,WorldMapFrame,self.worldProvider)end
  self.worldProvider=nil;self.installed=false;self.worldMapFailed=false;self.initialized=false;self.activeEntries={};self.transformCache={};self.renderState={};self.lastMinimapSignature=nil
- HolyStorm.MapLinks:UnregisterMinimapUpdater("poi");HolyStorm.MapLinks:UnregisterPOIProvider("holy-storm-poi");HolyStorm.Events:UnregisterOwner("poi-map-load");HolyStorm.Events:UnregisterOwner("poi-map")
+ HolyStorm.MapLinks:SetMinimapUpdaterActive("poi",false);HolyStorm.MapLinks:UnregisterMinimapUpdater("poi");HolyStorm.MapLinks:UnregisterPOIProvider("holy-storm-poi");HolyStorm.Events:UnregisterOwner("poi-map-load");HolyStorm.Events:UnregisterOwner("poi-map")
  for _,pin in ipairs(self.minimapPins)do pin.entry=nil;pin:Hide()end;return true
 end
 HolyStorm.POIMap=Map

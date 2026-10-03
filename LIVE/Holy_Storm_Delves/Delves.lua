@@ -81,19 +81,17 @@ HolyStorm:RegisterModule(metadata,function(Module)
  function Module:Commit(snapshot)local guid=UnitGUID("player");return HolyStorm.PlayerData:WriteOwnedBlock(guid,"delves",snapshot,"blizzard")end
  function Module:Queue(sync)return HolyStorm.Snapshots:Queue("delves",function()return Module:Collect()end,function(snapshot)return Module:Validate(snapshot)end,function(snapshot,force)return Module:Commit(snapshot,force,sync)end,{source="Delves",delay=1,retryDelay=2.5,priority=6})end
  function Module:OnInitialize()
-  HolyStorm.CharacterScans:RegisterProvider("Delves",{block="delves",capability="character.scan.delves",addonId="delves",order=40,needsRefresh=function(snapshot)
-   local complete=validSnapshot(snapshot);if not complete then return true,"SNAPSHOT_INCOMPLETE"end
-   local season,week=currentContext();if not season or not week then return false,"CURRENT_CONTEXT_UNAVAILABLE"end
-   if snapshot.seasonNumber~=season then return true,"SEASON_MISMATCH"end
-   if snapshot.weeklyIdentity~=week then return true,"WEEKLY_RESET_MISMATCH"end
-   return false,"SNAPSHOT_CURRENT"
-  end,request=function(sync)local queued,workflowId=Module:Queue(sync);if not queued then return nil end;return workflowId end})
+  HolyStorm.CharacterScans:RegisterProvider("Delves",{block="delves",capability="character.scan.delves",addonId="delves",order=40,request=function(sync)local queued,workflowId=Module:Queue(sync);if not queued then return nil end;return workflowId end})
   HolyStorm:RegisterCapability("Delves","character.scan.delves",function(_,sync,reason)return HolyStorm.CharacterScans:Request("delves",reason or"CAPABILITY",sync,{order=40})end)
   HolyStorm:RegisterCapability("Delves","character.scan.additional",function(_,sync,reason)return HolyStorm.CharacterScans:Request("delves",reason or"CAPABILITY",sync,{order=40})end)
  end
  function Module:OnEnable()
   if not C_DelvesUI or not C_WeeklyRewards or not C_DateAndTime then self:Disable();return end
-  HolyStorm.Events:Register("WEEKLY_REWARDS_UPDATE","delves",function()HolyStorm.CharacterScans:Request("delves","WEEKLY_REWARDS_UPDATE",true,{order=40})end)
+  self.ignoreInitialWeeklyRewardsUpdate=HolyStorm.State and not HolyStorm.State:Is("playerReady") or false
+  HolyStorm.Events:Register("WEEKLY_REWARDS_UPDATE","delves",function()
+   if self.ignoreInitialWeeklyRewardsUpdate then self.ignoreInitialWeeklyRewardsUpdate=false;return end
+   HolyStorm.CharacterScans:Request("delves","WEEKLY_REWARDS_UPDATE",true,{order=40})
+  end)
  end
- function Module:OnDisable()HolyStorm.Events:UnregisterOwner("delves");HolyStorm.Snapshots:Cancel("delves")end
+ function Module:OnDisable()HolyStorm.Events:UnregisterOwner("delves");HolyStorm.Snapshots:Cancel("delves");self.ignoreInitialWeeklyRewardsUpdate=nil end
 end)

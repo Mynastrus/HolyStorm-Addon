@@ -153,8 +153,11 @@ if HolyStorm.PlayerData then HolyStorm.PlayerData:RegisterBlock("equipment",{fie
   HolyStorm:RegisterCapability("Equipment","character.scan.equipment",function(_,sync,reason)return HolyStorm.CharacterScans:Request("equipment",reason or"CAPABILITY",sync,{order=10})end)
  end
  function Module:OnEnable()
-  for _,event in ipairs({"PLAYER_EQUIPMENT_CHANGED","UNIT_INVENTORY_CHANGED","SOCKET_INFO_UPDATE"})do local eventName=event;HolyStorm.Events:Register(eventName,"equipment",function(_,firstArgument)if eventName~="UNIT_INVENTORY_CHANGED"or firstArgument=="player"then HolyStorm.CharacterScans:Request("equipment",eventName,true,{order=10})end end)end
-  local context=self.loadContext;if context and context.reason=="event"then HolyStorm.CharacterScans:Request("equipment",context.trigger,true,{order=10})end
+  for _,event in ipairs({"PLAYER_EQUIPMENT_CHANGED","UNIT_INVENTORY_CHANGED","SOCKET_INFO_UPDATE"})do local eventName=event;HolyStorm.Events:Register(eventName,"equipment",function(_,firstArgument)
+   if HolyStorm.State and not HolyStorm.State:Is("playerReady")then return end
+   if eventName~="UNIT_INVENTORY_CHANGED"or firstArgument=="player"then HolyStorm.CharacterScans:Request("equipment",eventName,true,{order=10})end
+  end)end
+  local context=self.loadContext;if context and context.reason=="event"and context.trigger=="PLAYER_EQUIPMENT_CHANGED"and(not HolyStorm.State or HolyStorm.State:Is("playerReady"))then HolyStorm.CharacterScans:Request("equipment",context.trigger,true,{order=10})end
  end
  function Module:OnDisable()HolyStorm.Events:UnregisterOwner("equipment");local id=HolyStorm.Workflows.activeByType[WORKFLOW];if id then HolyStorm.Workflows:Cancel(id,"MODULE_DISABLED")end end
 end)

@@ -232,22 +232,6 @@ HolyStorm:RegisterModule(metadata, function(Module)
 		return validateMythicPlus(snapshot, collectionReason, collectionDiagnostics)
 	end
 
-	function Module:NeedsBootstrapRefresh(snapshot)
-		local valid = validateMythicPlus(snapshot)
-		if not valid then return true, "MYTHICPLUS_SNAPSHOT_INCOMPLETE" end
-		local api = C_MythicPlus
-		if type(api) ~= "table" or type(api.GetCurrentSeason) ~= "function" then return false, "CURRENT_SEASON_UNAVAILABLE" end
-		local ok, season = safeCall(api.GetCurrentSeason)
-		season = ok and safeNumber(season, 1, true) or nil
-		if season and season ~= snapshot.seasonId then return true, "SEASON_MISMATCH" end
-		if snapshot.weeklyIdentity and C_DateAndTime and type(C_DateAndTime.GetWeeklyResetStartTime) == "function" then
-			local weekOK, week = safeCall(C_DateAndTime.GetWeeklyResetStartTime)
-			week = weekOK and safeNumber(week, 1, true) or nil
-			if week and week ~= snapshot.weeklyIdentity then return true, "WEEKLY_RESET_MISMATCH" end
-		end
-		return false, "BLOCK_FRESH"
-	end
-
 	function Module:RequestData(force)
 		if self.initialDataRequested and not force then return false end
 		self.initialDataRequested = true
@@ -382,11 +366,11 @@ HolyStorm:RegisterModule(metadata, function(Module)
 	function Module:OnInitialize()
 		HolyStorm.CharacterScans:RegisterProvider("MythicPlus", {
 			block = "mythicPlus", capability = "character.scan.mythicplus", addonId = "mythicPlus", order = 20,
-			needsRefresh = function(snapshot) return Module:NeedsBootstrapRefresh(snapshot) end,
-			request = function(sync, reason)
-				if reason == "INITIAL_MISSING_BLOCK" or reason == "INITIAL_STALE_BLOCK" or reason == "INITIAL_INCOMPLETE_BLOCK" or reason == "SEASON_MISMATCH" or reason == "WEEKLY_RESET_MISMATCH" then Module:RequestData(false)
-				elseif reason == "CAPABILITY" then Module:RequestData(true) end
-				local shortDelay = reason == "CHALLENGE_MODE_COMPLETED" or reason == "CHALLENGE_MODE_MAPS_UPDATE" or reason == "MYTHIC_PLUS_NEW_WEEKLY_RECORD" or reason == "WEEKLY_REWARDS_UPDATE"
+			request = function(sync, reason, reasons)
+				local manual = reason == "MANUAL" or reason == "MANUAL_COMMAND" or reason == "DASHBOARD_MANUAL" or reason == "CAPABILITY"
+					or type(reasons) == "table" and (reasons.MANUAL == true or reasons.MANUAL_COMMAND == true or reasons.DASHBOARD_MANUAL == true or reasons.CAPABILITY == true)
+				if manual then Module:RequestData(true) end
+				local shortDelay = reason == "CHALLENGE_MODE_COMPLETED" or reason == "MYTHIC_PLUS_NEW_WEEKLY_RECORD"
 				local _, workflowId = Module:Queue(sync, shortDelay and 0.5 or 1.5)
 				return workflowId
 			end,
@@ -399,18 +383,24 @@ HolyStorm:RegisterModule(metadata, function(Module)
 	function Module:OnEnable()
 		if not C_MythicPlus or not C_ChallengeMode then self:Disable(); return end
 		self.initialDataRequested = false
-		for _, eventName in ipairs({ "CHALLENGE_MODE_COMPLETED", "CHALLENGE_MODE_MAPS_UPDATE", "MYTHIC_PLUS_NEW_WEEKLY_RECORD", "WEEKLY_REWARDS_UPDATE" }) do
+		self.ignoreInitialWeeklyRewardsUpdate = HolyStorm.State and not HolyStorm.State:Is("playerReady") or false
+		for _, eventName in ipairs({ "CHALLENGE_MODE_COMPLETED", "MYTHIC_PLUS_NEW_WEEKLY_RECORD" }) do
 			local name = eventName
 			HolyStorm.Events:Register(name, "mythicplus", function()
 				HolyStorm.CharacterScans:Request("mythicPlus", name, true, { order = 20 })
 			end)
 		end
+		HolyStorm.Events:Register("WEEKLY_REWARDS_UPDATE", "mythicplus-weekly-ready", function()
+			if self.ignoreInitialWeeklyRewardsUpdate then self.ignoreInitialWeeklyRewardsUpdate = false; return end
+			HolyStorm.CharacterScans:Request("mythicPlus", "WEEKLY_REWARDS_UPDATE", true, { order = 20 })
+		end)
 		local context = self.loadContext
 		if context and context.reason == "event" then HolyStorm.CharacterScans:Request("mythicPlus", context.trigger, true, { order = 20 }) end
 	end
 
 	function Module:OnDisable()
 		self.initialDataRequested = false
+		self.ignoreInitialWeeklyRewardsUpdate = nil
 		HolyStorm.Events:UnregisterOwner("mythicplus")
 		HolyStorm.Snapshots:Cancel("mythicplus")
 	end

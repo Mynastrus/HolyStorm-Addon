@@ -1,9 +1,8 @@
 local root=(arg[0]:gsub("tools[/\\]test_character_scan_manager.lua$","")).."LIVE/Holy_Storm/"
+local repository=arg[0]:gsub("tools[/\\]test_character_scan_manager.lua$","")
 unpack=unpack or table.unpack
-local metadata,queued,logs,listeners,emitted={},{},{},{},{}
+local queued,logs,listeners,emitted={},{},{},{}
 local clock=100000
-local blockMetadata={identity={version=1,updatedAt=clock},mythicPlus={version=1,updatedAt=clock-10},raid={version=1,updatedAt=clock-10}}
-local blockSnapshots={mythicPlus={dungeons={{affixScores={}}}}};local inspectMythic=false
 local HolyStorm={Utils={},Tasks={definitions={}},Events={},PlayerData={},AddonLoader={}}
 function HolyStorm:GetAddon()return self end
 function LibStub(name)if name=="AceAddon-3.0"then return HolyStorm end;return{GetLocale=function()return setmetatable({},{__index=function(_,key)return key end})end}end
@@ -16,57 +15,47 @@ function HolyStorm.Tasks:RegisterTaskType(id,definition)self.definitions[id]=def
 function HolyStorm.Tasks:Queue(id,options)queued[#queued+1]={id=id,options=options};return"task-"..#queued,"QUEUED"end
 function HolyStorm.Events:Register(event,_,callback)listeners[event]=callback end
 function HolyStorm.Events:Emit(event,...)emitted[#emitted+1]={event=event,args={...}}end
-function HolyStorm.PlayerData:GetMetadata(_,block)return blockMetadata[block]end
-function HolyStorm.PlayerData:GetBlock(_,block)return blockSnapshots[block]end
-function HolyStorm.PlayerData:GetBlockFreshness(_,block)local meta=blockMetadata[block];local staleAfter=21600;local updatedAt=meta and(tonumber(meta.updatedAt)or 0)or nil;local age=updatedAt and clock-updatedAt or nil;return{metadata=meta,metadataExists=meta~=nil,stale=not meta or age>staleAfter,updatedAt=updatedAt,staleAfter=staleAfter,age=age}end
-function HolyStorm.AddonLoader:GetCharacterDataDefinitions()return{{block="equipment",capability="character.scan.equipment",addonId="equipment",order=10},{block="mythicPlus",capability="character.scan.mythicplus",addonId="mythicPlus",order=20,inspectFresh=inspectMythic},{block="raid",capability="character.scan.raids",addonId="raids",order=30}}end
+function HolyStorm.AddonLoader:GetCharacterDataDefinitions()return{{block="equipment",capability="character.scan.equipment",addonId="equipment",order=10},{block="mythicPlus",capability="character.scan.mythicplus",addonId="mythicPlus",order=20},{block="raid",capability="character.scan.raids",addonId="raids",order=30},{block="delves",capability="character.scan.delves",addonId="delves",order=40},{block="stats",capability="character.scan.stats",addonId="characters",order=50}}end
 function UnitGUID()return"Player-Local"end
-
 assert(loadfile(root.."Core/Tasks/CharacterScanManager.lua"))();local scans=HolyStorm.CharacterScans;scans:Initialize()
-assert(not listeners.PLAYER_ENTERING_WORLD and listeners.PLAYER_LOGIN,"initial acquisition is tied to true login, not PLAYER_ENTERING_WORLD")
-assert(HolyStorm.Tasks.definitions["CharacterScan.InitialBootstrap"]and not HolyStorm.Tasks.definitions["CharacterScan.InitialMissing"],"the internal bootstrap task is named for missing and stale discovery")
-local started={};scans:RegisterProvider("Equipment",{block="equipment",capability="character.scan.equipment",order=10,request=function(_,reason)started[#started+1]={block="equipment",reason=reason};return"wf-equipment-"..#started end});scans:RegisterProvider("Raids",{block="raid",capability="character.scan.raids",order=30,status=function()return{"snapshot"}end,request=function(_,reason,reasons)started[#started+1]={block="raid",reason=reason,reasons=reasons};return"wf-raid-"..#started end})
-assert(type(scans.providers.raid.status)=="function","scan provider status contract must survive registration")
-assert(not scans:RegisterProvider("BadStatus",{block="bad",capability="character.scan.bad",request=function()end,status=true}),"status callback must be a function when declared")
-scans:RegisterProvider("MythicPlus",{block="mythicPlus",capability="character.scan.mythicplus",order=20,request=function(_,reason)started[#started+1]={block="mythicPlus",reason=reason};return"wf-mythicplus-"..#started end})
+assert(not HolyStorm.Tasks.definitions["CharacterScan.InitialBootstrap"],"the delayed login bootstrap task is removed")
+assert(HolyStorm.Tasks.definitions["CharacterScan.Advance"],"explicit and event-driven work keeps the shared serialized advance task")
+local declarations=scans:GetDeclarations();assert(#declarations==5 and declarations[1].block=="equipment"and declarations[5].block=="stats"and declarations[3].addonId=="raids","manual scan declarations are discovered in producer order without loading the providers")
+local before=#queued;listeners.PLAYER_LOGIN();assert(#queued==before and scans.loginSession==1 and scans:GetDiagnostics().loginProducerScans==0,"login resets transient scan diagnostics without queuing producer work")
+assert(not scans.QueueBootstrapBlocks,"no callable missing/stale bootstrap path remains")
 
-assert(scans:QueueBootstrapBlocks()and#scans.queue==1 and scans.queue[1].block=="equipment"and scans.queue[1].reason=="INITIAL_MISSING_BLOCK","a missing block queues exactly one missing initial scan")
-scans:QueueBootstrapBlocks();assert(#scans.queue==1,"repeated bootstrap discovery merges the same missing block without a refresh loop")
-local equipmentDecision=logs[#logs-2].context;assert(equipmentDecision.block=="equipment"and equipmentDecision.provider=="Equipment"and equipmentDecision.addonId=="equipment"and not equipmentDecision.metadataExists and equipmentDecision.stale and equipmentDecision.queued and equipmentDecision.reason=="INITIAL_MISSING_BLOCK"and equipmentDecision.skipReason=="NONE"and equipmentDecision.staleAfter==21600,"missing-block bootstrap logging records the complete decision")
-assert(scans:Advance()and scans.active.block=="equipment"and#started==1 and started[1].reason=="INITIAL_MISSING_BLOCK","the missing block starts with its bootstrap reason")
-assert(scans:Finish({workflowId=scans.active.workflowId},"COMPLETED"));assert(emitted[#emitted].event=="HS_CHARACTER_SCAN_COMPLETED"and emitted[#emitted].args[1]=="equipment"and emitted[#emitted].args[2]=="COMPLETED","scan completion is exposed with block and workflow status")
+local started={}
+for _,block in ipairs({"equipment","mythicPlus","raid","delves","stats"})do local name=block;assert(scans:RegisterProvider(name,{block=name,capability="character.scan."..name,request=function(sync,reason,reasons)started[#started+1]={block=name,reason=reason,reasons=reasons};return"wf-"..name.."-"..#started end}))end
+assert(not scans:RegisterProvider("BadStatus",{block="bad",capability="character.scan.bad",request=function()return"wf-bad"end,status=true}),"status callback must be a function when declared")
+HolyStorm.Data={CharacterStore={blocks={equipment={snapshotVersion=4},mythicPlus={snapshotVersion=5},raid={snapshotVersion=3},delves={snapshotVersion=3},stats={snapshotVersion=2}}}}
+function HolyStorm.Data.CharacterStore:GetBlock(_,block)return self.blocks[block]end
+local beforeLoginCases=#queued
+for _,block in ipairs({"equipment","mythicPlus","raid","delves","stats"})do local before=#queued;listeners.PLAYER_LOGIN();assert(#queued==before and not scans.pending[block]and not scans.active,"login with an existing "..block.." snapshot queues no producer")end
+HolyStorm.Data.CharacterStore.blocks={}
+for _,block in ipairs({"equipment","mythicPlus","raid","delves","stats"})do local before=#queued;listeners.PLAYER_LOGIN();assert(#queued==before and not scans.pending[block]and not scans.active,"login with a missing "..block.." snapshot queues no producer")end
+assert(#queued==beforeLoginCases and scans:GetDiagnostics().loginProducerScans==0,"neither a warm nor empty local cache causes login work or scan-all")
 
-scans.active=nil;scans.pending={};scans.queue={};blockMetadata.equipment={version=1,updatedAt=clock-10};assert(scans:QueueBootstrapBlocks()and#scans.queue==0,"existing fresh blocks do not receive an initial scan")
-local freshDecision=logs[#logs-2].context;assert(freshDecision.block=="equipment"and freshDecision.metadataExists and not freshDecision.stale and not freshDecision.queued and freshDecision.reason=="FRESH"and freshDecision.skipReason=="BLOCK_FRESH"and freshDecision.updatedAt==clock-10 and freshDecision.age==10,"fresh-block bootstrap logging records timestamp and age")
+local beforeEvent=#queued;scans:Request("equipment","PLAYER_EQUIPMENT_CHANGED",true,{order=10});assert(#queued==beforeEvent+1 and queued[#queued].id=="CharacterScan.Advance"and scans:GetRuntimeState("Player-Local","equipment").state=="DIRTY","a relevant Blizzard event marks the block dirty and uses the central queue")
+local activeRequest=scans.queue[1];assert(activeRequest.block=="equipment"and activeRequest.reason=="PLAYER_EQUIPMENT_CHANGED","event reason survives queuing")
+local advanceOptions=queued[#queued].options;assert(advanceOptions.priority==30,"automatic event scans keep normal background priority")
+assert(scans:Advance()and scans.active.block=="equipment"and scans:GetRuntimeState("Player-Local","equipment").state=="REFRESHING"and started[1].reason=="PLAYER_EQUIPMENT_CHANGED","the existing provider workflow starts and exposes REFRESHING")
+local activeId=scans.active.workflowId
+scans:Request("equipment","SOCKET_INFO_UPDATE",true,{order=10});scans:Request("mythicPlus","MANUAL",true,{order=20,manual=true});scans:Request("raid","ENCOUNTER_END",true,{order=30});scans:Request("raid","MANUAL_COMMAND",true,{order=30});assert(scans.active.workflowId==activeId and scans.pending.equipment.reasons.SOCKET_INFO_UPDATE and scans.pending.raid.reasons.ENCOUNTER_END and scans.pending.raid.reasons.MANUAL_COMMAND,"events and user requests merge without parallel scans")
+assert(queued[#queued].options.priority==15,"an interactive request raises the shared advance task priority")
+assert(scans:Finish({workflowId=activeId},"COMPLETED")and scans:GetRuntimeState("Player-Local","equipment").state=="DIRTY","an event received during a scan remains dirty until its queued follow-up starts")
+assert(scans:Advance()and scans.active.block=="mythicPlus"and started[#started].reason=="MANUAL","manual Mythic+ scans stay serialized")
+assert(scans:Finish({workflowId=scans.active.workflowId},"COMPLETED"));assert(scans:Advance()and scans.active.block=="raid"and started[#started].reason=="ENCOUNTER_END"and started[#started].reasons.MANUAL_COMMAND,"a manual Raid request merges with the pending event")
+assert(scans:Finish({workflowId=scans.active.workflowId},"FAILED")and scans:GetRuntimeState("Player-Local","raid").state=="ERROR","failed refresh retains an ERROR runtime state")
+assert(scans:Advance()and scans.active.block=="equipment"and started[#started].reason=="SOCKET_INFO_UPDATE","same-producer follow-up remains serialized after higher-priority blocks")
+assert(scans:GetRuntimeState("Player-Remote","raid")==nil,"local scan state is not exposed as a remote character state")
 
-scans.active=nil;scans.pending={};scans.queue={};blockMetadata.equipment.updatedAt=clock-21601;blockMetadata.mythicPlus.updatedAt=clock-21602;blockMetadata.raid.updatedAt=clock-21603
-assert(scans:QueueBootstrapBlocks()and#scans.queue==3 and scans.queue[1].block=="equipment"and scans.queue[2].block=="mythicPlus"and scans.queue[3].block=="raid","multiple stale blocks are queued in stable provider order")
-assert(scans.queue[1].reason=="INITIAL_STALE_BLOCK"and scans.queue[2].reason=="INITIAL_STALE_BLOCK"and scans.queue[3].reason=="INITIAL_STALE_BLOCK","stale blocks retain the stale bootstrap reason")
-assert(scans:Advance()and scans.active.block=="equipment"and started[#started].reason=="INITIAL_STALE_BLOCK","a stale block starts its provider workflow")
-local activeId=scans.active.workflowId;scans:Advance();assert(scans.active.workflowId==activeId,"multiple stale blocks never overlap")
-scans:Request("equipment","PLAYER_EQUIPMENT_CHANGED",true,{order=10});scans:Request("equipment","SOCKET_INFO_UPDATE",true,{order=10});scans:Request("raid","ENCOUNTER_END",true,{order=30});scans:Request("raid","MANUAL_COMMAND",true,{order=30});assert(scans.active.workflowId==activeId and scans.pending.equipment.reasons.PLAYER_EQUIPMENT_CHANGED and scans.pending.raid.reasons.ENCOUNTER_END and scans.pending.raid.reasons.MANUAL_COMMAND,"events and a manual request merge without creating a parallel workflow")
-assert(scans:Finish({workflowId=activeId},"COMPLETED"));assert(scans:Advance()and scans.active.block=="mythicPlus"and started[#started].reason=="INITIAL_STALE_BLOCK","the stale Mythic+ workflow starts only after the prior workflow releases")
-assert(scans:Finish({workflowId=scans.active.workflowId},"COMPLETED"));assert(scans:Advance()and scans.active.block=="raid"and started[#started].reason=="INITIAL_STALE_BLOCK"and started[#started].reasons.MANUAL_COMMAND,"merged manual Raid diagnostic intent reaches the provider")
-assert(scans:Finish({workflowId=scans.active.workflowId},"COMPLETED"));assert(scans:Advance()and scans.active.block=="equipment","the dirty rescan is retained after all earlier bootstrap work")
-
-scans.active=nil;scans.pending={};scans.queue={};blockMetadata.equipment=nil;blockMetadata.mythicPlus.updatedAt=clock-21601;blockMetadata.raid.updatedAt=clock
-assert(scans:QueueBootstrapBlocks()and#scans.queue==2 and scans.queue[1].block=="equipment"and scans.queue[1].reason=="INITIAL_MISSING_BLOCK"and scans.queue[2].block=="mythicPlus"and scans.queue[2].reason=="INITIAL_STALE_BLOCK","mixed missing and stale blocks are queued together in stable order")
-local queuedBeforeLogin=#queued;listeners.PLAYER_LOGIN();assert(queued[#queued].id=="CharacterScan.InitialBootstrap"and#queued==queuedBeforeLogin+1,"login schedules the renamed bootstrap task exactly once")
-
-scans.active=nil;scans.pending={};scans.queue={};blockMetadata.equipment={version=1,updatedAt=clock};blockMetadata.mythicPlus={version=1,updatedAt=clock};blockMetadata.raid={version=1,updatedAt=clock};inspectMythic=true;scans.providers.mythicPlus=nil
-local loadCalls=0;function HolyStorm.AddonLoader:LoadById(addonId,context)assert(addonId=="mythicPlus"and context.block=="mythicPlus");loadCalls=loadCalls+1;scans:RegisterProvider("MythicPlus",{block="mythicPlus",capability="character.scan.mythicplus",addonId="mythicPlus",order=20,needsRefresh=function(snapshot)if type(snapshot)~="table"or snapshot.schemaVersion~=5 or snapshot.snapshotVersion~=5 or snapshot.poolComplete~=true then return true,"MYTHICPLUS_SNAPSHOT_INCOMPLETE"end;return false,"BLOCK_FRESH"end,request=function(_,reason)started[#started+1]={block="mythicPlus",reason=reason};return"wf-mythicplus-lod"end});return true end
-blockSnapshots.mythicPlus={dungeons={{affixScores={{name="Unresolved"}}}}};assert(scans:QueueBootstrapBlocks()and loadCalls==1 and#scans.queue==1 and scans.queue[1].block=="mythicPlus"and scans.queue[1].reason=="INITIAL_INCOMPLETE_BLOCK","a fresh structurally incomplete LoD block loads its provider and queues one refresh")
-scans:QueueBootstrapBlocks();assert(loadCalls==1 and#scans.queue==1,"repeated bootstrap inspection merges the incomplete block without reloading or looping")
-assert(scans:Advance()and scans.active.block=="mythicPlus"and started[#started].reason=="INITIAL_INCOMPLETE_BLOCK","the LoD provider starts the incomplete-block workflow")
-assert(scans:Finish({workflowId=scans.active.workflowId},"COMPLETED"));scans.active=nil;scans.pending={};scans.queue={};blockSnapshots.mythicPlus={snapshotVersion=5,schemaVersion=5,poolComplete=true,dungeonCount=1,dungeons={{challengeMapId=1,affixScores={}}}};assert(scans:QueueBootstrapBlocks()and#scans.queue==0,"a current complete Mythic+ v5 pool does not scan again")
-
-local projectRoot=arg[0]:gsub("tools[/\\]test_character_scan_manager.lua$","")
-local eventContracts={
+local contracts={
  {path="LIVE/Holy_Storm_Equipment/Equipment.lua",events={"PLAYER_EQUIPMENT_CHANGED","UNIT_INVENTORY_CHANGED","SOCKET_INFO_UPDATE"}},
  {path="LIVE/Holy_Storm_Raids/Raids.lua",events={"UPDATE_INSTANCE_INFO","ENCOUNTER_END"}},
- {path="LIVE/Holy_Storm_MythicPlus/MythicPlus.lua",events={"CHALLENGE_MODE_COMPLETED","CHALLENGE_MODE_MAPS_UPDATE","MYTHIC_PLUS_NEW_WEEKLY_RECORD","WEEKLY_REWARDS_UPDATE"}},
+ {path="LIVE/Holy_Storm_MythicPlus/MythicPlus.lua",events={"CHALLENGE_MODE_COMPLETED","MYTHIC_PLUS_NEW_WEEKLY_RECORD","WEEKLY_REWARDS_UPDATE"}},
  {path="LIVE/Holy_Storm_Delves/Delves.lua",events={"WEEKLY_REWARDS_UPDATE"}},
 }
-for _,contract in ipairs(eventContracts)do local file=assert(io.open(projectRoot..contract.path,"rb"));local source=file:read("*a");file:close();assert(not source:find("PLAYER_ENTERING_WORLD",1,true),contract.path.." must not scan on PLAYER_ENTERING_WORLD");assert(source:find("CharacterScans:Request",1,true),contract.path.." routes events through the central scan queue");for _,event in ipairs(contract.events)do assert(source:find(event,1,true),contract.path.." keeps event "..event)end;if contract.path=="LIVE/Holy_Storm_Raids/Raids.lua"then assert(not source:find("\"BOSS_KILL\"",1,true),"Raid scans do not subscribe to the generic BOSS_KILL event")end end
-local delvesToc=assert(io.open(projectRoot.."LIVE/Holy_Storm_Delves/Holy_Storm_Delves.toc","rb"));local delvesMetadata=delvesToc:read("*a");delvesToc:close();assert(delvesMetadata:find("X%-HolyStorm%-CharacterInspectFresh: true"),"Delves bootstrap inspects completeness, season and reset identity for stored snapshots")
-print("Central missing/stale bootstrap, serialization and dirty-event merge tests passed")
+for _,contract in ipairs(contracts)do local file=assert(io.open(repository..contract.path,"rb"));local source=file:read("*a");file:close();assert(source:find("CharacterScans:Request",1,true),contract.path.." routes refreshes through the serialized manager");for _,event in ipairs(contract.events)do assert(source:find(event,1,true),contract.path.." keeps the verified relevant trigger "..event)end end
+local statsFile=assert(io.open(repository.."LIVE/Holy_Storm_Characters/Stats.lua","rb"));local stats=statsFile:read("*a");statsFile:close();assert(not stats:find('"PLAYER_ENTERING_WORLD"',1,true)and not stats:find('metadata.snapshotVersion',1,true),"Stats does not create login/missing-baseline scans")
+local characterManagerFile=assert(io.open(repository.."LIVE/Holy_Storm/Core/Tasks/CharacterScanManager.lua","rb"));local managerSource=characterManagerFile:read("*a");characterManagerFile:close();assert(not managerSource:find("INITIAL_MISSING_BLOCK",1,true)and not managerSource:find("INITIAL_STALE_BLOCK",1,true)and not managerSource:find("CharacterStore",1,true)and not managerSource:find("staleAfter",1,true),"the central scan manager does not inspect persisted presence/age to synthesize producer work")
+print("Cache-first login, central serialization, event routing and transient producer-state tests passed")

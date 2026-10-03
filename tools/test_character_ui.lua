@@ -11,7 +11,7 @@ function UnitGUID()return"LOCAL"end
 LOCALIZED_CLASS_NAMES_MALE={PALADIN="Paladin",MAGE="Mage",DRUID="Druid"}
 function HolyStorm.Data.CharacterStore:Get(guid)return records[guid]end
 function HolyStorm.Data.CharacterStore:GetBlock(guid,block)local record=records[guid];if not record then return nil end;if block=="equipment"then return{equipment=record.equipment,itemLevel=record.itemLevel},deepCopy(metas[guid]and metas[guid][block])end;return record[block],deepCopy(metas[guid]and metas[guid][block])end
-function HolyStorm.Data.CharacterStore:RequestRefresh(guid,blocks)refreshes[#refreshes+1]={guid=guid,blocks=blocks};return true end
+function HolyStorm.Data.CharacterStore:RequestRefresh(guid,blocks,options)refreshes[#refreshes+1]={guid=guid,blocks=blocks,options=options};return true end
 function HolyStorm.Data.CharacterStore:CaptureCurrent()return records.LOCAL end
 function HolyStorm.Data.GuildStore:GetCurrent()return{id="guild",roster={A={name="Alpha",rank="Officer",rankIndex=1,classFile="PALADIN",level=80},D={name="Delta",rank="Member",class="Druid",classFile="DRUID",level=70}}}end
 function HolyStorm.Data.PlayerStore:GetCharacterOwner(guid)return"account-"..guid end
@@ -34,7 +34,7 @@ local tabs=C:GetTabs();assert(tabs[1].id=="summary"and tabs[2].id=="equipment"an
 
 local a=C:SetContext("A");assert(a.characterUUID=="A"and a.accountUUID=="account-A"and a.className=="Paladin"and a.member.rankIndex==1 and a.spec.name=="Retribution"and a.spec.icon==98765)
 local d=C:ResolveContext("D");assert(d.className=="Druid","ResolveContext falls back to GuildStore member.class")
-local token=a.token;local equipment,meta=C:GetSnapshot("A","equipment");assert(equipment.itemLevel==710 and meta.version==2);assert(C:GetDataStatus("A","equipment")=="STALE")
+local token=a.token;local equipment,meta=C:GetSnapshot("A","equipment");assert(equipment.itemLevel==710 and meta.version==2);assert(C:GetDataStatus("A","equipment")=="CURRENT","snapshot blocks do not inherit the generic six-hour timestamp heuristic")
 local b=C:SetContext("B");assert(b.characterUUID=="B"and not C:IsCurrent("A",token)and C:IsCurrent("B",b.token),"stale context guard")
 assert(b.name=="Beta"and b.realm=="OtherRealm"and b.fullName=="Beta-OtherRealm","ResolveContext splits Name-Realm into name, realm and retained fullName")
 assert(C:ShowTooltip({},"B")and GameTooltip.title=="|cff33ccffBeta|r","tooltip title omits the realm, preserves the character class color, and uses no legacy RGB arguments");assert(GameTooltip.lines[1]:find("OtherRealm | Mage | Level 75",1,true)and GameTooltip.lines[1]:find("PlusManz%-Horde")and GameTooltip.wraps[1]==false,"tooltip identity line contains a faction indicator and disables wrapping: "..tostring(GameTooltip.lines[1]).." / "..tostring(GameTooltip.wraps[1]));local coloredMain=false;for _,line in ipairs(GameTooltip.lines)do if line:find("ACCOUNT_MAIN: |cffff80ccAlpha|r",1,true)then coloredMain=true end end;assert(coloredMain,"tooltip colors the main character with the main character's own class")
@@ -92,12 +92,12 @@ assert(dashboard.name=="Alpha"and dashboard.coloredName=="|cffff80ccAlpha|r"and 
 assert(dashboard.itemLevel==710 and dashboard.mythicPlusRating==2500,"dashboard query reuses Equipment and Mythic+ snapshots")
 assert(dashboard.bestRaid.difficulty=="HEROIC"and dashboard.bestRaid.killed==1 and dashboard.bestRaid.total==3 and dashboard.bestRaid.raidName=="Current Two","dashboard best raid uses established priority across only current-expansion catalog raids")
 assert(#dashboard.bestRaidRows==3 and dashboard.bestRaidRows[1].bossName=="Current Boss Two"and dashboard.bestRaidRows[3].difficulty==nil,"dashboard tooltip receives the selected raid's complete catalog rows")
-local savedSeason=records.A.mythicPlus.seasonId;records.A.mythicPlus.seasonId=17;assert(C:GetDashboardSummary("A").mythicPlusRating==nil,"dashboard does not show a stored Mythic+ score from an older season");records.A.mythicPlus.seasonId=savedSeason
+local savedSeason=records.A.mythicPlus.seasonId;records.A.mythicPlus.seasonId=17;local oldSeasonSummary=C:GetDashboardSummary("A");assert(oldSeasonSummary.mythicPlusRating==2500 and oldSeasonSummary.snapshotStatus.mythicPlus=="STALE","old Mythic+ value remains visible while the shared state marks it stale");records.A.mythicPlus.seasonId=savedSeason
 records.C.equipment={itemLevel=0,slots={}};local missingDashboard=C:GetDashboardSummary("C");assert(missingDashboard.itemLevel==nil and missingDashboard.mythicPlusRating==nil and missingDashboard.bestRaid==nil,"dashboard query leaves unavailable producer data unknown")
 records.A.raid=nil
 
-HolyStorm.Tasks.registry["Character.Refresh"]={};assert(C:RequestRefresh("A",{"equipment"},"TEST"));assert(C:RequestRefresh("A",{"raid"},"TEST_MERGE"));local queued=HolyStorm.Tasks.queued[1];assert(queued.options.mergeKey=="A"and queued.options.metadata.characterUUID=="A");assert(C:ConsumeRefresh("A"));assert(refreshes[#refreshes].guid=="A"and refreshes[#refreshes].blocks[1]=="equipment"and refreshes[#refreshes].blocks[2]=="raid","refresh block coalescing")
-local queueCount=#HolyStorm.Tasks.queued;assert(C:RequestRefresh("C",{"stats"},"CHARACTER_OPEN"));assert(#HolyStorm.Tasks.queued==queueCount,"current blocks are not refreshed on open")
-HolyStorm.Tasks.registry["Character.Refresh"]=nil;assert(C:RequestRefresh("B",{"raid"},"TEST"));assert(refreshes[#refreshes].guid=="B"and refreshes[#refreshes].blocks[1]=="raid")
+HolyStorm.Tasks.registry["Character.Refresh"]={};assert(C:RequestRefresh("A",{"equipment"},"MANUAL"));assert(C:RequestRefresh("A",{"raid"},"MANUAL"));local queued=HolyStorm.Tasks.queued[1];assert(queued.options.mergeKey=="A"and queued.options.metadata.characterUUID=="A"and queued.options.priority==15);assert(C:ConsumeRefresh("A"));assert(refreshes[#refreshes].guid=="A"and refreshes[#refreshes].blocks[1]=="equipment"and refreshes[#refreshes].blocks[2]=="raid","explicit remote refresh block coalescing")
+local queueCount=#HolyStorm.Tasks.queued;assert(C:RequestRefresh("C",{"stats"},"CHARACTER_OPEN"));assert(#HolyStorm.Tasks.queued==queueCount,"opening a character view does not enqueue a producer scan")
+HolyStorm.Tasks.registry["Character.Refresh"]=nil;assert(C:RequestRefresh("B",{"raid"},"MANUAL"));assert(refreshes[#refreshes].guid=="B"and refreshes[#refreshes].blocks[1]=="raid"and refreshes[#refreshes].options.force==true,"remote manual refresh uses Sync rather than a local scan and requests the selected block")
 
 print("Character UI registry, context, refresh and raid presentation tests passed")

@@ -1,7 +1,7 @@
 local root=(arg[0]:gsub("tools[/\\]test_mythicplus.lua$",""))
 local featureRoot=root.."LIVE/Holy_Storm_MythicPlus/"
 local Module={};local registeredEvents={};local capabilities={};local requested={maps=0,rewards=0};local workflows={created=0,merged=0,active=false,queueCalls=0};local commits,emitted,blockEvents=0,{},{ };local logEntries={}
-local HolyStorm={Utils={Now=function()return 100 end},Data={CharacterStore={}},Snapshots={},Events={},Logger={},PlayerData={}}
+local playerReady=false;local HolyStorm={Utils={Now=function()return 100 end},Data={CharacterStore={}},Snapshots={},Events={},Logger={},PlayerData={},State={Is=function(_,name)return name=="playerReady"and playerReady end}}
 function HolyStorm.Logger:Write(level,source,category,message,context)logEntries[#logEntries+1]={level=level,source=source,category=category,message=message,context=context}end
 HolyStorm.CharacterScans={providers={},requests={}}
 function HolyStorm.CharacterScans:RegisterProvider(_,definition)self.providers[definition.block]=definition;return true end
@@ -51,7 +51,7 @@ assert(metadata.id=="mythicPlus"and metadata.name=="MythicPlus"and metadata.vers
 assert(metadata.data.schemaVersion==5 and HolyStorm.PlayerData.blockSchema==5,"optional affix details advance the persisted snapshot schema")
 assert(metadata.sync.domains[1]=="character"and metadata.permissions[1]=="sync-send"and metadata.permissions[2]=="sync-receive","Mythic+ uses only the standard character sync permissions")
 Module:OnInitialize();Module:OnEnable()
-assert(registeredEvents.CHALLENGE_MODE_COMPLETED and registeredEvents.CHALLENGE_MODE_MAPS_UPDATE and registeredEvents.MYTHIC_PLUS_NEW_WEEKLY_RECORD and registeredEvents.WEEKLY_REWARDS_UPDATE,"only persisted-progression events are registered")
+assert(registeredEvents.CHALLENGE_MODE_COMPLETED and registeredEvents.MYTHIC_PLUS_NEW_WEEKLY_RECORD and registeredEvents.WEEKLY_REWARDS_UPDATE and not registeredEvents.CHALLENGE_MODE_MAPS_UPDATE,"only persisted character-progression events are registered; map-pool availability does not scan character snapshots")
 assert(not registeredEvents.MYTHIC_PLUS_CURRENT_AFFIX_UPDATE and not registeredEvents.PLAYER_ENTERING_WORLD,"transient affix changes and generic login are not direct triggers")
 
 local snapshot=Module:Collect()
@@ -71,12 +71,7 @@ assert(snapshot.ownedKey==nil and snapshot.affixes==nil and snapshot.currentRun=
 assert(snapshot.weeklyIdentity==1790812800 and snapshot.greatVaultMythicPlus.progress==1 and #snapshot.greatVaultMythicPlus.activities==2,"Great Vault thresholds are stored separately from seasonal scores and run counts")
 assert(snapshot.greatVaultMythicPlus.activities[2].threshold==8,"vault thresholds remain threshold metadata and are not labeled as eight runs")
 
-local old=Module:Collect();C_MythicPlus.GetCurrentSeason=function()return 19 end
-local refresh,reason=Module:NeedsBootstrapRefresh(old);assert(refresh and reason=="SEASON_MISMATCH","bootstrap refreshes a stored snapshot after a season change")
-C_MythicPlus.GetCurrentSeason=function()return 18 end
-C_DateAndTime.GetWeeklyResetStartTime=function()return 1790812801 end
-refresh,reason=Module:NeedsBootstrapRefresh(old);assert(refresh and reason=="WEEKLY_RESET_MISMATCH","current vault data refreshes after the shared weekly reset identity changes")
-C_DateAndTime.GetWeeklyResetStartTime=function()return 1790812800 end
+assert(Module.NeedsBootstrapRefresh==nil and HolyStorm.CharacterScans.providers.mythicPlus.needsRefresh==nil,"snapshot age and season context never start a producer scan")
 
 local zero=Module:Collect();assert(Module:Validate(zero),"rating zero is accepted")
 C_ChallengeMode.GetOverallDungeonScore=function()return 2750 end
@@ -126,17 +121,19 @@ local smaller=Module:Collect();assert(smaller and smaller.dungeonCount==2,"the c
 C_ChallengeMode.GetMapTable=function()return pool end
 
 local provider=assert(HolyStorm.CharacterScans.providers.mythicPlus)
-provider.request(true,"INITIAL_MISSING_BLOCK");assert(requested.maps==1 and requested.rewards==1 and workflows.created==1,"bootstrap requests Blizzard's asynchronous map and reward data through the central workflow")
+provider.request(true,"MANUAL_COMMAND");assert(requested.maps==1 and requested.rewards==1 and workflows.created==1,"an explicit manual scan requests Blizzard's asynchronous map and reward data through the central workflow")
 assert(workflows.options.maxRetries==3 and workflows.options.retryDelay==2.5 and workflows.options.onValidationFailure,"retry limit, delay, and compact validation diagnostics are configured on the standard workflow")
 workflows.options.onValidationFailure("DUNGEON_POOL_NOT_READY","RETRY",1,3,{season=18,rating=0,maps=0,expectedMaps=8,mapId=4})
 local validationLog=logEntries[#logEntries]
 assert(validationLog.level=="WARN"and validationLog.source=="MythicPlus"and validationLog.message=="MythicPlus validation: RETRY"and validationLog.context.reason=="DUNGEON_POOL_NOT_READY"and validationLog.context.season==18 and validationLog.context.rating==0 and validationLog.context.maps==0 and validationLog.context.expectedMaps==8 and validationLog.context.mapId==4 and validationLog.context.retryCount==1 and validationLog.context.maxRetries==3,"diagnostic log preserves reason ID, known zero, compact map context, and retry bounds")
 provider.request(true,"CAPABILITY");assert(requested.maps==2 and requested.rewards==2 and workflows.created==1 and workflows.merged==1,"a manual scan requests fresh Retail data while reusing the serialized workflow")
+provider.request(true,"CHALLENGE_MODE_COMPLETED",{MANUAL_COMMAND=true});assert(requested.maps==3 and requested.rewards==3 and workflows.merged==2,"a manual request merged with an automatic event still requests fresh map and reward data")
 local pending=workflows.scanner();assert(workflows.validator(pending),"the queued scan re-collects and validates current API data")
 assert(workflows.commit(pending)and commits==1 and emitted[1].event=="HS_MYTHICPLUS_UPDATED"and emitted[1].block=="mythicPlus","commit uses PlayerData's owned-block contract")
 local before=#HolyStorm.CharacterScans.requests
-for _,name in ipairs({"CHALLENGE_MODE_COMPLETED","CHALLENGE_MODE_MAPS_UPDATE","MYTHIC_PLUS_NEW_WEEKLY_RECORD","WEEKLY_REWARDS_UPDATE"})do registeredEvents[name](name)end
-assert(#HolyStorm.CharacterScans.requests==before+4,"completion, score update, map update, and vault update enter CharacterScanManager")
+registeredEvents.CHALLENGE_MODE_COMPLETED("CHALLENGE_MODE_COMPLETED");registeredEvents.MYTHIC_PLUS_NEW_WEEKLY_RECORD("MYTHIC_PLUS_NEW_WEEKLY_RECORD");registeredEvents.WEEKLY_REWARDS_UPDATE("WEEKLY_REWARDS_UPDATE");assert(#HolyStorm.CharacterScans.requests==before+2,"challenge completion and weekly score progression enter CharacterScanManager while the initial vault availability event is ignored")
+registeredEvents.WEEKLY_REWARDS_UPDATE("WEEKLY_REWARDS_UPDATE");assert(#HolyStorm.CharacterScans.requests==before+3,"subsequent weekly reward updates enter CharacterScanManager")
+Module:OnDisable();playerReady=true;Module:OnEnable();registeredEvents.WEEKLY_REWARDS_UPDATE("WEEKLY_REWARDS_UPDATE");assert(#HolyStorm.CharacterScans.requests==before+4,"a module loaded after login treats its first weekly rewards event as a real change")
 capabilities["character.scan.mythicplus"](Module,true);assert(#HolyStorm.CharacterScans.requests==before+5,"manual capability refresh follows the same centralized scan path")
 Module:OnDisable();assert(not registeredEvents.CHALLENGE_MODE_COMPLETED,"event handlers are removed on disable")
 print("Mythic+ Retail snapshot, season, pool, best-run, vault, readiness, and workflow tests passed")

@@ -8,13 +8,12 @@ creator, provenance, revision history metadata, and optional expiration. The
 module reuses the existing manager, map, and synchronization contracts. It does
 not depend on `Holy_Storm_Positions`.
 
-The original module already provided local and guild/group/raid CRUD, a POI
-editor and management list, icon selection, Sync-v2 object transfer, map links,
-World Map pins, exact coordinate conversion, and optional Minimap markers. The
-audit found direct SavedVariables access, a synthetic view permission, weak
-same-revision conflict handling, unbounded tombstones, an unvalidated lazy
-creation capability, and an unthrottled Minimap projection. The changes below
-close those gaps while keeping those existing workflows.
+The module provides local and guild/group/raid CRUD, a POI editor and management
+list, icon selection, Sync-v2 object transfer, map links, World Map pins, exact
+coordinate conversion, and optional Minimap markers. Persistent POIs are loaded
+at login without a World Map coordinate transform. The World Map provider is
+installed on map show, and the shared Minimap driver runs only while enabled
+markers exist.
 
 ## Scopes and visibility
 
@@ -156,7 +155,9 @@ revision and source/target map IDs. Disabling the module removes its provider.
 ## Minimap and settings
 
 Minimap display is independent of World Map display. The shared MapLinks updater
-provides a single validated player-map context per projection pass. Exact map
+is active only when Minimap markers are enabled and POIs need display. Its
+per-frame driver is detached while all map providers are inactive. It provides
+a single validated player-map context per projection pass. Exact map
 transforms are cached and projection is limited to once per second, with
 unchanged signatures skipped. Pins use a reusable linear pool. MapLinks applies
 map-world size, view radius, range rejection, Minimap rotation, and player
@@ -180,7 +181,9 @@ Semantic events include `HS_POI_CREATED`, `HS_POI_UPDATED`, `HS_POI_DELETED`,
 `HS_POI_SYNCED`, and compact `HS_POI_LIST_CHANGED` notifications. UI listeners
 react to events instead of polling persistence. TaskManager owns startup
 discovery, group-context reconciliation, expiration cleanup, map refresh, and
-message hiding. Normal visibility and marker options stay in the regular POI
+message hiding. Stored records are read at initialization, but coordinate
+transforms are deferred until the World Map is shown or enabled Minimap markers
+need projection. Normal visibility and marker options stay in the regular POI
 Options view; no separate administration UI is required.
 
 ## Retail APIs and known limits

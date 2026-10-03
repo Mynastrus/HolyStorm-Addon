@@ -74,18 +74,9 @@ do
   local tooltips=HolyStorm.Tooltips
   return tooltips and tooltips:ShowTable("mythicplus-best-run",owner,{anchor={point="LEFT",relativePoint="RIGHT",x=8,y=0},columns={{align="LEFT"},{align="CENTER"},{align="RIGHT"},{align="RIGHT"},{align="CENTER"}},headers={{L["RUN"],L["COLUMN_BEST_LEVEL"],L["RUN_RATING"],L["COLUMN_TIME"],L["COLUMN_IN_TIME"]}},separator=true,rows=rows})or false
  end
- local function currentSeasonId()
-  local api=C_MythicPlus;if not api or type(api.GetCurrentSeason)~="function"then return nil end
-  local ok,value=pcall(api.GetCurrentSeason);return ok and safeNumber(value)or nil
- end
- local function isCurrentSeason(snapshot)
-  if type(snapshot)~="table"or snapshot.schemaVersion~=5 or snapshot.snapshotVersion~=5 then return false end
-  local stored=safeNumber(snapshot.seasonId);local current=currentSeasonId()
-  return stored~=nil and stored>0 and current~=nil and stored==current
- end
  local function refresh(view,context)
   local C=HolyStorm.CharacterUI;local snapshot=C:GetSnapshot(context.characterUUID,"mythicPlus")
-  if not snapshot or next(snapshot)==nil or not isCurrentSeason(snapshot)then C:SetTableView(view,{}, {summary="",emptyText=L["NO_MYTHICPLUS"]});return end
+  if type(snapshot)~="table"or next(snapshot)==nil or snapshot.schemaVersion~=5 or snapshot.snapshotVersion~=5 then C:SetTableView(view,{}, {summary="",emptyText=L["NO_MYTHICPLUS"]});return end
   local rows={}
   for _,dungeon in pairs(type(snapshot.dungeons)=="table"and snapshot.dungeons or{})do if type(dungeon)=="table"then
    local timed=type(dungeon.bestInTime)=="table"and dungeon.bestInTime or nil
@@ -97,16 +88,17 @@ do
    rows[#rows+1]={name=dungeon.name or C:FormatState(nil),instanceId=dungeon.instanceId,challengeMapId=dungeon.challengeMapId,texture=dungeon.texture,bestInTime=timed,bestOverTime=overtime,displayBestTimed=shownTimed,affixScores=dungeon.affixScores,timeLimit=dungeon.timeLimit,bestLevel=shown and levelText(shown.level)or L["NO_COMPLETION"],rating=scoreText(dungeon.score),time=shown and durationText(shown.durationSec)or L["NO_COMPLETION"]}
   end end
   table.sort(rows,function(a,b)return(tonumber(a.challengeMapId)or 0)<(tonumber(b.challengeMapId)or 0)end)
+  local dataStatus=C:GetDataStatus(context.characterUUID,"mythicPlus",nil,{data=snapshot})
   local summary=string.format(L["SEASON_SUMMARY"],C:FormatState(snapshot.seasonId),scoreText(snapshot.overallScore))
-  local vault=snapshot.greatVaultMythicPlus;local week;local vaultProgress=C:FormatState(nil)
-  if C_DateAndTime and type(C_DateAndTime.GetWeeklyResetStartTime)=="function"then local ok,value=pcall(C_DateAndTime.GetWeeklyResetStartTime);if ok then week=safeNumber(value)end end
-  if type(vault)=="table"and snapshot.weeklyIdentity==week and vault.currentPeriod==true and type(vault.activities)=="table"then vaultProgress=string.format(L["GREAT_VAULT_PROGRESS"],vault.progress,#vault.activities)end
+  local vault=snapshot.greatVaultMythicPlus;local vaultProgress=C:FormatState(nil)
+  if type(vault)=="table"and vault.currentPeriod==true and type(vault.activities)=="table"then vaultProgress=string.format(L["GREAT_VAULT_PROGRESS"],vault.progress,#vault.activities)end
+  if dataStatus=="STALE"then vaultProgress=vaultProgress.." ("..L["WEEKLY_STALE"]..")"end
   summary=summary.."  •  "..string.format(L["GREAT_VAULT_SUMMARY"],vaultProgress)
   C:SetTableView(view,rows,{summary=summary,emptyText=L["NO_MYTHICPLUS"]})
  end
  local function build(parent)return HolyStorm.CharacterUI:CreateTableView(parent,{columns={{id="name",title=L["COLUMN_DUNGEON"],weight=1,minWidth=180,compactWidth=140,truncate=true,renderCell=dungeonCell,onClick=openJournal,tooltip=function(row,_,_,tooltip)tooltip:SetText(row.name);tooltip:AddLine(L["OPEN_JOURNAL"],1,1,1,true);return true end},{id="bestLevel",title=L["COLUMN_BEST_LEVEL"],width=95,compactWidth=74,align="CENTER",tooltip=bestRunTooltip},{id="rating",title=L["COLUMN_DUNGEON_RATING"],width=112,compactWidth=85,align="RIGHT",tooltip=bestRunTooltip},{id="time",title=L["COLUMN_TIME"],width=86,compactWidth=70,align="RIGHT",tooltip=bestRunTooltip},{id="timed",title=L["COLUMN_IN_TIME"],width=72,compactWidth=56,align="CENTER",renderCell=timedCell,tooltip=bestRunTooltip}},rowHeight=28,headerHeight=26,columnGap=1,emptyText=L["NO_MYTHICPLUS"]})end
  HolyStorm:RegisterCharacterTab("characters",{id="mythicPlus",order=30,label=L["DISPLAY_NAME"],labelKey="MYTHICPLUS_DISPLAY_NAME",icon="Interface\\Icons\\Achievement_ChallengeMode_Gold",blocks={"mythicPlus"},events={"HS_MYTHICPLUS_UPDATED"},build=build,refresh=refresh})
- HolyStorm:RegisterCharacterSummarySection("characters",{id="mythicPlus",order=30,render=function(context)local snapshot=HolyStorm.CharacterUI:GetSnapshot(context.characterUUID,"mythicPlus");local current=snapshot and isCurrentSeason(snapshot);return{label=L["DISPLAY_NAME"],tabId="mythicPlus",value=current and(L["OVERALL_RATING"]..": "..scoreText(snapshot.overallScore))or L["NO_MYTHICPLUS"]}end})
+ HolyStorm:RegisterCharacterSummarySection("characters",{id="mythicPlus",order=30,render=function(context)local snapshot=HolyStorm.CharacterUI:GetSnapshot(context.characterUUID,"mythicPlus");local valid=type(snapshot)=="table"and snapshot.schemaVersion==5 and snapshot.snapshotVersion==5;return{label=L["DISPLAY_NAME"],tabId="mythicPlus",value=valid and(L["OVERALL_RATING"]..": "..scoreText(snapshot.overallScore))or L["NO_MYTHICPLUS"]}end})
 end
 
 do
@@ -119,7 +111,7 @@ do
   local lockout=row.weekly[key];local rows={};local unknown=HolyStorm.CharacterUI:FormatState(nil)
   if not lockout then rows[1]={cells={row.weeklyCurrent and L["NO_CURRENT_LOCKOUT"]or L["NO_DATA"],unknown},colors={[1]={r=.55,g=.55,b=.55},[2]={r=.55,g=.55,b=.55}}}
   else for _,boss in ipairs(lockout.bosses or{})do local name=boss.name or L["UNKNOWN"];if boss.killed==true then rows[#rows+1]={cells={name,L["BOSS_STATE_KILLED"]},colors={[2]={r=1,g=.2,b=.2}}}elseif boss.killed==false then rows[#rows+1]={cells={name,L["BOSS_STATE_OPEN"]},colors={[2]={r=.2,g=1,b=.2}}}else rows[#rows+1]={cells={name,unknown},colors={[2]={r=.55,g=.55,b=.55}}}end end;if#rows==0 then rows[1]={cells={L["NO_DATA"],unknown},colors={[1]={r=.55,g=.55,b=.55},[2]={r=.55,g=.55,b=.55}}}end end
-  local tooltips=HolyStorm.Tooltips;return tooltips and tooltips:ShowTable("raid-weekly",owner,{anchor={point="LEFT",relativePoint="RIGHT",x=8,y=0},columns={{align="LEFT"},{align="RIGHT"}},headers={{string.format(L["WEEKLY_TOOLTIP"],L["DIFFICULTY_"..key]or key),L["COLUMN_STATE"]}},separator=true,rows=rows})or false
+  local tooltips=HolyStorm.Tooltips;local label=row.weeklyStale and L["WEEKLY_STALE_TOOLTIP"]or L["WEEKLY_TOOLTIP"];return tooltips and tooltips:ShowTable("raid-weekly",owner,{anchor={point="LEFT",relativePoint="RIGHT",x=8,y=0},columns={{align="LEFT"},{align="RIGHT"}},headers={{string.format(label,L["DIFFICULTY_"..key]or key),L["COLUMN_STATE"]}},separator=true,rows=rows})or false
  end
  local function shortDifficulty(key)return key=="MYTHIC"and"M"or key=="HEROIC"and"H"or key=="NORMAL"and"N"or key=="TIMEWALKING"and"TW"or key=="LFR"and"LFR"or"?"end
  local function bestText(snapshot,row)local C=HolyStorm.CharacterUI;local best=C:GetBestProgress(snapshot,row);if best and(tonumber(best.killed)or 0)>0 then return C:ColorDifficulty(best.difficulty,string.format("%s %d/%d",shortDifficulty(best.difficulty),best.killed,best.total))end;return snapshot.catalogReady==true and""or C:FormatState(nil)end
@@ -134,7 +126,7 @@ do
  end
  local function raidTooltip(row,_,_,tooltip,owner)if row.weekly.TIMEWALKING then return weeklyTooltip(row,"TIMEWALKING",owner)end;tooltip:SetText(row.name);tooltip:AddLine(L["OPEN_JOURNAL"],1,1,1,true);return true end
  local function columns()local result={{id="name",title=L["COLUMN_RAID"],weight=1,minWidth=200,truncate=true,renderCell=raidCell,onClick=openJournal,tooltip=function(row,_,_,tooltip,owner)return raidTooltip(row,nil,nil,tooltip,owner)end}};for _,key in ipairs(baseDifficultyKeys)do local difficultyKey=key;result[#result+1]={id=difficultyKey:lower(),title=L["DIFFICULTY_"..difficultyKey],width=90,compactWidth=68,align="RIGHT",tooltip=function(row,_,_,tooltip,owner)return weeklyTooltip(row,difficultyKey,owner)end}end;result[#result+1]={id="best",title=L["COLUMN_BEST"],width=180,compactWidth=100,align="RIGHT",tooltip=function(row,_,_,tooltip,owner)return bestTooltip(row,nil,nil,nil,owner)end};return result end
- local function refresh(view,context)local C=HolyStorm.CharacterUI;local snapshot=C:GetSnapshot(context.characterUUID,"raid");if type(snapshot)~="table"or snapshot.snapshotVersion~=3 or snapshot.catalogReady~=true then C:SetTableView(view,{}, {emptyText=L["NO_RAID"]});return end;local weeklyCurrent=C:GetDataStatus(context.characterUUID,"raid")=="CURRENT";local rows,byName,byId={},{},{};for _,catalog in ipairs(type(snapshot.raids)=="table"and snapshot.raids or{})do local row={name=catalog.name or C:FormatState(nil),instanceId=catalog.id,icon=catalog.icon,order=catalog.order or#rows+1,weekly={},weeklyCurrent=weeklyCurrent,catalogBosses=catalog.bosses or{},total=#(catalog.bosses or{}),catalogReady=snapshot.catalogReady==true,snapshot=snapshot};rows[#rows+1]=row;byName[raidKey(row.name)]=row;byId[tostring(row.instanceId)]=row end;for _,lockout in ipairs(weeklyCurrent and type(snapshot.lockouts)=="table"and snapshot.lockouts or{})do local row=lockout.journalInstanceId and byId[tostring(lockout.journalInstanceId)]or byName[raidKey(lockout.name)];if not row then row={name=lockout.name or C:FormatState(nil),instanceId=lockout.journalInstanceId,order=1000+#rows,weekly={},weeklyCurrent=weeklyCurrent,catalogBosses=lockout.bosses or{},total=tonumber(lockout.total),catalogReady=false,snapshot=snapshot};rows[#rows+1]=row;byName[raidKey(row.name)]=row;if row.instanceId then byId[tostring(row.instanceId)]=row end end;local difficulty=C:GetDifficultyById(lockout.difficultyId);if difficulty then row.weekly[difficulty.id]=lockout end end;table.sort(rows,function(a,b)if a.order==b.order then return tostring(a.name)<tostring(b.name)end;return a.order<b.order end);for _,row in ipairs(rows)do for _,key in ipairs(baseDifficultyKeys)do row[key:lower()]=C:ColorDifficulty(key,progress(row,key))end;local timewalking=row.weekly.TIMEWALKING;if timewalking then row.timewalkingText=C:ColorDifficulty("TIMEWALKING","TW "..progress(row,"TIMEWALKING"));row.nameDisplay=row.name.."  "..row.timewalkingText end;row.best=bestText(snapshot,row)end;C:SetTableView(view,rows,{emptyText=L["NO_RAID"]})end
+ local function refresh(view,context)local C=HolyStorm.CharacterUI;local snapshot,snapshotMeta=C:GetSnapshot(context.characterUUID,"raid");if type(snapshot)~="table"or snapshot.snapshotVersion~=3 or snapshot.catalogReady~=true then C:SetTableView(view,{}, {emptyText=L["NO_RAID"]});return end;local weeklyCurrent=C:GetDataStatus(context.characterUUID,"raid",nil,{data=snapshot,meta=snapshotMeta})=="CURRENT";local rows,byName,byId={},{},{};for _,catalog in ipairs(type(snapshot.raids)=="table"and snapshot.raids or{})do local row={name=catalog.name or C:FormatState(nil),instanceId=catalog.id,icon=catalog.icon,order=catalog.order or#rows+1,weekly={},weeklyCurrent=weeklyCurrent,weeklyStale=not weeklyCurrent,catalogBosses=catalog.bosses or{},total=#(catalog.bosses or{}),catalogReady=snapshot.catalogReady==true,snapshot=snapshot};rows[#rows+1]=row;byName[raidKey(row.name)]=row;byId[tostring(row.instanceId)]=row end;for _,lockout in ipairs(type(snapshot.lockouts)=="table"and snapshot.lockouts or{})do local row=lockout.journalInstanceId and byId[tostring(lockout.journalInstanceId)]or byName[raidKey(lockout.name)];if not row then row={name=lockout.name or C:FormatState(nil),instanceId=lockout.journalInstanceId,order=1000+#rows,weekly={},weeklyCurrent=weeklyCurrent,weeklyStale=not weeklyCurrent,catalogBosses=lockout.bosses or{},total=tonumber(lockout.total),catalogReady=false,snapshot=snapshot};rows[#rows+1]=row;byName[raidKey(row.name)]=row;if row.instanceId then byId[tostring(row.instanceId)]=row end end;local difficulty=C:GetDifficultyById(lockout.difficultyId);if difficulty then row.weekly[difficulty.id]=lockout end end;table.sort(rows,function(a,b)if a.order==b.order then return tostring(a.name)<tostring(b.name)end;return a.order<b.order end);for _,row in ipairs(rows)do for _,key in ipairs(baseDifficultyKeys)do row[key:lower()]=C:ColorDifficulty(key,progress(row,key))end;local timewalking=row.weekly.TIMEWALKING;if timewalking then row.timewalkingText=C:ColorDifficulty("TIMEWALKING","TW "..progress(row,"TIMEWALKING"));row.nameDisplay=row.name.."  "..row.timewalkingText end;row.best=bestText(snapshot,row)end;C:SetTableView(view,rows,{emptyText=L["NO_RAID"]})end
  local function build(parent)return HolyStorm.CharacterUI:CreateTableView(parent,{columns=columns(),rowHeight=27,headerHeight=26,columnGap=1,emptyText=L["NO_RAID"]})end
  HolyStorm:RegisterCharacterTab("characters",{id="raid",order=40,label=L["DISPLAY_NAME"],labelKey="RAID_DISPLAY_NAME",icon="Interface\\Icons\\INV_Sword_27",blocks={"raid"},events={"HS_RAIDLOCKS_UPDATED"},build=build,refresh=refresh})
  HolyStorm:RegisterCharacterSummarySection("characters",{id="raid",order=40,render=function(context)local C=HolyStorm.CharacterUI;local snapshot=C:GetSnapshot(context.characterUUID,"raid");return{label=L["DISPLAY_NAME"],tabId="raid",formatted=type(snapshot)=="table"and snapshot.snapshotVersion==3 and snapshot.catalogReady==true and bestSummary(snapshot)or L["NO_RAID"]}end})
@@ -143,24 +135,16 @@ end
 do
  local L=locale("DELVES_")
  local function field(value,seen)local C=HolyStorm.CharacterUI;if type(value)=="boolean"then return value and L["YES"]or L["NO"]end;if type(value)~="table"then return C:FormatState(value)end;if value.status=="unknown"then return C:FormatState(nil)end;seen=seen or{};if seen[value]then return C:FormatState(nil)end;seen[value]=true;for _,key in ipairs({"value","count","level","name","progress","threshold","rewardLevel","role","abilities"})do if value[key]~=nil then return field(value[key],seen)end end;if value.id~=nil then return L["PRESENT"]end;return C:FormatState(nil)end
- local function currentContext()
-  local week
-  if C_DateAndTime and type(C_DateAndTime.GetWeeklyResetStartTime)=="function"then local ok,value=pcall(C_DateAndTime.GetWeeklyResetStartTime);if ok and type(value)=="number"then week=value end end
-  return week
- end
  local function refresh(view,context)
   local C=HolyStorm.CharacterUI;local snapshot=C:GetSnapshot(context.characterUUID,"delves")
   if type(snapshot)~="table"or snapshot.snapshotVersion~=3 or snapshot.schemaVersion~=3 then C:SetTableView(view,{}, {emptyText=L["NO_DELVES"]});return end
   local vault=type(snapshot.greatVaultWorld)=="table"and snapshot.greatVaultWorld or{}
   local rewardState=type(snapshot.greatVault)=="table"and snapshot.greatVault or{}
-  local currentWeek=currentContext()
-  local weekCurrent=currentWeek~=nil and snapshot.weeklyIdentity==currentWeek and rewardState.currentPeriod==true and snapshot.snapshotVersion==3
-  local weeklyValue,weeklyReward=C:FormatState(nil),C:FormatState(nil)
-  local activities={}
-  if weekCurrent then
-   weeklyValue=field(vault.progress);if#(vault.activities or{})>0 then weeklyValue=string.format(L["GREAT_VAULT_PROGRESS"],weeklyValue,field(#vault.activities))end
-   weeklyReward=field(rewardState.rewardAvailable);activities=type(vault.activities)=="table"and vault.activities or{}
-  end
+  local weekCurrent=C:GetDataStatus(context.characterUUID,"delves",nil,{data=snapshot})=="CURRENT"
+  local weeklyValue=field(vault.progress)
+  if #(vault.activities or{})>0 then weeklyValue=string.format(L["GREAT_VAULT_PROGRESS"],weeklyValue,field(#vault.activities))end
+  local weeklyReward=field(rewardState.rewardAvailable)
+  local activities=type(vault.activities)=="table"and vault.activities or{}
   local summary=string.format(L["SEASON_STORED"],field(snapshot.seasonNumber))
   if not weekCurrent then summary=summary.." ("..L["WEEKLY_STALE"]..")"end
   local rows={{group=L["GROUP_OVERVIEW"],metric=L["GREAT_VAULT"],value=weeklyValue,details=""},{group=L["GROUP_OVERVIEW"],metric=L["WEEKLY_REWARD"],value=weeklyReward,details=""}}
@@ -169,5 +153,5 @@ do
  end
  local function build(parent)return HolyStorm.CharacterUI:CreateTableView(parent,{columns={{id="group",title=L["COLUMN_GROUP"],width=135},{id="metric",title=L["COLUMN_METRIC"],weight=1,minWidth=190},{id="value",title=L["COLUMN_VALUE"],width=130,align="RIGHT"},{id="details",title=L["COLUMN_DETAILS"],weight=.8,minWidth=160}},rowHeight=26,headerHeight=26,columnGap=1,emptyText=L["NO_DELVES"]})end
  HolyStorm:RegisterCharacterTab("characters",{id="delves",order=50,label=L["DISPLAY_NAME"],labelKey="DELVES_DISPLAY_NAME",icon="Interface\\Icons\\INV_Misc_Map_01",blocks={"delves"},events={"HS_DELVES_UPDATED"},build=build,refresh=refresh})
- HolyStorm:RegisterCharacterSummarySection("characters",{id="delves",order=50,render=function(context)local snapshot=HolyStorm.CharacterUI:GetSnapshot(context.characterUUID,"delves");if type(snapshot)~="table"or snapshot.snapshotVersion~=3 or snapshot.schemaVersion~=3 then return{label=L["DISPLAY_NAME"],tabId="delves",value=L["NO_DELVES"]}end;local week=currentContext();local vault=snapshot.greatVaultWorld;local rewardState=snapshot.greatVault;local value=HolyStorm.CharacterUI:FormatState(nil);if type(vault)=="table"and type(rewardState)=="table"and week and snapshot.weeklyIdentity==week and rewardState.currentPeriod==true then value=field(vault.progress)end;return{label=L["DISPLAY_NAME"],tabId="delves",value=string.format(L["SEASON_STORED"],field(snapshot.seasonNumber)).." / "..value}end})
+ HolyStorm:RegisterCharacterSummarySection("characters",{id="delves",order=50,render=function(context)local C=HolyStorm.CharacterUI;local snapshot=C:GetSnapshot(context.characterUUID,"delves");if type(snapshot)~="table"or snapshot.snapshotVersion~=3 or snapshot.schemaVersion~=3 then return{label=L["DISPLAY_NAME"],tabId="delves",value=L["NO_DELVES"]}end;local vault=snapshot.greatVaultWorld;local value=type(vault)=="table"and field(vault.progress)or C:FormatState(nil);return{label=L["DISPLAY_NAME"],tabId="delves",value=string.format(L["SEASON_STORED"],field(snapshot.seasonNumber)).." / "..value}end})
 end

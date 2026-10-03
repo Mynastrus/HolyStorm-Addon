@@ -410,7 +410,8 @@ HolyStorm:RegisterModule(metadata,function(Module)
    local lifetimeAudit;lifetime,lifetimeAudit=self:CaptureLifetime(raids,type(old)=="table"and old.lifetime,manual,workState.tierName,candidates,audit,cache)
    if lifetimeAudit.apiFailures>0 then return{pending=true,pendingReason="STATISTIC_VALUE_READ_FAILED",currentRaid=latest,currentTier=tier,catalogReady=workState.catalogReady,raids=raids,lockouts={},lifetime=HolyStorm.Utils.DeepCopy(type(old)=="table"and type(old.lifetime)=="table"and old.lifetime or{bosses={},seen={},reliable=false}),snapshotVersion=3,bestProgress={killed=0,total=0,difficultyId=0}}end
   end
-  local s={currentRaid=latest,currentTier=tier,catalogReady=workState.catalogReady,raids=raids,lockouts={},lifetime=lifetime,updatedAt=HolyStorm.Utils.Now(),snapshotVersion=3,bestProgress={killed=0,total=0,difficultyId=0}}
+  local weeklyIdentity;local weeklyAPI=C_DateAndTime;if weeklyAPI and type(weeklyAPI.GetWeeklyResetStartTime)=="function"then local ok,value=pcall(weeklyAPI.GetWeeklyResetStartTime);if ok then weeklyIdentity=safeNumber(value)end end
+  local s={currentRaid=latest,currentTier=tier,catalogReady=workState.catalogReady,raids=raids,lockouts={},lifetime=lifetime,weeklyIdentity=weeklyIdentity,updatedAt=HolyStorm.Utils.Now(),snapshotVersion=3,bestProgress={killed=0,total=0,difficultyId=0}}
   for i=1,(GetNumSavedInstances and GetNumSavedInstances()or 0)do
    local name,id,reset,diff,locked,extended,_,isRaid,maxPlayers,diffName,encounters,encounterProgress=GetSavedInstanceInfo(i)
    if isRaid and locked then

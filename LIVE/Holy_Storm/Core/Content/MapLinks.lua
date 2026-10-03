@@ -1,6 +1,6 @@
 local addonVersion="1.2.0"
 local HolyStorm=LibStub("AceAddon-3.0"):GetAddon("Holy_Storm")
-local MapLinks={version=addonVersion,poiProviders={},minimapUpdaters={},minimapElapsed=0}
+local MapLinks={version=addonVersion,poiProviders={},minimapUpdaters={},activeMinimapUpdaters={},minimapElapsed=0}
 
 function MapLinks:RegisterPOIProvider(id,provider)if type(id)~="string"or type(provider)~="table"then return false end;self.poiProviders[id]=provider;return true end
 function MapLinks:UnregisterPOIProvider(id)if not self.poiProviders[id]then return false end;self.poiProviders[id]=nil;return true end
@@ -103,10 +103,24 @@ function MapLinks:ProjectToMinimap(sourceMapID,x,y,currentMapOnly,context,transf
  if distance>context.radius then return nil,"OUT_OF_RANGE"end
  return dx/context.radius*context.pixelRadius,north/context.radius*context.pixelRadius,mode,context.mapID,tx,ty
 end
-function MapLinks:RegisterMinimapUpdater(id,callback)
- if type(id)~="string"or type(callback)~="function"then return false end;self.minimapUpdaters[id]=callback;if not self.minimapDriver and Minimap and CreateFrame then self.minimapDriver=CreateFrame("Frame",nil,Minimap);self.minimapDriver:SetScript("OnUpdate",function(_,elapsed)MapLinks.minimapElapsed=MapLinks.minimapElapsed+elapsed;if MapLinks.minimapElapsed>=.25 then MapLinks.minimapElapsed=0;for owner,update in pairs(MapLinks.minimapUpdaters)do HolyStorm.Utils.SafeCall("minimap.update:"..owner,update)end end end)end;return true
+local function updateMinimapDriver(self)
+ local active=false;for id in pairs(self.activeMinimapUpdaters)do if self.minimapUpdaters[id]then active=true;break end end
+ if not active then if self.minimapDriver then self.minimapDriver:SetScript("OnUpdate",nil)end;self.minimapElapsed=0;return true end
+ if not self.minimapDriver and Minimap and CreateFrame then self.minimapDriver=CreateFrame("Frame",nil,Minimap)end
+ if not self.minimapDriver then return false end
+ self.minimapDriver:SetScript("OnUpdate",function(_,elapsed)MapLinks.minimapElapsed=MapLinks.minimapElapsed+elapsed;if MapLinks.minimapElapsed>=.25 then MapLinks.minimapElapsed=0;for owner in pairs(MapLinks.activeMinimapUpdaters)do local update=MapLinks.minimapUpdaters[owner];if update then HolyStorm.Utils.SafeCall("minimap.update:"..owner,update)end end end end)
+ return true
 end
-function MapLinks:UnregisterMinimapUpdater(id)self.minimapUpdaters[id]=nil end
+function MapLinks:RegisterMinimapUpdater(id,callback)
+ if type(id)~="string"or type(callback)~="function"then return false end;self.minimapUpdaters[id]=callback;return true
+end
+function MapLinks:SetMinimapUpdaterActive(id,active)
+ if not self.minimapUpdaters[id]then return false,"MINIMAP_UPDATER_NOT_REGISTERED"end
+ local enabled=active==true;if(self.activeMinimapUpdaters[id]==true)==enabled then return true end
+ if enabled then self.activeMinimapUpdaters[id]=true else self.activeMinimapUpdaters[id]=nil end
+ return updateMinimapDriver(self)
+end
+function MapLinks:UnregisterMinimapUpdater(id)self.minimapUpdaters[id]=nil;self.activeMinimapUpdaters[id]=nil;updateMinimapDriver(self)end
 function MapLinks:SetTemporaryMarker(mapID,x,y,options)
  if not self:IsValidCoordinate(mapID,x,y)then return false,"INVALID_COORDINATE"end;options=options or{};self.temporaryMarker={poiID="temporary-coordinate",mapID=tonumber(mapID),x=tonumber(x),y=tonumber(y),name=options.label,status="ACTIVE",target="PERSONAL",temporary=true,localOnly=true,createdAt=HolyStorm.Utils.Now(),expiresAt=options.timeout and(HolyStorm.Utils.Now()+math.max(1,tonumber(options.timeout)or 0))or nil};HolyStorm.Events:Emit("HS_MAP_TEMPORARY_MARKER_CHANGED",self.temporaryMarker);return true,self.temporaryMarker
 end

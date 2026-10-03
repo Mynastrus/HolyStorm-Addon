@@ -65,7 +65,7 @@ Primary API references:
 
 ## Collection, validation, and commit path
 
-Equipment events (`PLAYER_EQUIPMENT_CHANGED`, player `UNIT_INVENTORY_CHANGED`, and `SOCKET_INFO_UPDATE`) enter EventManager and CharacterScanManager. The producer uses its single `EQUIPMENT_UPDATE` workflow with a one-second debounce and no parallel runs:
+Equipment events (`PLAYER_EQUIPMENT_CHANGED`, player `UNIT_INVENTORY_CHANGED`, and `SOCKET_INFO_UPDATE`) enter EventManager and CharacterScanManager only after `playerReady`. Pre-ready callbacks, including load-on-event initialization noise, are ignored. Module activation, login, a missing block, or an old timestamp do not scan. The producer uses its single `EQUIPMENT_UPDATE` workflow with a one-second debounce and no parallel runs:
 
 1. Scan every supported slot and capture the equipped/empty/unknown decision.
 2. Validate all slots plus character and item-level readiness.
@@ -90,7 +90,7 @@ Character → Equipment, the Equipment summary, and Dashboard read CharacterStor
 
 The module exposes `GetSlot(character, slotID)`, `GetEquippedItemLevel(character)`, `GetEnchantState(character, slotID)`, `GetSocketState(character, slotID, index)`, and `GetTierPieceCount(character)`. Queries return explicit UNKNOWN/unavailable states where the saved facts cannot support a conclusion. Future rule modules should consume these queries rather than copy slot parsing or claim their own tier truth.
 
-The manual scan continues to use `/hs scan equipment`; it enters the same CharacterScanManager provider and does not write around PlayerData.
+The manual scan continues to use `/hs scan equipment`; dashboard and Character Overview refresh actions request the same CharacterScanManager provider and do not write around PlayerData. Equipment freshness is event-driven; there is no wall-clock stale threshold. See [`SNAPSHOT_REFRESH_POLICY.md`](SNAPSHOT_REFRESH_POLICY.md) for the shared UI status contract.
 
 ## Offline checks and Retail sign-off
 

@@ -1,6 +1,6 @@
 local root=(arg[0]:gsub("tools[/\\]test_delves.lua$","")).."LIVE/Holy_Storm_Delves/"
 local Module={};local events,providers,capabilities={}, {}, {};local blockDefinition;local commits={}
-local HolyStorm={Utils={Now=function()return 100 end},Data={CharacterStore={}},Snapshots={},Events={},PlayerData={},CharacterScans={}}
+local playerReady=false;local HolyStorm={Utils={Now=function()return 100 end},Data={CharacterStore={}},Snapshots={},Events={},PlayerData={},CharacterScans={},State={Is=function(_,name)return name=="playerReady"and playerReady end}}
 function HolyStorm.PlayerData:RegisterBlock(id,definition)assert(id=="delves");blockDefinition=definition;return true end
 function HolyStorm.PlayerData:WriteOwnedBlock(_,block,snapshot)commits[#commits+1]={block=block,snapshot=snapshot};return true end
 function HolyStorm.Data.CharacterStore:GetBlock()end
@@ -27,13 +27,11 @@ assert(#HolyStorm.metadata.permissions==1 and HolyStorm.metadata.permissions[1]=
 Module:OnInitialize();Module:OnEnable()
 assert(events.WEEKLY_REWARDS_UPDATE and not events.DELVES_ACCOUNT_DATA_ELEMENT_CHANGED and not events.ACTIVE_DELVE_DATA_UPDATE,"only the weekly reward update triggers persisted data scans")
 events.WEEKLY_REWARDS_UPDATE.callback()
-assert(HolyStorm.CharacterScans.lastRequest.block=="delves" and HolyStorm.CharacterScans.lastRequest.reason=="WEEKLY_REWARDS_UPDATE","automatic updates use CharacterScanManager")
-local provider=providers.delves.definition;assert(provider.request(true,"MANUAL_COMMAND")=="delves-wf" and HolyStorm.Snapshots.options.priority==6,"manual provider enters the normal SnapshotManager workflow")
+assert(HolyStorm.CharacterScans.lastRequest==nil,"the first weekly reward event is treated as login data availability, not a character change")
+events.WEEKLY_REWARDS_UPDATE.callback()
+assert(HolyStorm.CharacterScans.lastRequest.block=="delves" and HolyStorm.CharacterScans.lastRequest.reason=="WEEKLY_REWARDS_UPDATE","later weekly reward changes use CharacterScanManager")
+local provider=providers.delves.definition;assert(provider.needsRefresh==nil and provider.request(true,"MANUAL_COMMAND")=="delves-wf" and HolyStorm.Snapshots.options.priority==6,"manual provider enters the normal SnapshotManager workflow without snapshot-driven auto scans")
 local snapshot=HolyStorm.Snapshots.scanner();assert(HolyStorm.Snapshots.validator(snapshot),"available current data validates")
-assert(provider.needsRefresh(snapshot)==false,"current complete v3 snapshot passes bootstrap readiness")
-local staleSeason={snapshotVersion=3,schemaVersion=3,seasonNumber=3,weeklyIdentity=1790812800,greatVaultWorld={currentPeriod=true}}
-local staleWeek={snapshotVersion=3,schemaVersion=3,seasonNumber=4,weeklyIdentity=1790812799,greatVaultWorld={currentPeriod=true}}
-assert(provider.needsRefresh(staleSeason)==true and provider.needsRefresh(staleWeek)==true and provider.needsRefresh({snapshotVersion=2})==true,"bootstrap requests stale season, stale week, and incomplete snapshots")
 assert(snapshot.snapshotVersion==3 and snapshot.schemaVersion==3 and snapshot.seasonNumber==4 and snapshot.weeklyIdentity==1790812800,"season and authoritative weekly reset identity are stored")
 assert(snapshot.greatVaultWorld.progress==1 and snapshot.greatVaultWorld.activities[1].progress==0 and snapshot.greatVaultWorld.activities[1].threshold==3,"Great Vault World activity progress is kept distinct from Delves progression")
 assert(snapshot.greatVault.rewardAvailable==false and snapshot.greatVault.currentPeriod==true,"reward availability is Great Vault-wide state for the current period")
@@ -62,4 +60,5 @@ local invalid={snapshotVersion=3,schemaVersion=3,seasonNumber=4,weeklyIdentity=1
 assert(not HolyStorm.Snapshots.validator(invalid),"inconsistent completion list fails validation")
 local handler=capabilities["character.scan.additional"];assert(type(handler)=="function");handler(Module,true,"CAPABILITY");assert(HolyStorm.CharacterScans.lastRequest.block=="delves","capability requests use the central scan manager")
 Module:OnDisable();assert(not events.WEEKLY_REWARDS_UPDATE,"feature event handlers are removed on disable")
+playerReady=true;Module:OnEnable();events.WEEKLY_REWARDS_UPDATE.callback();assert(HolyStorm.CharacterScans.lastRequest.block=="delves","a Delves module loaded after login scans on its first actual weekly reward update");Module:OnDisable()
 print("Delves API readiness, known-empty, reset identity, last-valid and lifecycle tests passed")

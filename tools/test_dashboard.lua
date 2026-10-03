@@ -36,7 +36,7 @@ end
 local latestSnapshot={
  coloredName="|cff70c0ffTestdruid|r",name="Testdruid",className="Druid",classFile="DRUID",specName="Balance",specIcon=12345,level=90,realm="Norgannon",guildRank="Council",
  itemLevel=312.6,mythicPlusRating=2009,mythicPlusSeasonId=18,equipment={slots={head={itemLevel=312},chest={itemLevel=310},legs=false}},
- bestRaid={difficulty="NORMAL",killed=6,total=8,raidName="The Poisonous Abyss",raidInstanceId=500},bestRaidRows={{bossName="Current Boss",difficulty="NORMAL",kills=5,raidInstanceId=500},{bossName="Old Boss",difficulty="MYTHIC",kills=8,raidInstanceId=100}},
+ bestRaid={difficulty="NORMAL",killed=6,total=8,raidName="The Poisonous Abyss",raidInstanceId=500},bestRaidRows={{bossName="Current Boss",difficulty="NORMAL",kills=5,raidInstanceId=500},{bossName="Old Boss",difficulty="MYTHIC",kills=8,raidInstanceId=100}},snapshotStatus={equipment="CURRENT",mythicPlus="CURRENT",raidLifetime="CURRENT",delves="CURRENT",stats="CURRENT"},
  delves={snapshotVersion=3,seasonNumber=4,greatVaultWorld={progress=4,activities={{},{}}}},stats={primary={strength={effective=10},agility={effective=20}},secondary={haste={rating=30}}},
 }
 local context={characterUUID="Player-Local",accountUUID="Account-1",name="Testdruid",classFile="DRUID",record={profile={preferredRole="HEALER"}},guild={}}
@@ -68,6 +68,7 @@ assert(model.mythicPlusRating=="2009"and model.mythicPlusSubtitle==locale.DASHBO
 assert(model.raidValue:find("Normal 6/8",1,true)and model.raidSubtitle=="The Poisonous Abyss","Raid card shows catalog-scoped lifetime progress, not weekly lockouts")
 assert(model.delvesValue=="DASHBOARD_DELVE_STORED_SEASON"and model.delvesSubtitle=="DASHBOARD_DELVE_SEASON","Delves card identifies the stored season without mislabeling Vault activity as Delves progress")
 assert(model.statsValue=="3"and model.twinksValue=="2","Stats and additional-character counts are based on their existing data APIs")
+assert(model.snapshotStatus.equipment=="CURRENT"and model.snapshotStatus.raidLifetime=="CURRENT","dashboard consumes producer-owned status states from the shared summary")
 assert(model.profileAvailable and#model.profileRows==3 and model.profileRows[1].text=="Richard"and model.profileRows[3].text=="Preferred role: Healer","only configured local profile fields are displayed")
 assert(not model.achievementsAvailable,"optional Achievements tab stays hidden while its feature module is disabled")
 
@@ -122,6 +123,27 @@ assert(UI:RegisterDashboardProvider("calendar-test",{owner="Calendar",moduleName
 local absent=UI:BuildDynamicProviderItems();assert(#absent==0 and skippedCalls==0,"a disabled optional Calendar provider is neither called nor rendered")
 assert(UI:RegisterDashboardProvider("news-test",{owner="News",order=10,title="News",available=function()return true end,getItems=function()return{{title="Season update",summary="Published today"}}end}))
 local visible=UI:BuildDynamicProviderItems();assert(#visible==1 and visible[1].id=="news-test"and visible[1].items[1].title=="Season update","available providers contribute data-backed widget entries")
+local originalRefresh=HolyStorm.CharacterUI.RequestRefresh;local targeted
+HolyStorm.CharacterUI.RequestRefresh=function(_,guid,blocks,reason)targeted={guid=guid,blocks=blocks,reason=reason};return true end
+assert(UI:ActivateSnapshotCard("mythicPlus","mythicPlus","STALE")and targeted.guid=="Player-Local"and#targeted.blocks==1 and targeted.blocks[1]=="mythicPlus"and targeted.reason=="MANUAL"and not openedTab,"a stale tile starts only its producer through the existing manual refresh contract")
+assert(UI:ActivateSnapshotCard("delves","delves","MISSING")and targeted.blocks[1]=="delves"and#targeted.blocks==1,"a missing tile targets only its own producer")
+assert(UI:ActivateSnapshotCard("stats","stats","ERROR")and targeted.blocks[1]=="stats"and#targeted.blocks==1,"an error tile retries only its producer")
+for _,entry in ipairs({{"equipment","equipment"},{"mythicPlus","mythicPlus"},{"raid","raid"},{"delves","delves"},{"stats","stats"}})do local tab,block=entry[1],entry[2];assert(UI:ActivateSnapshotCard(tab,block,"MISSING")and#targeted.blocks==1 and targeted.blocks[1]==block,"missing snapshot action targets only "..block);assert(UI:ActivateSnapshotCard(tab,block,"STALE")and#targeted.blocks==1 and targeted.blocks[1]==block,"stale snapshot action targets only "..block);assert(UI:ActivateSnapshotCard(tab,block,"ERROR")and#targeted.blocks==1 and targeted.blocks[1]==block,"error retry targets only "..block)end
+HolyStorm.CharacterUI.RequestRefresh=originalRefresh
+local subtitle={value="",wrapped=false};function subtitle:SetText(value)self.value=value end;function subtitle:SetWordWrap(value)self.wrapped=value end;function subtitle:SetTextColor()end
+local stateKeys={MISSING="DASHBOARD_SCAN_MISSING",STALE="DASHBOARD_SCAN_STALE",DIRTY="DASHBOARD_SNAPSHOT_DIRTY",REFRESHING="DASHBOARD_SNAPSHOT_REFRESHING",ERROR="DASHBOARD_SCAN_ERROR"}
+for _,entry in ipairs({{"equipment","equipment","itemLevel"},{"mythicPlus","mythicPlus","mythicPlusRating"},{"raid","raidLifetime","raidValue"},{"delves","delves","delvesValue"},{"stats","stats","statsValue"}})do
+ local tab,statusKey,valueKey=entry[1],entry[2],entry[3]
+ for state,key in pairs(stateKeys)do
+  latestSnapshot.snapshotStatus[statusKey]=state;local stateModel=UI:BuildDashboardModel();local storedValue=stateModel[valueKey]
+  assert(storedValue and storedValue~="|cff888888\226\128\147|r","cached dashboard value remains available for "..tab.." while "..state)
+  local value={text=storedValue};function value:SetText(text)self.text=text end
+  UI:SetSnapshotCardStatus({value=value,subtitle=subtitle},state,"cached subtitle")
+  assert(value.text==storedValue and subtitle.value==locale[key],"dashboard "..tab.." preserves its cached value and renders "..state)
+ end
+ latestSnapshot.snapshotStatus[statusKey]="CURRENT";UI:SetSnapshotCardStatus({subtitle=subtitle},"CURRENT","cached summary");assert(subtitle.value=="cached summary","current "..tab.." snapshot retains its existing subtitle")
+end
+latestSnapshot.snapshotStatus.equipment="MISSING";unknownSnapshot.snapshotStatus={equipment="MISSING",mythicPlus="MISSING",raidLifetime="MISSING",delves="MISSING",stats="MISSING"};HolyStorm.CharacterUI.GetDashboardSummary=function()return unknownSnapshot end;local missingModel=UI:BuildDashboardModel();assert(missingModel.itemLevel=="|cff888888\226\128\147|r"and missingModel.mythicPlusRating=="|cff888888\226\128\147|r"and missingModel.raidValue=="|cff888888\226\128\147|r"and missingModel.delvesValue=="|cff888888\226\128\147|r"and missingModel.statsValue=="|cff888888\226\128\147|r","missing snapshot cards retain the standard unknown marker");HolyStorm.CharacterUI.GetDashboardSummary=function()return latestSnapshot end;latestSnapshot.snapshotStatus.equipment="CURRENT"
 assert(UI:CalculateDashboardLayout(900,560).widgetHeight<=184,"dashboard providers use a bounded content area at the standard window size")
 local oneWidgetHeight=UI:CalculateDashboardWidgetHeight({{items={{title="One",summary="Today"}}}},184)
 local multiWidgetHeight=UI:CalculateDashboardWidgetHeight({{items={{title="One"},{title="Two",summary="Tomorrow"}}},{items={{title="Guild award"}}}},184)
@@ -141,7 +163,8 @@ assert(UI:RefreshCharacterData()and request.guid=="Player-Local"and request.reas
 local source=read(uiRoot.."UI/Framework/Dashboard.lua")
 for _,forbidden in ipairs({"HS_Player_DB","HolyStormDB","PlayerData:WriteOwnedBlock","PlayerStore:SetLocalMetadata","C_Timer.NewTicker","CallCapability(\"character.scan"})do assert(not source:find(forbidden,1,true),"dashboard must consume APIs and avoid direct writes, extra scans or polling: "..forbidden)end
 local en=read(uiRoot.."UI/Locales/enUS.lua");local de=read(uiRoot.."UI/Locales/deDE.lua")
-for _,key in ipairs({"DASHBOARD_PROFILE_TITLE","DASHBOARD_BIRTHDAY","DASHBOARD_PREFERRED_ROLE","DASHBOARD_REFRESH","DASHBOARD_RAID_TOOLTIP","DASHBOARD_VIEW_ALL"})do assert(en:find('L["'..key..'"]',1,true)and de:find('L["'..key..'"]',1,true),"both locales include "..key)end
+for _,key in ipairs({"DASHBOARD_PROFILE_TITLE","DASHBOARD_BIRTHDAY","DASHBOARD_PREFERRED_ROLE","DASHBOARD_REFRESH","DASHBOARD_RAID_TOOLTIP","DASHBOARD_VIEW_ALL","DASHBOARD_SCAN_MISSING","DASHBOARD_SCAN_STALE","DASHBOARD_SCAN_ERROR","DASHBOARD_SNAPSHOT_DIRTY","DASHBOARD_SNAPSHOT_REFRESHING","DASHBOARD_CLICK_TO_SCAN"})do assert(en:find('L["'..key..'"]',1,true)and de:find('L["'..key..'"]',1,true),"both locales include "..key)end
+assert(en:find('L["DASHBOARD_SCAN_MISSING"] = "Scan to retrieve data"',1,true)and en:find('L["DASHBOARD_SCAN_STALE"] = "Please rescan for current data"',1,true)and de:find('L["DASHBOARD_SCAN_MISSING"] = "Scannen, um Daten zu erhalten"',1,true)and de:find('L["DASHBOARD_SCAN_STALE"] = "Bitte neu scannen f\\195\\188r aktuelle Daten"',1,true),"missing and stale card prompts match the requested English and German copy")
 assert(source:find("function UI:BuildHomeDashboard",1,true)and source:find("function UI:LayoutDashboard",1,true)and source:find("function UI:RefreshDashboardProviders",1,true),"native dashboard construction, resize layout and provider refresh are connected")
 
 print("Interactive responsive dashboard model, optional providers, reflow, lifetime raid tooltip, navigation and refresh tests passed")

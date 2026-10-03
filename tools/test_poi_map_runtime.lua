@@ -24,7 +24,9 @@ function canvas:AcquirePin(_,entry)
  stats.worldAcquire=(stats.worldAcquire or 0)+1
  pin:OnAcquired(entry);return pin
 end
-local world={canvas=canvas}
+local world={canvas=canvas,shown=false}
+function world:HookScript(event,callback)self[event]=callback end
+function world:IsVisible()return self.shown end
 function world:AddDataProvider(provider)self.provider=provider;stats.providerAdds=stats.providerAdds+1;provider:RefreshAllData()end
 function world:RemoveDataProvider(provider)if self.provider==provider then provider:RemoveAllData();self.provider=nil;stats.providerRemoves=stats.providerRemoves+1 end end
 local minimap=fakeFrame("minimap");function minimap:GetFrameLevel()return self.level end
@@ -37,6 +39,7 @@ local addon={Utils={Now=function()return 100 end,TableCount=function(t)local n=0
 function addon.MapLinks:RegisterPOIProvider(id,provider)self.poiProviders[id]=provider;return true end
 function addon.MapLinks:UnregisterPOIProvider(id)self.poiProviders[id]=nil;return true end
 function addon.MapLinks:RegisterMinimapUpdater(id,callback)self.minimapUpdaters[id]=callback;return true end
+function addon.MapLinks:SetMinimapUpdaterActive(id,active)self.minimapActive=self.minimapActive or{};self.minimapActive[id]=active==true;return true end
 function addon.MapLinks:UnregisterMinimapUpdater(id)self.minimapUpdaters[id]=nil;return true end
 function addon.MapLinks:GetMinimapContext()stats.context=stats.context+1;return{mapID=84,x=.5,y=.5,width=100,height=100,radius=100,pixelRadius=40,rotate=true,facing=.5}end
 function addon.MapLinks:TransformCoordinate(source,x,y,target)stats.transform=stats.transform+1;if source==999 then return nil,"UNSUPPORTED"end;if source==target then return x,y,"DIRECT"end;if target==85 then return x*.5,y*.5,"TRANSFORMED"end;return nil,"UNSUPPORTED"end
@@ -52,17 +55,21 @@ function addon:CallCapability()return true end
 function LibStub(name)if name=="AceAddon-3.0"then return{GetAddon=function()return addon end}elseif name=="AceLocale-3.0"then return{GetLocale=function()return locale end}end end
 
 assert(loadfile(workspace.."LIVE/Holy_Storm_POI/Map.lua"))()
-local Map=addon.POIMap;assert(Map:Initialize());assert(world.provider and stats.providerAdds==1,"World Map provider installs once")
+local Map=addon.POIMap;assert(Map:Initialize());assert(not world.provider and stats.providerAdds==0 and stats.transform==0,"login loads POIs without installing a hidden World Map provider or transforming coordinates")
+world.shown=true;world.OnShow(world)
+assert(world.provider and stats.providerAdds==1,"opening the World Map installs its provider on demand")
+assert(addon.MapLinks.minimapActive.poi==true,"POI enables minimap work only while visible POIs and minimap display are active")
 assert(#Map.activeEntries==2,"map snapshots both POIs")
-assert(Map:Refresh());assert(stats.worldFrames==2 and stats.minimapFrames==2,"World Map and Minimap create pins from the active POIs: world="..stats.worldFrames.." acquired="..tostring(stats.worldAcquire).." minimap="..stats.minimapFrames)
-assert(stats.context==1 and stats.projection==2 and stats.transform==2,"one validated Minimap context and shared coordinate transforms serve the first pass")
+assert(stats.worldFrames==2 and stats.minimapFrames==2,"opening the World Map immediately creates pooled pins from the active POIs: world="..stats.worldFrames.." acquired="..tostring(stats.worldAcquire).." minimap="..stats.minimapFrames)
+assert(stats.context==1 and stats.projection==2 and stats.transform==2,"one validated Minimap context and shared coordinate transforms serve the initial OnShow pass")
+assert(Map:Refresh());assert(stats.worldFrames==2 and stats.minimapFrames==2 and stats.context==2 and stats.projection==4 and stats.transform==2,"explicit refresh reuses both pin pools and cached transforms")
 assert(Map:Refresh());assert(stats.worldFrames==2 and stats.minimapFrames==2 and stats.transform==2,"refresh reuses both pin pools and cached transforms")
 local contexts=stats.context;assert(Map:RefreshMinimap(false)==false and stats.context==contexts,"shared updater obeys the one-second throttle")
 addon.Utils.Now=function()return 102 end;assert(Map:RefreshMinimap(false));assert(stats.context==contexts+1 and stats.minimapFrames==2,"elapsed Minimap pass reuses marker frames")
-settings.minimapEnabled=false;Map:Refresh();for _,pin in ipairs(Map.minimapPins)do assert(not pin.shown and pin.entry==nil,"Minimap disable hides and resets pooled pins")end
+settings.minimapEnabled=false;Map:Refresh();assert(addon.MapLinks.minimapActive.poi==false,"disabling POI minimap markers stops its shared updater");for _,pin in ipairs(Map.minimapPins)do assert(not pin.shown and pin.entry==nil,"Minimap disable hides and resets pooled pins")end
 settings.minimapEnabled=true;canvas.mapID=85;assert(canvas:GetMapID()==85 and Map.worldProvider~=nil);Map:Refresh();assert(Map:GetRenderState("poi-one").viewedMapID==85 and Map:GetRenderState("poi-one").worldPin,"map switch uses exact transformed coordinates: viewed="..tostring(Map:GetRenderState("poi-one").viewedMapID).." world="..tostring(Map:GetRenderState("poi-one").worldPin))
 entries[2].mapID=999;Map:Refresh();assert(not Map:GetRenderState("poi-two").worldPin,"unsupported map transform hides the World Map marker")
 settings.worldMapEnabled=false;Map:Refresh();assert(not Map:GetRenderState("poi-one").worldPin,"World Map setting independently removes visible pins")
-assert(Map:Shutdown());assert(not world.provider and stats.providerRemoves==1 and addon.MapLinks.minimapUpdaters.poi==nil and addon.MapLinks.poiProviders["holy-storm-poi"]==nil,"shutdown unregisters world map, Minimap, and MapLinks providers")
+assert(Map:Shutdown());assert(not world.provider and stats.providerRemoves==1 and addon.MapLinks.minimapUpdaters.poi==nil and addon.MapLinks.minimapActive.poi==false and addon.MapLinks.poiProviders["holy-storm-poi"]==nil,"shutdown unregisters world map, Minimap, and MapLinks providers")
 assert(Map:Initialize() and Map:Refresh());assert(stats.providerAdds==2 and stats.worldFrames==2,"repeated open/close reuses the World Map pool without leaking frames")
 print("POI map runtime pin reuse, minimap throttling, transform caching, map switching, setting independence and teardown tests passed")

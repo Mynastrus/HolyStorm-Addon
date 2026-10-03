@@ -25,6 +25,7 @@ C_Timer={After=function(delay,callback)callbacks[#callbacks+1]={delay=delay,call
 local HolyStorm={Events={},Utils={Now=function()return now end},PlayerData={},Data={CharacterStore={}},Snapshots={},CharacterScans={},Serializer={Serialize=function(_,value)
  local function encode(v)if type(v)~="table"then return tostring(v)end;local keys={};for k in pairs(v)do keys[#keys+1]=k end;table.sort(keys,function(a,b)return tostring(a)<tostring(b)end);local out={};for _,k in ipairs(keys)do out[#out+1]=tostring(k)..":"..encode(v[k])end;return"{"..table.concat(out,",").."}"end;return encode(value)
 end}}
+HolyStorm.UI={visible=false,GetVisiblePage=function(self)return self.visible and"character"or nil end};HolyStorm.CharacterUI={activeTab="stats",context={characterUUID="Player-Local"}}
 function HolyStorm.Data.CharacterStore:GetBlock(guid,block)return HolyStorm.PlayerData:GetBlock(guid,block)end
 function HolyStorm:GetAddon()return self end
 function HolyStorm.Events:Register(event,owner,fn)listeners[event]=listeners[event]or{};listeners[event][owner]=fn end
@@ -45,7 +46,7 @@ function LibStub(name)if name=="AceLocale-3.0"then return{GetLocale=function()re
 local Stats
 HolyStorm.RegisterModule=function(_,_,callback)Stats={};callback(Stats)end
 assert(loadfile(root.."Stats.lua"))()
-Stats:OnInitialize();Stats:OnEnable();callbacks={};Stats.baselineTimer=false;Stats.liveTimer=false
+Stats:OnInitialize();Stats:OnEnable();assert(#callbacks==0,"Stats enable and missing baseline do not schedule login work");callbacks={};Stats.baselineTimer=false;Stats.liveTimer=false
 
 local clean=Stats:Collect();assert(clean.snapshotVersion==2 and clean.schemaVersion==2 and clean.capture.eligible)
 assert(clean.primary.strength.baseline==95 and clean.primary.strength.baseline~=110,"UnitStat positive buffs are excluded from the stored primary baseline")
@@ -71,8 +72,9 @@ local live=Stats:CollectLive();assert(live.secondary.mastery.effective==nil and 
 function GetMasteryEffect()return 22,1.15 end;function GetSpeed()return 0 end
 function GetSpecializationInfo()return 102,"Balance",nil,55,"DAMAGER"end
 
--- Aura bursts coalesce to one live refresh and never enqueue a baseline while clean.
-Stats.baselineDirty=false;callbacks={};listeners.UNIT_AURA["character-stats-live"]("UNIT_AURA","player");listeners.UNIT_AURA["character-stats-live"]("UNIT_AURA","player");assert(#callbacks==1,"UNIT_AURA events are debounced")
+-- Aura bursts coalesce only while the Stats view is visible.
+Stats.baselineDirty=false;callbacks={};listeners.UNIT_AURA["character-stats-live"]("UNIT_AURA","player");assert(#callbacks==0,"hidden Stats view does not recompute the live overlay")
+HolyStorm.UI.visible=true;listeners.UNIT_AURA["character-stats-live"]("UNIT_AURA","player");listeners.UNIT_AURA["character-stats-live"]("UNIT_AURA","player");assert(#callbacks==1,"visible UNIT_AURA bursts are debounced")
 callbacks[1].callback();callbacks={};assert(#writes==1,"live aura refresh does not write PlayerData")
 local last;for _,entry in ipairs(emitted)do if entry.event=="HS_STATS_LIVE_UPDATED"then last=entry end end
 assert(last and last.args[1]=="Player-Local"and last.args[2].secondary.criticalStrike.effective==25,"the live layer publishes effective values through the internal event bus")

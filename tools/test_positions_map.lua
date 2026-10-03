@@ -59,7 +59,9 @@ local worldCanvas = {
         return { SetPosition = function(self, x, y) self.x, self.y = x, y end, Hide = function() end }
     end,
 }
-WorldMapFrame = {
+WorldMapFrame = { shown = false,
+    HookScript = function(self, event, callback) self[event] = callback end,
+    IsVisible = function(self) return self.shown end,
     AddDataProvider = function(self, provider) self.provider = provider end,
     RemoveDataProvider = function(self, provider) if self.provider == provider then self.provider = nil end end,
 }
@@ -177,6 +179,7 @@ assert(not HolyStorm.MapLinks:TransformCoordinate(84, 0.2, 0.2, 12), "transform 
 C_Map.GetWorldPosFromMapPos = saved
 
 HolyStorm.MapLinks.RegisterMinimapUpdater = function(_, id, callback) updaters[id] = callback; return true end
+HolyStorm.MapLinks.SetMinimapUpdaterActive = function(_, id, active) HolyStorm.MapLinks.activeMinimapUpdaters = HolyStorm.MapLinks.activeMinimapUpdaters or {}; HolyStorm.MapLinks.activeMinimapUpdaters[id] = active and true or nil; return true end
 HolyStorm.MapLinks.UnregisterMinimapUpdater = function(_, id) updaters[id] = nil end
 assert(loadfile(root .. "LIVE/Holy_Storm_Positions/Map.lua"))()
 local map = HolyStorm.GuildPositionMap
@@ -185,7 +188,11 @@ for index = 1, 3 do
         x = 0.501 + index * 0.0001, y = 0.5, timestamp = clock, sequence = index, moving = false }
     HolyStorm.GuildPositions.remote[remote[index].characterUUID] = remote[index]
 end
-assert(map:Enable() and WorldMapFrame.provider and updaters["guild-positions"], "map integration did not enable")
+assert(map:Enable() and not WorldMapFrame.provider and worldPool.active == 0 and updaters["guild-positions"], "login enables live sharing without transforming positions for a hidden World Map")
+assert(HolyStorm.MapLinks.activeMinimapUpdaters["guild-positions"], "visible position markers activate their minimap updater")
+WorldMapFrame.shown = true
+WorldMapFrame.OnShow(WorldMapFrame)
+assert(WorldMapFrame.provider and worldPool.active == 3, "opening World Map installs and renders the live position provider")
 assert(worldPool.active == 3 and #minimapFrames == 3, "initial map render did not create the expected bounded marker pool")
 local worldAllocated = worldPool.created
 local miniAllocated = #minimapFrames
@@ -209,6 +216,8 @@ map:Refresh()
 assert(worldPool.active == 3 and (function() for _, pin in ipairs(minimapFrames) do if pin.shown then return true end end return false end)() == false,
     "world-map and minimap visibility options are not independent")
 settings.minimapEnabled = true
+map:Refresh()
+assert(HolyStorm.MapLinks.activeMinimapUpdaters["guild-positions"], "re-enabling minimap markers restores the updater when positions exist")
 settings.worldMapSize, settings.minimapSize = 41, 15
 map:Refresh()
 assert(minimapFrames[1].width == 15, "minimap size does not use its independent setting")

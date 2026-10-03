@@ -20,6 +20,24 @@ local function styleDashboardBody(region)
  region:SetFontObject(GameFontHighlightSmall);region:SetTextColor(.92,.95,1,1);region:SetAlpha(1)
 end
 local function unknown()local components=HolyStorm.UIComponents;return components and components.FormatState and components:FormatState(nil)or"|cff888888\226\128\147|r"end
+local function statusPrompt(state)
+ if state=="MISSING"or state=="UNSUPPORTED"then return L["DASHBOARD_SCAN_MISSING"]end
+ if state=="STALE"then return L["DASHBOARD_SCAN_STALE"]end
+ if state=="DIRTY"then return L["DASHBOARD_SNAPSHOT_DIRTY"]end
+ if state=="REFRESHING"then return L["DASHBOARD_SNAPSHOT_REFRESHING"]end
+ if state=="ERROR"then return L["DASHBOARD_SCAN_ERROR"]end
+end
+function UI:IsDashboardVisible()
+ local frame=self.frame;local scroll=self.scroll and self.scroll.frame;local page=self.page and self.page.frame
+ if not frame or not scroll or not page then return false end
+ local function shown(value) if type(value.IsVisible) == "function" then return value.IsVisible(value) end; if type(value.IsShown) == "function" then return value.IsShown(value) end; return false end
+ return shown(frame)and shown(scroll)and shown(page)and not(self.optionsContainer and self.optionsContainer.frame and shown(self.optionsContainer.frame))
+end
+function UI:MarkDashboardDirty(providers)
+ self.dashboardDirty=true;if providers then self.dashboardProvidersDirty=true end
+ if self:IsDashboardVisible()then if providers then self:RefreshDashboardProviders()end;self:RefreshDashboard()end
+ return true
+end
 local function numberText(value)
  value=tonumber(value);if not value then return unknown()end
  return value%1==0 and tostring(value)or string.format("%.1f",value)
@@ -55,14 +73,14 @@ function UI:RegisterDashboardProvider(id,definition)
  if type(id)~="string"or id==""or(type(definition)~="table"and type(definition)~="function")then return false,"INVALID_DASHBOARD_PROVIDER"end
  if type(definition)=="function"then definition={owner=id,title=id,order=100,getItems=definition}else definition.owner=definition.owner or id end
  self.dashboardProviders=self.dashboardProviders or{};self.dashboardProviders[id]=definition
+ self.dashboardProvidersDirty=true
  if HolyStorm.Events then HolyStorm.Events:Emit("HS_UI_DASHBOARD_PROVIDER_CHANGED",id,"REGISTERED",definition.owner)end
- if self.dashboardCanvas then self:RefreshDashboardProviders()end
  return true
 end
 function UI:UnregisterDashboardProvider(id)
  local definition=self.dashboardProviders and self.dashboardProviders[id];if not definition then return false end
- self.dashboardProviders[id]=nil;if HolyStorm.Events then HolyStorm.Events:Emit("HS_UI_DASHBOARD_PROVIDER_CHANGED",id,"UNREGISTERED",definition.owner)end
- self:RefreshDashboardProviders();return true
+ self.dashboardProviders[id]=nil;self.dashboardProvidersDirty=true;if HolyStorm.Events then HolyStorm.Events:Emit("HS_UI_DASHBOARD_PROVIDER_CHANGED",id,"UNREGISTERED",definition.owner)end
+ return true
 end
 function UI:UnregisterDashboardProviderOwner(owner)
  local ids={};for id,definition in pairs(self.dashboardProviders or{})do if definition.owner==owner then ids[#ids+1]=id end end;table.sort(ids)
@@ -71,6 +89,13 @@ end
 function UI:OpenCharacterTab(tabId)
  local characterUI=HolyStorm.CharacterUI;local guid=UnitGUID and UnitGUID("player");if not characterUI or not guid or type(tabId)~="string"then return false end
  return characterUI:OpenCharacter(guid,tabId)
+end
+function UI:ActivateSnapshotCard(tabId,blockId,state)
+ if state=="MISSING"or state=="UNSUPPORTED"or state=="STALE"or state=="ERROR"then
+  local guid=UnitGUID and UnitGUID("player");local characterUI=HolyStorm.CharacterUI
+  if guid and characterUI and characterUI.RequestRefresh then return characterUI:RequestRefresh(guid,{blockId},"MANUAL")end
+ end
+ return self:OpenCharacterTab(tabId)
 end
 function UI:OpenProfileSettings()return openProfile()end
 
@@ -116,7 +141,7 @@ function UI:BuildDashboardModel()
  return{
   summary=summary,context=context,guid=guid,name=summary and(summary.coloredName or summary.name)or unknown(),specification=summary and summary.specName and summary.className and string.format(L["DASHBOARD_SPEC_CLASS"],summary.specName,summary.className)or(summary and(summary.specName or summary.className)or unknown()),specIcon=summary and summary.specIcon,classFile=summary and summary.classFile,level=summary and summary.level,realm=summary and summary.realm,guildRank=summary and summary.guildRank,
   profileRows=profileRows,profileAvailable=#profileRows>0,itemLevel=numberText(summary and summary.itemLevel),itemLevelRaw=summary and summary.itemLevel,equippedCount=equipped,mythicPlusRating=numberText(summary and summary.mythicPlusRating),mythicPlusRaw=summary and summary.mythicPlusRating,mythicPlusSubtitle=mythicSubtitle,raid=best,raidValue=raidValue,raidSubtitle=raidSubtitle,raidRows=summary and summary.bestRaidRows,
-  delvesValue=delveValue,delvesSubtitle=delveSubtitle,achievementsAvailable=not not achievementAvailable,achievementValue=achievementValue,achievementSubtitle=achievementSubtitle,statsValue=statsCount>0 and tostring(statsCount)or unknown(),statsSubtitle=L["DASHBOARD_STATS_TRACKED"],twinksValue=twinksCount~=nil and tostring(twinksCount)or unknown(),twinksSubtitle=L["DASHBOARD_MORE_CHARACTERS"],
+  snapshotStatus=summary and summary.snapshotStatus or{},delvesValue=delveValue,delvesSubtitle=delveSubtitle,achievementsAvailable=not not achievementAvailable,achievementValue=achievementValue,achievementSubtitle=achievementSubtitle,statsValue=statsCount>0 and tostring(statsCount)or unknown(),statsSubtitle=L["DASHBOARD_STATS_TRACKED"],twinksValue=twinksCount~=nil and tostring(twinksCount)or unknown(),twinksSubtitle=L["DASHBOARD_MORE_CHARACTERS"],
   lastUpdatedAt=summary and summary.lastUpdatedAt,
  }
 end
@@ -152,8 +177,8 @@ end
 function UI:CalculateDashboardLayout(width,height)
  width=math.max(1,tonumber(width)or 1);height=math.max(380,tonumber(height)or 440)
  local margin,gap=7,7;local available=width-margin*2
- local widgetTop,widgetBottom=306,math.max(350,height-margin)
- return{width=width,height=height,margin=margin,gap=gap,headerTop=margin,headerHeight=86,navTop=100,navHeight=28,primaryTop=137,primaryHeight=94,secondaryTop=239,secondaryHeight=62,widgetTop=widgetTop,widgetBottom=widgetBottom,widgetHeight=math.min(184,widgetBottom-widgetTop),navButtonWidth=math.max(1,(available-4*7)/8)}
+ local widgetTop,widgetBottom=311,math.max(350,height-margin)
+ return{width=width,height=height,margin=margin,gap=gap,headerTop=margin,headerHeight=86,navTop=100,navHeight=28,primaryTop=137,primaryHeight=94,secondaryTop=239,secondaryHeight=66,widgetTop=widgetTop,widgetBottom=widgetBottom,widgetHeight=math.min(184,widgetBottom-widgetTop),navButtonWidth=math.max(1,(available-4*7)/8)}
 end
 
 local function makeMetricCard(parent,kind)
@@ -163,7 +188,7 @@ local function makeMetricCard(parent,kind)
  frame.value=frame:CreateFontString(nil,"OVERLAY","GameFontHighlightLarge");frame.value:SetPoint("TOPLEFT",frame.title,"BOTTOMLEFT",0,-1);frame.value:SetPoint("RIGHT",frame,"RIGHT",-29,0);frame.value:SetJustifyH("LEFT");frame.value:SetWordWrap(false)
  frame.subtitle=frame:CreateFontString(nil,"OVERLAY","GameFontHighlightSmall");frame.subtitle:SetPoint("BOTTOMLEFT",frame,"BOTTOMLEFT",73,10);frame.subtitle:SetPoint("RIGHT",frame,"RIGHT",-12,0);frame.subtitle:SetJustifyH("LEFT");frame.subtitle:SetWordWrap(false);frame.subtitle:SetTextColor(.72,.78,.86)
  frame.arrow=frame:CreateFontString(nil,"OVERLAY","GameFontHighlight");frame.arrow:SetPoint("RIGHT",frame,"RIGHT",-9,0);frame.arrow:SetText("›");frame.arrow:SetTextColor(.9,.68,.2)
- frame:SetScript("OnClick",function(self,button)if button=="RightButton"then if self.settings then self.settings()end;return end;if self.action then self.action()end end)
+ frame:SetScript("OnClick",function(self,button)if button=="RightButton"then if self.settings then self.settings()end;return end;if self.action then self.action(self.snapshotStatus)end end)
  return frame
 end
 
@@ -186,6 +211,7 @@ end
 
 function UI:RebuildDashboardNavigation()
  if not self.navFrame then return false end
+ if not self:IsDashboardVisible()then self.navigationDirty=true;return false end
  local previous=self.navButtons or{};local buttons={};local tabs=HolyStorm.CharacterUI and HolyStorm.CharacterUI.GetTabs and HolyStorm.CharacterUI:GetTabs()or{}
  local locale=LibStub("AceLocale-3.0"):GetLocale("Holy_Storm_CharacterUI")
  for index,definition in ipairs(tabs)do
@@ -206,7 +232,7 @@ function UI:RebuildDashboardNavigation()
 end
 
 function UI:BuildHomeDashboard(parent,widgets)
- local canvas=CreateFrame("Frame",nil,parent);canvas:SetAllPoints(parent);self.dashboardCanvas=canvas;self.dashboardWidgets=widgets;self.providerWidgets={}
+ local canvas=CreateFrame("Frame",nil,parent);canvas:SetAllPoints(parent);self.dashboardCanvas=canvas;self.dashboardWidgets=widgets;self.providerWidgets={};self.dashboardDirty=true;self.dashboardProvidersDirty=true;self.navigationDirty=true
  local header=panel(canvas);self.headerPanel=header
  local headerContent=CreateFrame("Frame",nil,canvas);self.headerContent=headerContent
  local profile=CreateFrame("Button",nil,canvas,"BackdropTemplate");profile:RegisterForClicks("LeftButtonUp","RightButtonUp");profile:SetBackdrop({bgFile=PANEL_TEXTURE,edgeFile=BORDER_TEXTURE,tile=true,tileSize=16,edgeSize=12,insets={left=3,right=3,top=3,bottom=3}});profile:SetBackdropColor(.025,.035,.05,.95);profile:SetBackdropBorderColor(.46,.36,.16,.9);self.profilePanel=profile
@@ -224,22 +250,32 @@ function UI:BuildHomeDashboard(parent,widgets)
  }
  self.widgetFrames={}
  self:RebuildDashboardNavigation()
-local function action(tab)return function()UI:OpenCharacterTab(tab)end end
+ local function action(tab,block,scope,card)return function(state)return UI:ActivateSnapshotCard(tab,block,state)end end
  local cards=self.primaryCards
- cards.equipment.icon:SetTexture("Interface\\Icons\\INV_Helmet_08");cards.equipment.title:SetText(L["DASHBOARD_ITEM_LEVEL"]);cards.equipment.action=action("equipment")
- cards.mythicPlus.icon:SetTexture("Interface\\Icons\\Achievement_ChallengeMode_Gold");cards.mythicPlus.title:SetText(L["DASHBOARD_MYTHICPLUS_RATING"]);cards.mythicPlus.action=action("mythicPlus")
- cards.raid.icon:SetTexture("Interface\\Icons\\INV_Sword_27");cards.raid.title:SetText(L["DASHBOARD_BEST_RAID"]);cards.raid.action=action("raid")
- self.secondaryCards.delves.icon:SetTexture("Interface\\Icons\\INV_Misc_Map_01");self.secondaryCards.delves.title:SetText(L["DASHBOARD_DELVES"]);self.secondaryCards.delves.action=action("delves")
+ cards.equipment.icon:SetTexture("Interface\\Icons\\INV_Helmet_08");cards.equipment.title:SetText(L["DASHBOARD_ITEM_LEVEL"]);cards.equipment.action=action("equipment","equipment",nil,cards.equipment)
+ cards.mythicPlus.icon:SetTexture("Interface\\Icons\\Achievement_ChallengeMode_Gold");cards.mythicPlus.title:SetText(L["DASHBOARD_MYTHICPLUS_RATING"]);cards.mythicPlus.action=action("mythicPlus","mythicPlus",nil,cards.mythicPlus)
+ cards.raid.icon:SetTexture("Interface\\Icons\\INV_Sword_27");cards.raid.title:SetText(L["DASHBOARD_BEST_RAID"]);cards.raid.action=action("raid","raid","lifetime",cards.raid)
+ self.secondaryCards.delves.icon:SetTexture("Interface\\Icons\\INV_Misc_Map_01");self.secondaryCards.delves.title:SetText(L["DASHBOARD_DELVES"]);self.secondaryCards.delves.action=action("delves","delves",nil,self.secondaryCards.delves)
  self.secondaryCards.achievements.icon:SetTexture("Interface\\Icons\\Achievement_GuildPerk_EverybodysFriend");self.secondaryCards.achievements.title:SetText(L["DASHBOARD_ACHIEVEMENTS"]);self.secondaryCards.achievements.action=action("achievements")
- self.secondaryCards.stats.icon:SetTexture("Interface\\Icons\\INV_Misc_Note_03");self.secondaryCards.stats.title:SetText(L["DASHBOARD_STATS"]);self.secondaryCards.stats.action=action("stats")
+ self.secondaryCards.stats.icon:SetTexture("Interface\\Icons\\INV_Misc_Note_03");self.secondaryCards.stats.title:SetText(L["DASHBOARD_STATS"]);self.secondaryCards.stats.action=action("stats","stats",nil,self.secondaryCards.stats)
  self.secondaryCards.twinks.icon:SetTexture("Interface\\Icons\\INV_Misc_GroupLooking");self.secondaryCards.twinks.title:SetText(L["DASHBOARD_TWINKS"]);self.secondaryCards.twinks.action=action("twinks")
  for _,card in pairs(cards)do local current=card;current.tooltip=function()self:ShowMetricTooltip(current.kind,current)end end
  for _,card in pairs(self.secondaryCards)do local current=card;current.tooltip=function()self:ShowSecondaryTooltip(current.kind,current)end end
  self:LayoutDashboard();self:RefreshDashboardProviders();return true
 end
 
+function UI:SetSnapshotCardStatus(card,status,defaultSubtitle)
+ if not card then return end
+ card.snapshotStatus=status
+ local prompt=statusPrompt(status);card.subtitle:SetText(prompt or defaultSubtitle or"")
+ card.subtitle:SetWordWrap(prompt~=nil)
+ if prompt then card.subtitle:SetTextColor(1,.76,.28)else card.subtitle:SetTextColor(.72,.78,.86)end
+ card.statusPrompt=prompt
+end
+
 function UI:LayoutDashboard()
  local canvas=self.dashboardCanvas;if not canvas then return end
+ if not self:IsDashboardVisible()then self.dashboardDirty=true;return false end
  local width=math.max(1,canvas:GetWidth()or 1);local height=math.max(380,canvas:GetHeight()or 440);local layout=self:CalculateDashboardLayout(width,height);local margin,gap=layout.margin,layout.gap
  local header=self.headerPanel;header:ClearAllPoints();header:SetPoint("TOPLEFT",canvas,"TOPLEFT",margin,-layout.headerTop);header:SetPoint("TOPRIGHT",canvas,"TOPRIGHT",-margin,-layout.headerTop);header:SetHeight(layout.headerHeight)
  local headerContent=self.headerContent;headerContent:ClearAllPoints();headerContent:SetPoint("TOPLEFT",header,"TOPLEFT",5,-4);headerContent:SetPoint("BOTTOMRIGHT",header,"BOTTOMRIGHT",-5,4)
@@ -347,17 +383,18 @@ end
 
 function UI:RefreshDashboardProviders()
  if not self.dashboardCanvas then return false end
+ if not self:IsDashboardVisible()then self.dashboardProvidersDirty=true;return false end
  self.visibleDashboardProviders=self:BuildDynamicProviderItems()
  for index,provider in ipairs(self.visibleDashboardProviders)do
   local frame=self.widgetFrames[index]or createWidget(self.dashboardCanvas);self.widgetFrames[index]=frame;frame:Show()
   frame:SetScript("OnEnter",function(owner)owner:SetBackdropBorderColor(1,.78,.25,1)end);frame:SetScript("OnLeave",function(owner)owner:SetBackdropBorderColor(.42,.32,.12,.88)end)
   frame.definition=provider.definition;frame.providerId=provider.id
  end
- self:LayoutDashboard();return true
+ self.dashboardProvidersDirty=false;self:LayoutDashboard();return true
 end
 
 function UI:ShowMetricTooltip(kind,owner)
- local model=self.dashboardModel or{};if not GameTooltip then return false end
+ local model=self.dashboardModel or{};if not GameTooltip then return false end;local prompt=statusPrompt(self.primaryCards[kind]and self.primaryCards[kind].snapshotStatus)
  if kind=="raid"then
   local rows=self:BuildRaidTooltipRows(model)
   local tooltips=HolyStorm.Tooltips
@@ -368,12 +405,12 @@ function UI:ShowMetricTooltip(kind,owner)
   GameTooltip:AddLine(string.format(L["DASHBOARD_EQUIPMENT_TOOLTIP"],model.equippedCount or 0),.9,.94,1,true)
  elseif kind=="mythicPlus"then GameTooltip:AddLine(model.mythicPlusSubtitle or"",.9,.94,1,true)
  elseif kind=="raid"then GameTooltip:AddLine(L["DASHBOARD_RAID_TOOLTIP"],.9,.94,1,true);if model.raidSubtitle~=""then GameTooltip:AddLine(model.raidSubtitle,.8,.86,.94,true)end end
- GameTooltip:AddLine(L["DASHBOARD_CLICK_TO_OPEN"],.25,.78,.92,true);GameTooltip:Show();return true
+ GameTooltip:AddLine(prompt and L["DASHBOARD_CLICK_TO_SCAN"]or L["DASHBOARD_CLICK_TO_OPEN"],.25,.78,.92,true);GameTooltip:Show();return true
 end
 
 function UI:ShowSecondaryTooltip(kind,owner)
  local card=self.secondaryCards[kind];if not GameTooltip or not card then return false end
- GameTooltip:SetOwner(owner,"ANCHOR_CURSOR_RIGHT");GameTooltip:SetText(colorText(card.title:GetText(),1,.78,.18));GameTooltip:AddLine(L["DASHBOARD_CLICK_TO_OPEN"],.25,.78,.92,true);GameTooltip:Show();return true
+ GameTooltip:SetOwner(owner,"ANCHOR_CURSOR_RIGHT");GameTooltip:SetText(colorText(card.title:GetText(),1,.78,.18));GameTooltip:AddLine(statusPrompt(card.snapshotStatus)and L["DASHBOARD_CLICK_TO_SCAN"]or L["DASHBOARD_CLICK_TO_OPEN"],.25,.78,.92,true);GameTooltip:Show();return true
 end
 
 function UI:RefreshCharacterData()
@@ -387,6 +424,8 @@ end
 
 function UI:RefreshDashboard()
  if not self.dashboardCanvas then return false end
+ if not self:IsDashboardVisible()then self.dashboardDirty=true;return false end
+ if self.navigationDirty then self.navigationDirty=false;self:RebuildDashboardNavigation()end
  local model=self:BuildDashboardModel();self.dashboardModel=model;local widgets=self.dashboardWidgets
  widgets.name:SetText(model.name);widgets.specialization:SetText(model.specification);widgets.specIcon:SetImage(model.specIcon or"Interface\\Icons\\INV_Misc_QuestionMark")
  local details={};if model.level then details[#details+1]=string.format(L["DASHBOARD_LEVEL"],model.level)end;if text(model.realm)then details[#details+1]=model.realm end;if text(model.guildRank)then details[#details+1]=string.format(L["DASHBOARD_GUILD_RANK_SHORT"],model.guildRank)end
@@ -396,28 +435,31 @@ function UI:RefreshDashboard()
  elseif model.classFile and CLASS_ICON_TCOORDS and CLASS_ICON_TCOORDS[model.classFile]then local coords=CLASS_ICON_TCOORDS[model.classFile];widgets.classIcon:SetImage(CLASS_TEXTURE,unpack(coords))
  else widgets.classIcon:SetImage(CLASS_FALLBACK)end
  self:UpdateProfilePanel(model)
- local primary=self.primaryCards;primary.equipment.value:SetText(model.itemLevel);primary.equipment.subtitle:SetText(model.equippedCount>0 and string.format(L["DASHBOARD_EQUIPPED_COUNT"],model.equippedCount)or L["DASHBOARD_ITEM_LEVEL"])
- primary.mythicPlus.value:SetText(model.mythicPlusRating);primary.mythicPlus.subtitle:SetText(model.mythicPlusSubtitle or"")
+ local primary=self.primaryCards;primary.equipment.value:SetText(model.itemLevel);self:SetSnapshotCardStatus(primary.equipment,model.snapshotStatus.equipment,model.equippedCount>0 and string.format(L["DASHBOARD_EQUIPPED_COUNT"],model.equippedCount)or L["DASHBOARD_ITEM_LEVEL"])
+ primary.mythicPlus.value:SetText(model.mythicPlusRating);self:SetSnapshotCardStatus(primary.mythicPlus,model.snapshotStatus.mythicPlus,model.mythicPlusSubtitle or"")
  local width=self.dashboardCanvas:GetWidth()or 900;local raidValue=model.raidValue
  if width<760 and model.raid and RAID_SHORT[model.raid.difficulty]then raidValue=string.format("%s %d/%d",RAID_SHORT[model.raid.difficulty],model.raid.killed,model.raid.total);local C=HolyStorm.CharacterUI;if C and C.ColorDifficulty then raidValue=C:ColorDifficulty(model.raid.difficulty,raidValue)end end
- primary.raid.value:SetText(raidValue);primary.raid.subtitle:SetText(model.raidSubtitle or"")
- local secondary=self.secondaryCards;secondary.delves.value:SetText(model.delvesValue);secondary.delves.subtitle:SetText(model.delvesSubtitle~=""and model.delvesSubtitle or L["DASHBOARD_CURRENT_PROGRESS"])
+ primary.raid.value:SetText(raidValue);self:SetSnapshotCardStatus(primary.raid,model.snapshotStatus.raidLifetime,model.raidSubtitle or"")
+ local secondary=self.secondaryCards;secondary.delves.value:SetText(model.delvesValue);self:SetSnapshotCardStatus(secondary.delves,model.snapshotStatus.delves,model.delvesSubtitle~=""and model.delvesSubtitle or L["DASHBOARD_CURRENT_PROGRESS"])
  secondary.achievements.value:SetText(model.achievementValue);secondary.achievements.subtitle:SetText(model.achievementSubtitle)
- secondary.stats.value:SetText(model.statsValue);secondary.stats.subtitle:SetText(model.statsSubtitle)
+ secondary.stats.value:SetText(model.statsValue);self:SetSnapshotCardStatus(secondary.stats,model.snapshotStatus.stats,model.statsSubtitle)
  secondary.twinks.value:SetText(model.twinksValue);secondary.twinks.subtitle:SetText(model.twinksSubtitle)
  if model.mythicPlusRaw and C_ChallengeMode and C_ChallengeMode.GetDungeonScoreRarityColor then local color=C_ChallengeMode.GetDungeonScoreRarityColor(model.mythicPlusRaw);if color then primary.mythicPlus.value:SetTextColor(color.r or 1,color.g or 1,color.b or 1)end else primary.mythicPlus.value:SetTextColor(1,1,1)end
  if self.updatedStatus then self.updatedStatus:SetText(model.lastUpdatedAt and string.format(L["DASHBOARD_UPDATED"],date(L["DASHBOARD_DATE_FORMAT"],model.lastUpdatedAt))or L["DASHBOARD_UPDATE_UNKNOWN"])end
- self:LayoutDashboard();self:RefreshDashboardProviders();return true
+ self.dashboardDirty=false
+ if self.dashboardProvidersDirty or not self.visibleDashboardProviders then self:RefreshDashboardProviders()else self:LayoutDashboard()end
+ return true
 end
 
 function UI:RegisterDashboardEvents()
- HolyStorm.Events:Register("HS_CHARACTER_TAB_REGISTERED","ui-dashboard-tabs",function()UI:RebuildDashboardNavigation();UI:RefreshDashboard()end)
+ HolyStorm.Events:Register("HS_CHARACTER_TAB_REGISTERED","ui-dashboard-tabs",function()UI.navigationDirty=true;UI:MarkDashboardDirty()end)
  for _,event in ipairs({"HS_CHARACTER_UPDATED","HS_STATS_UPDATED","HS_EQUIPMENT_UPDATED","HS_MYTHICPLUS_UPDATED","HS_RAIDLOCKS_UPDATED","HS_DELVES_UPDATED","HS_PROFILE_UPDATED","HS_TWINKS_UPDATED","HS_ACCOUNT_MAIN_CHANGED","HS_TWINK_VISIBILITY_CHANGED"})do
-  HolyStorm.Events:Register(event,"ui-dashboard",function(_,guid)if not guid or guid==(UnitGUID and UnitGUID("player"))then UI:RefreshDashboard()end end)
+  HolyStorm.Events:Register(event,"ui-dashboard",function(_,guid)if not guid or guid==(UnitGUID and UnitGUID("player"))then UI:MarkDashboardDirty()end end)
  end
- HolyStorm.Events:Register("HS_UI_DASHBOARD_PROVIDER_CHANGED","ui-dashboard-provider",function()UI:RebuildDashboardNavigation();UI:RefreshDashboardProviders();UI:RefreshDashboard()end)
- HolyStorm.Events:Register("HS_CALENDAR_UPDATED","ui-dashboard-calendar",function()UI:RefreshDashboardProviders()end)
- for _,event in ipairs({"HS_ACHIEVEMENT_DEFINITION_UPDATED","HS_ACHIEVEMENT_AWARDS_UPDATED","HS_ACHIEVEMENT_SYNC_UPDATED","HS_CONTENT_CREATED","HS_CONTENT_UPDATED","HS_CONTENT_PUBLISHED","HS_CONTENT_ARCHIVED","HS_CONTENT_DELETED"})do HolyStorm.Events:Register(event,"ui-dashboard-dynamic:"..event,function()UI:RefreshDashboardProviders();UI:RefreshDashboard()end)end
- HolyStorm.Events:Register("HS_TASK_STARTED","ui-dashboard-refresh",function(_,task)if task and task.registryId=="Character.Refresh"and task.metadata and task.metadata.characterUUID==(UnitGUID and UnitGUID("player"))then UI.refreshing=true;UI:SetStatusText(L["DASHBOARD_REFRESHING"])end end)
- for _,event in ipairs({"HS_TASK_COMPLETED","HS_TASK_FAILED"})do HolyStorm.Events:Register(event,"ui-dashboard-refresh:"..event,function(_,task)if task and task.registryId=="Character.Refresh"and task.metadata and task.metadata.characterUUID==(UnitGUID and UnitGUID("player"))then UI.refreshing=false;UI.refreshButton:SetEnabled(true);UI:SetReadyStatus();UI:RefreshDashboard()end end)end
+ HolyStorm.Events:Register("HS_UI_DASHBOARD_PROVIDER_CHANGED","ui-dashboard-provider",function()UI.navigationDirty=true;UI:MarkDashboardDirty(true)end)
+ HolyStorm.Events:Register("HS_CALENDAR_UPDATED","ui-dashboard-calendar",function()UI:MarkDashboardDirty(true)end)
+ HolyStorm.Events:Register("HS_CHARACTER_SNAPSHOT_STATUS_CHANGED","ui-dashboard-snapshot-status",function(_,block,state,runtime,guid)if not guid or guid==(UnitGUID and UnitGUID("player"))then UI:MarkDashboardDirty()end end)
+ for _,event in ipairs({"HS_ACHIEVEMENT_DEFINITION_UPDATED","HS_ACHIEVEMENT_AWARDS_UPDATED","HS_ACHIEVEMENT_SYNC_UPDATED","HS_CONTENT_CREATED","HS_CONTENT_UPDATED","HS_CONTENT_PUBLISHED","HS_CONTENT_ARCHIVED","HS_CONTENT_DELETED"})do HolyStorm.Events:Register(event,"ui-dashboard-dynamic:"..event,function()UI:MarkDashboardDirty(true)end)end
+ HolyStorm.Events:Register("HS_TASK_STARTED","ui-dashboard-refresh",function(_,task)if task and task.registryId=="Character.Refresh"and task.metadata and task.metadata.characterUUID==(UnitGUID and UnitGUID("player"))then UI.refreshing=true;UI.dashboardDirty=true;if UI:IsDashboardVisible()then UI:SetStatusText(L["DASHBOARD_REFRESHING"]);UI:RefreshDashboard()end end end)
+ for _,event in ipairs({"HS_TASK_COMPLETED","HS_TASK_FAILED"})do HolyStorm.Events:Register(event,"ui-dashboard-refresh:"..event,function(_,task)if task and task.registryId=="Character.Refresh"and task.metadata and task.metadata.characterUUID==(UnitGUID and UnitGUID("player"))then UI.refreshing=false;if UI:IsDashboardVisible()then UI.refreshButton:SetEnabled(true);UI:SetReadyStatus()end;UI:MarkDashboardDirty()end end)end
 end

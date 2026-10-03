@@ -114,13 +114,40 @@ function CharacterUI:SetLiveStats(characterUUID,snapshot)
  if not validId(characterUUID)or type(snapshot)~="table"or not UnitGUID or characterUUID~=UnitGUID("player")then return false end
  self.liveStats[characterUUID]=snapshot;return true
 end
-function CharacterUI:GetDataStatus(characterUUID,blockId)
- local data,meta=self:GetSnapshot(characterUUID,blockId);if not data then return"MISSING",nil end
+local function statusNumber(value)
+ if issecretvalue then local ok,secret=pcall(issecretvalue,value);if not ok or secret then return nil end end
+ local ok,number=pcall(tonumber,value);return ok and number or nil
+end
+local function statusCurrentValue(api,method)
+ if type(api)~="table"or type(api[method])~="function"then return nil end
+ local ok,value=pcall(api[method]);return ok and statusNumber(value)or nil
+end
+function CharacterUI:GetDataStatus(characterUUID,blockId,scope,snapshotSource)
+ local data,meta
+ if type(snapshotSource)=="table"then data,meta=snapshotSource.data,snapshotSource.meta else data,meta=self:GetSnapshot(characterUUID,blockId)end
+ local runtime=HolyStorm.CharacterScans and HolyStorm.CharacterScans.GetRuntimeState and HolyStorm.CharacterScans:GetRuntimeState(characterUUID,blockId)
+ if not data then if runtime and(runtime.state=="DIRTY"or runtime.state=="REFRESHING"or runtime.state=="ERROR")then return runtime.state,meta,runtime end;return"MISSING",meta end
  local snapshotVersion=expectedSnapshotVersions[blockId]
  if snapshotVersion and(type(data)~="table"or data.snapshotVersion~=snapshotVersion)then return"UNSUPPORTED",meta end
  if(blockId=="mythicPlus"or blockId=="delves"or blockId=="stats")and data.schemaVersion~=snapshotVersion then return"UNSUPPORTED",meta end
- if HolyStorm.PlayerData.GetBlockFreshness then local freshness=HolyStorm.PlayerData:GetBlockFreshness(characterUUID,blockId);return freshness.state or(freshness.stale and"STALE"or"CURRENT"),meta end
- return HolyStorm.PlayerData:IsStale(characterUUID,blockId)and"STALE"or"CURRENT",meta
+ if runtime and(runtime.state=="DIRTY"or runtime.state=="REFRESHING"or runtime.state=="ERROR")then return runtime.state,meta,runtime end
+ local week
+ if blockId=="mythicPlus"or blockId=="delves"or(blockId=="raid"and scope~="lifetime")then week=statusCurrentValue(C_DateAndTime,"GetWeeklyResetStartTime")end
+ if blockId=="mythicPlus"then
+  local season=statusCurrentValue(C_MythicPlus,"GetCurrentSeason");local storedSeason=statusNumber(data.seasonId)
+  if season and storedSeason and season~=storedSeason then return"STALE",meta end
+  local storedWeek=statusNumber(data.weeklyIdentity);if week and storedWeek and week~=storedWeek then return"STALE",meta end
+ elseif blockId=="delves"then
+  local season=statusCurrentValue(C_DelvesUI,"GetCurrentDelvesSeasonNumber");local storedSeason=statusNumber(data.seasonNumber)
+  if season and storedSeason and season~=storedSeason then return"STALE",meta end
+  local storedWeek=statusNumber(data.weeklyIdentity);if week and storedWeek and week~=storedWeek then return"STALE",meta end
+ elseif blockId=="raid"and scope~="lifetime"and week then
+  local storedWeek=statusNumber(data.weeklyIdentity)
+  if storedWeek and week~=storedWeek then return"STALE",meta end
+  local updatedAt=statusNumber(data.updatedAt or(meta and(meta.originCreatedAt or meta.updatedAt)))
+  if not storedWeek and updatedAt and updatedAt<week then return"STALE",meta end
+ end
+ return"CURRENT",meta,runtime
 end
 function CharacterUI:GetDifficultyById(difficultyId)
  for _,key in ipairs({"LFR","NORMAL","HEROIC","MYTHIC","TIMEWALKING"})do local definition=self.raidDifficulties[key];if definition.difficultyIds[tonumber(difficultyId)]then return definition end end
@@ -207,11 +234,11 @@ function CharacterUI:GetDashboardSummary(characterUUID)
  local equipmentV4=type(equipment)=="table"and equipment.snapshotVersion==4
  local itemLevel=equipmentV4 and safeNumeric(equipment.equippedItemLevel or equipment.itemLevel)or nil;if itemLevel and itemLevel<=0 then itemLevel=nil end
  local mythicPlusV5=type(mythicPlus)=="table"and mythicPlus.schemaVersion==5 and mythicPlus.snapshotVersion==5
- local currentSeason=currentMythicPlusSeason();local storedSeason=mythicPlusV5 and safeNumeric(mythicPlus.seasonId)
- local rating=mythicPlusV5 and currentSeason and storedSeason==currentSeason and safeNumeric(mythicPlus.overallScore)or nil
+ local storedSeason=mythicPlusV5 and safeNumeric(mythicPlus.seasonId)
+ local rating=mythicPlusV5 and safeNumeric(mythicPlus.overallScore)or nil
  local lastUpdatedAt=0;for _,meta in ipairs({equipmentMeta or{},mythicMeta or{},raidMeta or{},delvesMeta or{},statsMeta or{}})do lastUpdatedAt=math.max(lastUpdatedAt,tonumber(meta.updatedAt)or 0)end
  local bestRaid=type(raid)=="table"and raid.snapshotVersion==3 and raid.catalogReady==true and self:GetBestCurrentRaidProgress(raid)or nil
- return{characterUUID=characterUUID,name=context.name,coloredName=classColoredName(context,context.name),classFile=context.classFile,className=context.className,specName=context.spec and context.spec.name,specIcon=context.spec and context.spec.icon,level=context.level,realm=context.realm,guildRank=context.member and context.member.rank,itemLevel=itemLevel,mythicPlusRating=rating,mythicPlusSeasonId=rating and storedSeason or nil,bestRaid=bestRaid,bestRaidRows=bestRaid and self:BuildRaidBestRows(raid,bestRaid)or{},equipment=equipment,mythicPlus=mythicPlus,raid=raid,delves=delves,stats=stats,lastUpdatedAt=lastUpdatedAt>0 and lastUpdatedAt or nil}
+ return{characterUUID=characterUUID,name=context.name,coloredName=classColoredName(context,context.name),classFile=context.classFile,className=context.className,specName=context.spec and context.spec.name,specIcon=context.spec and context.spec.icon,level=context.level,realm=context.realm,guildRank=context.member and context.member.rank,itemLevel=itemLevel,mythicPlusRating=rating,mythicPlusSeasonId=storedSeason,bestRaid=bestRaid,bestRaidRows=bestRaid and self:BuildRaidBestRows(raid,bestRaid)or{},equipment=equipment,mythicPlus=mythicPlus,raid=raid,delves=delves,stats=stats,snapshotStatus={equipment=self:GetDataStatus(characterUUID,"equipment",nil,{data=equipment,meta=equipmentMeta}),mythicPlus=self:GetDataStatus(characterUUID,"mythicPlus",nil,{data=mythicPlus,meta=mythicMeta}),raidLifetime=self:GetDataStatus(characterUUID,"raid","lifetime",{data=raid,meta=raidMeta}),delves=self:GetDataStatus(characterUUID,"delves",nil,{data=delves,meta=delvesMeta}),stats=self:GetDataStatus(characterUUID,"stats",nil,{data=stats,meta=statsMeta})},lastUpdatedAt=lastUpdatedAt>0 and lastUpdatedAt or nil}
 end
 function CharacterUI:CanUseTab(definition)
  if definition.permission and HolyStorm.Policy and not HolyStorm.Policy:Can(definition.permission)then return false,"PERMISSION"end
@@ -221,16 +248,17 @@ function CharacterUI:CanUseTab(definition)
  return true
 end
 function CharacterUI:RunRefresh(characterUUID,blocks,options)
+ options=options or{};local reason=options.reason or"MANUAL"
  local wanted={};for _,block in ipairs(blocks or{})do wanted[block]=true end;local all=next(wanted)==nil
- if characterUUID==UnitGUID("player")then if all or wanted.identity then HolyStorm.Data.CharacterStore:CaptureCurrent()end;if all or wanted.equipment then HolyStorm:CallCapability("character.scan.equipment",true)end;if all or wanted.raid then HolyStorm:CallCapability("character.scan.raids",true)end;if all or wanted.mythicPlus then HolyStorm:CallCapability("character.scan.mythicplus",true)end;if all or wanted.delves then HolyStorm:CallCapability("character.scan.delves",true)end;if all or wanted.stats then HolyStorm:CallCapability("character.scan.stats",true)end;return true end
- return HolyStorm.Data.CharacterStore:RequestRefresh(characterUUID,blocks,options)
+ if characterUUID==UnitGUID("player")then if all or wanted.identity then HolyStorm.Data.CharacterStore:CaptureCurrent()end;if all or wanted.equipment then HolyStorm:CallCapability("character.scan.equipment",true,reason)end;if all or wanted.raid then HolyStorm:CallCapability("character.scan.raids",true,reason)end;if all or wanted.mythicPlus then HolyStorm:CallCapability("character.scan.mythicplus",true,reason)end;if all or wanted.delves then HolyStorm:CallCapability("character.scan.delves",true,reason)end;if all or wanted.stats then HolyStorm:CallCapability("character.scan.stats",true,reason)end;return true end
+ options.force=reason=="MANUAL"or options.force==true;return HolyStorm.Data.CharacterStore:RequestRefresh(characterUUID,blocks,options)
 end
 function CharacterUI:RequestRefresh(characterUUID,blocks,reason)
  characterUUID=characterUUID or(self.context and self.context.characterUUID);if not characterUUID then return false end
  local requested={};for _,block in ipairs(blocks or{})do if reason=="MANUAL"or self:GetDataStatus(characterUUID,block)~="CURRENT"then requested[#requested+1]=block end end;if#requested==0 then return true end
  local pending=self.pendingRefreshBlocks[characterUUID]or{};for _,block in ipairs(requested)do pending[block]=true end;self.pendingRefreshBlocks[characterUUID]=pending
- local priorityClass=(reason=="MANUAL"or reason=="CHARACTER_OPEN")and"USER_INTERACTIVE"or"BACKGROUND_CATCHUP";local previous=self.pendingRefreshOptions[characterUUID];if not previous or priorityClass=="USER_INTERACTIVE"then self.pendingRefreshOptions[characterUUID]={reason=reason or"CHARACTER_OPEN",priorityClass=priorityClass}end
- if HolyStorm.Tasks:GetTaskType("Character.Refresh")then return HolyStorm.Tasks:Queue("Character.Refresh",{mergeKey=characterUUID,metadata={characterUUID=characterUUID},triggerSource=reason or"CHARACTER_OPEN",debounce=.2})end
+ local priorityClass=reason=="MANUAL"and"USER_INTERACTIVE"or"BACKGROUND_CATCHUP";local previous=self.pendingRefreshOptions[characterUUID];if not previous or priorityClass=="USER_INTERACTIVE"then self.pendingRefreshOptions[characterUUID]={reason=reason or"MANUAL",priorityClass=priorityClass,force=reason=="MANUAL"}end
+ if HolyStorm.Tasks:GetTaskType("Character.Refresh")then return HolyStorm.Tasks:Queue("Character.Refresh",{mergeKey=characterUUID,metadata={characterUUID=characterUUID},triggerSource=reason or"MANUAL",debounce=.2,priority=reason=="MANUAL"and 15 or 30})end
  local options=self.pendingRefreshOptions[characterUUID];self.pendingRefreshBlocks[characterUUID]=nil;self.pendingRefreshOptions[characterUUID]=nil;return self:RunRefresh(characterUUID,requested,options)
 end
 function CharacterUI:ConsumeRefresh(characterUUID)

@@ -73,7 +73,9 @@ allowed to finish; old positions do not form a following history queue.
 
 Initial position discovery is explicitly requested after addon readiness. It
 does not enable general login catch-up for the live domain. Position payloads
-do not advance durable player-data catch-up watermarks.
+do not advance durable player-data catch-up watermarks. The World Map provider
+installs when the map is shown; login reconciliation does not transform remote
+coordinates for a hidden map.
 
 ## Movement, capture, and send cadence
 
@@ -143,9 +145,10 @@ For a rotating Minimap, the projection uses `GetPlayerFacing()`. If rotation is
 enabled but orientation cannot be read, markers are hidden. If Blizzard reports
 that Minimap rotation is ignored, the projection uses north-up orientation.
 Pins share one indexed frame pool. Transformed remote coordinates are cached by
-character version and target map; the shared MapLinks updater is polled by its
-existing central driver, while this feature limits a full refresh to once per
-second and skips unchanged signatures.
+character version and target map. The shared MapLinks driver runs only while
+Minimap is enabled and visible positions need projection; it is detached when
+no markers need display. Projection is limited to once per second and skips
+unchanged signatures.
 
 ## Marker style and tooltip
 

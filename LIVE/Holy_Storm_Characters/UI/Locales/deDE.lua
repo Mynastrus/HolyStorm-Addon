@@ -1,4 +1,8 @@
 local L=LibStub("AceLocale-3.0"):NewLocale("Holy_Storm_CharacterUI","deDE");if not L then return end
+L["MYTHICPLUS_WEEKLY_STALE"]="Gespeicherte Wochendaten"
+L["SNAPSHOT_SCAN_STALE"]="Bitte neu scannen f\195\188r aktuelle Daten";L["SNAPSHOT_REFRESHING"]="Daten werden aktualisiert \226\128\166";L["SNAPSHOT_SCAN_ERROR"]="Aktualisierung fehlgeschlagen \226\128\147 erneut scannen";L["RAID_WEEKLY_STALE_TOOLTIP"]="Gespeicherte w\195\182chentliche %s"
+L["STATUS_DIRTY"]="Aktualisierung vorgemerkt";L["STATUS_ERROR"]="Aktualisierung fehlgeschlagen"
+L["SNAPSHOT_SCAN_MISSING"]="Scannen, um Daten zu erhalten";L["SNAPSHOT_SCAN_STALE"]="Bitte neu scannen f\195\188r aktuelle Daten";L["SNAPSHOT_DIRTY"]="Aktualisierung vorgemerkt";L["SNAPSHOT_REFRESHING"]="Daten werden aktualisiert \226\128\166";L["SNAPSHOT_SCAN_ERROR"]="Aktualisierung fehlgeschlagen \226\128\147 erneut scannen";L["SNAPSHOT_REMOTE_REFRESH"]="Aktualisierte Daten anfordern"
 L["WINDOW_TITLE"]="Holy Storm     |cffBFBFBFCharakter|r"
 L["FACTION_ALLIANCE"]="Allianz";L["FACTION_HORDE"]="Horde"
 L["TAB_SUMMARY"]="Übersicht";L["TAB_STATS"]="Werte";L["TAB_TWINKS"]="Twinks"

@@ -186,7 +186,7 @@ function Map:PlaceWorldPin(provider, entry)
 end
 
 function Map:InstallWorldMap()
-    if self.worldProvider or not WorldMapFrame or not MapCanvasDataProviderMixin or not CreateFromMixins then return false end
+    if self.worldProvider or not WorldMapFrame or not self:IsWorldMapVisible() or not MapCanvasDataProviderMixin or not CreateFromMixins then return false end
     local provider = CreateFromMixins(MapCanvasDataProviderMixin)
     provider.pins = {}
     function provider:RemoveGuid(guid)
@@ -206,6 +206,7 @@ function Map:InstallWorldMap()
         self.pins = {}
     end
     function provider:RefreshGuid(guid)
+        if not Map:IsWorldMapVisible() then return end
         self:RemoveGuid(guid)
         if not Map.enabled or not HolyStorm.GuildPositions:GetSettings().worldMapEnabled then
             Map:GetRenderState(guid).worldPin = false
@@ -216,7 +217,7 @@ function Map:InstallWorldMap()
     end
     function provider:RefreshAllData()
         self:RemoveAllData()
-        if not Map.enabled or not HolyStorm.GuildPositions:GetSettings().worldMapEnabled then return end
+        if not Map.enabled or not Map:IsWorldMapVisible() or not HolyStorm.GuildPositions:GetSettings().worldMapEnabled then return end
         local canvas = self:GetMap()
         if not canvas or not canvas.GetMapID or not canvas:GetMapID() then return end
         for _, entry in ipairs(HolyStorm.GuildPositions:GetVisible()) do Map:PlaceWorldPin(self, entry) end
@@ -225,6 +226,36 @@ function Map:InstallWorldMap()
     WorldMapFrame:AddDataProvider(provider)
     self.worldProvider = provider
     self.installed = true
+    return true
+end
+
+function Map:IsWorldMapVisible()
+    local frame = WorldMapFrame
+    if not frame then return false end
+    local query = frame.IsVisible or frame.IsShown
+    if type(query) ~= "function" then return false end
+    local ok, visible = pcall(query, frame)
+    return ok and visible == true
+end
+
+function Map:HookWorldMap()
+    if self.worldMapHooked then
+        if self:IsWorldMapVisible() then self:InstallWorldMap() end
+        return true
+    end
+    if not WorldMapFrame or type(WorldMapFrame.HookScript) ~= "function" then return false end
+    self.worldMapShowHook = function()
+        if Map.enabled then
+            Map:InstallWorldMap()
+            Map:Refresh()
+        end
+    end
+    WorldMapFrame:HookScript("OnShow", self.worldMapShowHook)
+    self.worldMapHooked = true
+    if self:IsWorldMapVisible() then
+        self:InstallWorldMap()
+        self:Refresh()
+    end
     return true
 end
 
@@ -251,15 +282,23 @@ function Map:HideMinimapPins()
     self.lastMinimapSignature = nil
 end
 
+function Map:UpdateMinimapUpdater(entries)
+    local settings = HolyStorm.GuildPositions:GetSettings()
+    entries = entries or HolyStorm.GuildPositions:GetVisible()
+    return HolyStorm.MapLinks:SetMinimapUpdaterActive("guild-positions",
+        self.enabled and Minimap ~= nil and settings.minimapEnabled == true and type(entries) == "table" and #entries > 0)
+end
+
 function Map:RefreshMinimap(force)
     if not self.enabled then return false end
     local settings = HolyStorm.GuildPositions:GetSettings()
-    if not settings.minimapEnabled then self:HideMinimapPins(); return true end
+    if not settings.minimapEnabled then self:HideMinimapPins(); self:UpdateMinimapUpdater({}); return true end
     local nowClock = type(GetTime) == "function" and GetTime() or 0
     if not force and nowClock - self.lastMinimapRefresh < 1 then return false end
     self.lastMinimapRefresh = nowClock
 
     local entries = HolyStorm.GuildPositions:GetVisible()
+    self:UpdateMinimapUpdater(entries)
     local context, reason = HolyStorm.MapLinks:GetMinimapContext()
     if not context then
         self:HideMinimapPins()
@@ -316,7 +355,9 @@ end
 
 function Map:RefreshMany(guids)
     if not self.enabled then return false end
-    if self.worldProvider then
+    local worldVisible = self:IsWorldMapVisible()
+    if worldVisible and not self.worldProvider then self:InstallWorldMap() end
+    if worldVisible and self.worldProvider then
         if self.worldProvider.RefreshGuid then
             for guid in pairs(guids or {}) do self.worldProvider:RefreshGuid(guid) end
         else
@@ -331,7 +372,9 @@ end
 function Map:Refresh(guid)
     if guid then return self:RefreshMany({ [guid] = true }) end
     if not self.enabled then return false end
-    if self.worldProvider then self.worldProvider:RefreshAllData() end
+    local worldVisible = self:IsWorldMapVisible()
+    if worldVisible and not self.worldProvider then self:InstallWorldMap() end
+    if worldVisible and self.worldProvider then self.worldProvider:RefreshAllData() end
     self:RefreshMinimap(true)
     HolyStorm.Events:Emit("HS_GUILD_POSITION_MAP_REFRESHED")
     return true
@@ -345,12 +388,13 @@ end
 function Map:Enable()
     if self.enabled then return true end
     self.enabled = true
-    self:InstallWorldMap()
+    self:HookWorldMap()
     HolyStorm.MapLinks:RegisterMinimapUpdater("guild-positions", function()
         Map:RefreshMinimap(false)
     end)
+    self:UpdateMinimapUpdater()
     HolyStorm.Events:Register("ADDON_LOADED", "guild-position-map", function(_, name)
-        if name == "Blizzard_WorldMap" then Map:InstallWorldMap(); Map:Refresh() end
+        if name == "Blizzard_WorldMap" then Map:HookWorldMap(); Map:Refresh() end
     end)
     HolyStorm.Events:Register("HS_GUILD_POSITIONS_CLEARED", "guild-position-map", function() Map:Refresh() end)
     HolyStorm.Events:Register("HS_POSITION_SETTINGS_CHANGED", "guild-position-map", function() Map:Refresh() end)
@@ -361,6 +405,7 @@ end
 function Map:Disable()
     if not self.enabled then return true end
     self.enabled = false
+    HolyStorm.MapLinks:SetMinimapUpdaterActive("guild-positions", false)
     HolyStorm.MapLinks:UnregisterMinimapUpdater("guild-positions")
     HolyStorm.Events:UnregisterOwner("guild-position-map")
     if self.worldProvider then

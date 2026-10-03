@@ -25,7 +25,7 @@ The selected Character UUID/GUID is the stable key. `CharacterUI:ResolveContext`
 | Overview | identity plus equipment, Mythic+, raid and other summary sections from CharacterStore | Identity record; Equipment v4, Mythic+ v5, Raid v3, Delves v3 | Same stored fields as every other character | Stored identity and blocks only | Stored data renders without opening a producer | M+ season mismatch is suppressed; each feature section applies its own weekly/version rules | Missing feature data uses localized no-data/gray unknown | Global M+ season and weekly reset are context only; no player values are sampled | Correct after fixes |
 | Equipment | CharacterStore `equipment` block | v4 (`snapshotVersion`) | Stored equipped level and slot records | Stored slot records and complete saved item links | Does not need Equipment producer loaded | Unsupported versions render no current rows; normal block freshness is shown in header | `false` slot is confirmed empty; absent slot/item/socket/enchant data stays unknown | None | Correct after fixes |
 | Mythic+ | CharacterStore `mythicPlus` block | v5 (`schemaVersion` and `snapshotVersion`) | Stored rating, pool, API-selected timed/overtime records | Stored values; local current season is only a global comparison context | No Mythic+ producer required | Old season is hidden; Great Vault is shown only for matching weekly reset identity/current period | Zero score remains `0`; no completion is distinct from unknown; unavailable affix detail stays nil | `GetCurrentSeason`, `GetWeeklyResetStartTime`, rating color and Encounter Journal navigation are presentation context only | Correct |
-| Raids | CharacterStore `raid` block | v3 (`snapshotVersion`) | Stored catalog, weekly lockouts and lifetime statistics | Same stored catalog and lifetime data | Catalog and Best tooltip use stored boss order/data | Weekly lockouts are hidden when PlayerData says the block is stale/unknown; lifetime Best remains available | Missing lockout/boss statistics are gray unknown, never fabricated as zero kills | Encounter Journal opens only on explicit click | Correct after fixes |
+| Raids | CharacterStore `raid` block | v3 (`snapshotVersion`) | Stored catalog, weekly lockouts and lifetime statistics | Same stored catalog and lifetime data | Catalog and Best tooltip use stored boss order/data | Shared status marks weekly identity stale while lifetime Best remains available | Missing lockout/boss statistics are gray unknown, never fabricated as zero kills | Encounter Journal opens only on explicit click | Cache-first |
 | Delves | CharacterStore `delves` block | v3 (`schemaVersion` and `snapshotVersion`) | Stored season and World Great Vault activities | Stored values | Does not need Delves producer loaded | Weekly values require matching stored reset identity and `currentPeriod`; old schemas are not read as v3 | Missing/old weekly data remains gray unknown | `GetWeeklyResetStartTime` is global reset context only | Correct |
 | Stats | CharacterStore `stats` block | v2; explicitly supported legacy v1 display path | Persisted baseline plus local transient live overlay for the own character only | Persisted baseline; no local temporary values | Persisted rows render before any live overlay arrives | Unsupported versions are not reinterpreted; data freshness remains in shared header | Missing fields remain unknown; numeric zero is retained | No APIs are called by the tab; own-character live overlay is supplied by the Stats producer event | Correct after fixes |
 | Twinks | TwinkCore, CharacterStore, GuildStore and PlayerStore | Current central relationship contract | Same central queries | Visibility follows TwinkCore (`all`/`guild-only`) and relationship authority | Re-queries central relationship data on open/update | No cached account grouping; AUTO supersedes MANUAL according to TwinkCore | Unassigned/missing account has a localized empty state | No player-only values are used to supplement the selected character | Correct |
@@ -46,9 +46,9 @@ The separate Achievements addon intentionally contributes an additional tab. It 
 
 ## Tab lifecycle and refresh
 
-Tabs build lazily and reuse their view/table frames. Character switches mark all tab views dirty; only the selected view renders immediately. Later tab selection reads stored data and does not enqueue a producer scan. Data events schedule a bounded refresh for the affected tab and summary, without polling. Failed tab adapters are caught and logged so another tab remains usable.
+Tabs build lazily and reuse their view/table frames. Character switches mark all tab views dirty; only the selected view renders immediately. Opening the Overview and selecting any tab read stored data but do not enqueue producer scans. Missing or stale blocks are labeled through the shared `CharacterUI:GetDataStatus` contract. Data events schedule a bounded refresh for the affected visible tab and summary; hidden tabs remain dirty until selected. Failed tab adapters are caught and logged so another tab remains usable.
 
-The header Refresh button uses the central Character.Refresh task. For the local character it dispatches capability requests through existing scan providers; for a remote character it calls CharacterStore/PlayerData's existing on-demand request path. Opening a character can request missing, stale, or unsupported data for its initially selected tab. Rendering and tab switching themselves do not request scans.
+The header Refresh button uses the central Character.Refresh task. For the local character it dispatches capability requests through existing scan providers; for a remote character it calls CharacterStore/PlayerData's existing on-demand request path. The status prompt for the active producer block is clickable and targets that block. Opening a character, rendering, and tab switching never request scans.
 
 ## Overview and header
 
@@ -68,7 +68,7 @@ The stored dynamic seasonal pool is rendered by stable challenge-map ID. The UI 
 
 ## Raid v3
 
-The UI uses the stored current Encounter Journal catalog, boss order, lockouts, and lifetime statistics. Weekly difficulty columns remain separate from lifetime Best. Best is calculated per catalog boss from the highest confirmed lifetime difficulty in the stored v3 data; the tooltip emits one row per catalog boss in stored order and does not treat an unknown statistic as zero. Colors are centralized: LFR yellow, Normal green, Heroic blue, Mythic purple. When the block is stale or freshness is unknown, weekly lockouts are hidden while stored catalog and lifetime Best remain usable.
+The UI uses the stored current Encounter Journal catalog, boss order, lockouts, and lifetime statistics. Weekly difficulty columns remain separate from lifetime Best. Best is calculated per catalog boss from the highest confirmed lifetime difficulty in the stored v3 data; the tooltip emits one row per catalog boss in stored order and does not treat an unknown statistic as zero. Colors are centralized: LFR yellow, Normal green, Heroic blue, Mythic purple. Weekly lockouts remain visible when their stored identity is stale, with a cached-week label; stored catalog and lifetime Best remain usable.
 
 ## Delves v3
 
@@ -87,7 +87,7 @@ The Twinks tab queries visible characters, Account-Main, Guild-Main/Shadow-Main,
 - Known values render from stored values; numeric zero remains `0`.
 - Confirmed empty Equipment slots use placeholders. Empty and unknown are not interchangeable.
 - Unknown values use the shared gray dash or localized no-data state; missing fields do not become `0`, `false`, or blank success values.
-- Time-bound Mythic+ season and vault data, Delves weekly data, and Raid weekly lockouts apply their stored identity/freshness checks. Lifetime Raid data is not discarded merely because weekly data is stale.
+- Time-bound Mythic+ season/weekly data, Delves season/weekly data, and Raid weekly lockouts apply the shared stored-identity freshness checks. Stale stored values remain available for display; lifetime Raid data is not discarded merely because weekly data is stale.
 - Feature consumers reject unsupported snapshot versions instead of silently reading old fields under new semantics. The header reports unsupported stored versions separately from current/stale/missing data.
 
 ## Tooltips and navigation
@@ -100,12 +100,12 @@ The Character Overview module has no view permission. Equipment, Mythic+, Raid, 
 
 ## Data updates, performance and error isolation
 
-PlayerData block events identify the changed character and block. The page refreshes the active affected tab and summary after a short scheduled coalesce; inactive tabs are refreshed when selected. There is no per-frame polling. Tables reuse row frames, feature queries avoid full database scans, and the tab host uses the shared responsive table/layout components. SafeCall isolates each adapter and logs renderer failures without closing the Overview.
+PlayerData and snapshot runtime-status events identify the changed character and block. The page refreshes the active affected tab and summary after a short scheduled coalesce; inactive tabs are refreshed when selected. There is no per-frame polling. Tables reuse row frames, feature queries avoid full database scans, and the tab host uses the shared responsive table/layout components. SafeCall isolates each adapter and logs renderer failures without closing the Overview.
 
 ## Known limitations
 
 - No Retail client was available for this audit. Tests validate stored consumer behavior, not Blizzard client rendering or API timing.
-- Raid weekly freshness follows the existing PlayerData block freshness contract. If data is stale/unknown, weekly columns intentionally show unknown until the shared path obtains acceptable fresh data.
+- Raid weekly freshness follows the shared domain status contract. Stale weekly lockouts remain in the stored snapshot and are labeled by status; lifetime best data remains current independently.
 - An unsupported remote snapshot can remain unavailable until an authoritative newer block arrives through normal sync; the Character UI adds no private sync protocol.
 - Long subtitle content is constrained by the shared HeaderBar's one-line width; verify it in both locales at the narrowest supported window.
 - Lua 5.1/LuaJIT was not available locally. Changed Runtime Lua is statically audited for 5.2+-only syntax/APIs; Lua 5.4 syntax is checked separately.

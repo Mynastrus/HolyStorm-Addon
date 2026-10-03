@@ -33,6 +33,14 @@ local unknownBlocks,unknownDiagnostics=HolyStorm.RichContent:Parse("See [[future
 assert(HolyStorm.RichContent:RegisterType({type="achievement",render=function(target)return"Achievement "..target end}),"future modules can register link types");assert(HolyStorm.RichContent:MakeToken("achievement","42","Done"),"registered token creation")
 assert(HolyStorm.MapLinks:OpenCoordinate(2248,.524,.631)and HolyStorm.openedMap==2248 and HolyStorm.waypoint.x==.524 and HolyStorm.MapLinks.temporaryMarker.localOnly,"coordinate opens exact map and local marker")
 HolyStorm.MapLinks:RegisterPOIProvider("test",{list=function()return{{id="poi-one",name="POI One",mapID=2248,creator="A"}}end,get=function(id)return id=="poi-one"and{id=id,name="POI One",mapID=2248,x=.2,y=.3}end});local pois=HolyStorm.MapLinks:ListPOIs();assert(#pois==1 and pois[1].id=="poi-one"and HolyStorm.MapLinks:OpenPOI("poi-one"),"POI providers expose and open stable POI IDs");assert(not HolyStorm.MapLinks:OpenPOI("poi-deleted"),"deleted POIs fail gracefully")
+local updaterCalls=0;local minimapDriver
+Minimap={}
+function CreateFrame(_,_,parent)assert(parent==Minimap);minimapDriver={SetScript=function(self,event,callback)self[event]=callback end};return minimapDriver end
+assert(HolyStorm.MapLinks:RegisterMinimapUpdater("test-idle",function()updaterCalls=updaterCalls+1 end)and not HolyStorm.MapLinks.minimapDriver,"registered minimap providers do not create a permanent OnUpdate driver")
+assert(HolyStorm.MapLinks:SetMinimapUpdaterActive("test-idle",true)and minimapDriver.OnUpdate,"a minimap driver starts only when a provider reports visible work")
+minimapDriver.OnUpdate(minimapDriver,.25);assert(updaterCalls==1,"active minimap work is refreshed through the shared throttled driver")
+assert(HolyStorm.MapLinks:SetMinimapUpdaterActive("test-idle",false)and minimapDriver.OnUpdate==nil,"the shared OnUpdate driver stops when no minimap provider needs it")
+HolyStorm.MapLinks:UnregisterMinimapUpdater("test-idle")
 HolyStorm.RichContent:HandleHyperlink("holystorm:character:A");assert(HolyStorm.openedCharacter=="A","character links use the central character capability")
 local missing=Content:Open("content-missing");assert(not missing and HolyStorm.Sync.requested[#HolyStorm.Sync.requested].id=="content-missing","missing chat target requests content on demand")
 

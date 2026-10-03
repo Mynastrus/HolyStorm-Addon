@@ -160,37 +160,40 @@ HolyStorm:RegisterModule(metadata,function(Module)
  function Module:RequestBaseline(reason)
   local allowed=baselineSafety();if not allowed then self.baselineDirty=true;return false,"BASELINE_UNSAFE"end
   self.baselineDirty=true
-  if HolyStorm.CharacterScans then return HolyStorm.CharacterScans:Request("stats",reason or"CHARACTER_STATS_BASELINE",true,{order=50})end
+  if HolyStorm.CharacterScans then return HolyStorm.CharacterScans:Request("stats",reason or"CHARACTER_STATS_BASELINE",true,{order=50,manual=reason=="MANUAL"or reason=="MANUAL_COMMAND"or reason=="DASHBOARD_MANUAL"})end
   return self:Queue(true)
  end
- function Module:ScheduleBaseline(delay)
+ function Module:ScheduleBaseline(delay,reason)
+  self.baselineReason=reason or self.baselineReason or"CHARACTER_STATS_CHANGED"
   if self.baselineTimer then return end;self.baselineTimer=true
-  C_Timer.After(delay or .35,function()Module.baselineTimer=false;Module:RequestBaseline("CHARACTER_STATS_BASELINE")end)
+  C_Timer.After(delay or .35,function()local trigger=Module.baselineReason;Module.baselineTimer=false;Module.baselineReason=nil;Module:RequestBaseline(trigger)end)
  end
  function Module:ScheduleLive(delay)
   if self.liveTimer then return end;self.liveTimer=true
   C_Timer.After(delay or .2,function()Module.liveTimer=false;Module:CollectLive();if Module.baselineDirty then local allowed=baselineSafety();if allowed then Module:ScheduleBaseline(.1)end end end)
  end
  function Module:OnInitialize()
-  HolyStorm.CharacterScans:RegisterProvider("CharacterStats",{block="stats",capability="character.scan.stats",addonId="characters",order=50,request=function(sync)local _,workflowId=Module:Queue(sync);return workflowId end})
+  HolyStorm.CharacterScans:RegisterProvider("CharacterStats",{block="stats",capability="character.scan.stats",addonId="characters",order=50,request=function(sync,reason)local _,workflowId=Module:Queue(sync);return workflowId end})
   HolyStorm:RegisterCapability("CharacterStats","character.scan.stats",function(_,sync,reason)return HolyStorm.CharacterScans:Request("stats",reason or"CAPABILITY",sync,{order=50})end)
   HolyStorm:RegisterCapability("CharacterStats","character.scan.additional",function(_,sync,reason)return HolyStorm.CharacterScans:Request("stats",reason or"CAPABILITY",sync,{order=50})end)
  end
  function Module:OnEnable()
-  local events={"PLAYER_ENTERING_WORLD","PLAYER_EQUIPMENT_CHANGED","PLAYER_SPECIALIZATION_CHANGED","TRAIT_CONFIG_UPDATED","PLAYER_TALENT_UPDATE","PLAYER_LEVEL_UP"}
+  local function statsViewVisible()
+   local ui=HolyStorm.UI;local character=HolyStorm.CharacterUI
+   return ui and ui.GetVisiblePage and ui:GetVisiblePage()=="character"and character and character.activeTab=="stats"and character.context and character.context.characterUUID==UnitGUID("player")
+  end
+  local events={"PLAYER_EQUIPMENT_CHANGED","PLAYER_SPECIALIZATION_CHANGED","TRAIT_CONFIG_UPDATED","PLAYER_TALENT_UPDATE","PLAYER_LEVEL_UP"}
   for _,eventName in ipairs(events)do local event=eventName;HolyStorm.Events:Register(event,"character-stats",function(_,unit)
    if event=="PLAYER_SPECIALIZATION_CHANGED"and unit and unit~="player"then return end
-   Module.baselineDirty=true;Module:ScheduleLive(.25);Module:ScheduleBaseline(.5)
+   if event~="PLAYER_LEVEL_UP"and HolyStorm.State and not HolyStorm.State:Is("playerReady")then return end
+   Module.baselineDirty=true;if statsViewVisible()then Module:ScheduleLive(.25)end;Module:ScheduleBaseline(.5,event)
   end)end
   HolyStorm.Events:Register("UNIT_AURA","character-stats-live",function(_,unit)
-   if unit=="player"then Module:ScheduleLive(.25)end
+   if unit=="player"and statsViewVisible()then Module:ScheduleLive(.25)end
   end)
   HolyStorm.Events:Register("HS_STATS_LIVE_REQUESTED","character-stats-live-request",function(_,guid)
    if guid==UnitGUID("player")then Module:ScheduleLive(0)end
   end)
-  local metadata=HolyStorm.PlayerData:GetMetadata(UnitGUID("player"),"stats")
-  if not metadata or not tonumber(metadata.snapshotVersion)or tonumber(metadata.snapshotVersion)<2 then self.baselineDirty=true;self:ScheduleBaseline(1)end
-  self:ScheduleLive(1)
  end
  function Module:OnDisable()HolyStorm.Events:UnregisterOwner("character-stats");HolyStorm.Events:UnregisterOwner("character-stats-live");HolyStorm.Events:UnregisterOwner("character-stats-live-request");HolyStorm.Snapshots:Cancel("stats");self.live=nil end
 end)
