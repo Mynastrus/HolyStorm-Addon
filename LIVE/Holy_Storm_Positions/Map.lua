@@ -128,6 +128,8 @@ function Map:OpenAsPOI(entry)
         category = "note",
         icon = "marker",
         color = { r = 1, g = 0.82, b = 0, a = 1 },
+        source = "GUILD_PLAYER_POSITION",
+        metadata = { characterUUID = entry.characterUUID, characterName = summary.name },
     })
 end
 

@@ -3,6 +3,7 @@ local HolyStorm=LibStub("AceAddon-3.0"):GetAddon("Holy_Storm")
 local MapLinks={version=addonVersion,poiProviders={},minimapUpdaters={},minimapElapsed=0}
 
 function MapLinks:RegisterPOIProvider(id,provider)if type(id)~="string"or type(provider)~="table"then return false end;self.poiProviders[id]=provider;return true end
+function MapLinks:UnregisterPOIProvider(id)if not self.poiProviders[id]then return false end;self.poiProviders[id]=nil;return true end
 function MapLinks:ResolvePOI(id)for providerId,provider in pairs(self.poiProviders)do if provider.get then local ok,poi=HolyStorm.Utils.SafeCall("poi.resolve:"..providerId,provider.get,id);if ok and poi then return poi,provider,providerId end end end end
 function MapLinks:ListPOIs()
  local out,seen={},{};for providerId,provider in pairs(self.poiProviders)do if provider.list then local ok,items=HolyStorm.Utils.SafeCall("poi.list:"..providerId,provider.list);if ok and type(items)=="table"then for _,poi in pairs(items)do local id=poi and(poi.id or poi.poiId or poi.poiID);if type(id)=="string"and id~=""and not seen[id]then seen[id]=true;out[#out+1]={id=id,name=poi.name or id,category=poi.category,mapID=poi.mapID,creator=poi.creator or poi.creatorName,creatorGuid=poi.creatorGuid,provider=providerId}end end end end end;table.sort(out,function(a,b)return string.lower(a.name)<string.lower(b.name)end);return out
