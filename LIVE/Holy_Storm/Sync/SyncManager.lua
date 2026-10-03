@@ -50,6 +50,15 @@ local function senderGuid(sender,claimedGuid)return HolyStorm.Data.GuildStore:Re
 local function samePlayerName(a,b)if not a or not b then return false end;if Ambiguate then return Ambiguate(a,"none")==Ambiguate(b,"none")end;return a==b end
 local function splitCharacterId(objectId)if type(objectId)~="string"then return nil end;return objectId:match("^(.-)\031([^\031]+)$")end
 local function characterBlockSyncEnabled(block)local data=HolyStorm.PlayerData;return not(data and type(data.IsBlockSyncEnabled)=="function")or data:IsBlockSyncEnabled(block)end
+local function isLocalSource(sender,guid)
+ local localGuid=UnitGUID and UnitGUID("player");if localGuid and guid then return guid==localGuid end
+ if HolyStorm.Comms and type(HolyStorm.Comms.IsSelfSender)=="function"then return HolyStorm.Comms:IsSelfSender(sender)end
+ return samePlayerName(sender,playerName())
+end
+local function matchesFetchPayload(transfer,domainId,data,sender)
+ if not transfer or transfer.kind~="FETCH"or transfer.domain~=domainId or transfer.objectId~=data.objectId or not samePlayerName(transfer.selectedSource,sender)or(data.requestId~=nil and data.requestId~=transfer.requestId)then return false end
+ local resolvedGuid=senderGuid(sender);return not transfer.selectedSourceGuid or not resolvedGuid or transfer.selectedSourceGuid==resolvedGuid
+end
 local function startupActive()return HolyStorm.Tasks and type(HolyStorm.Tasks.IsStartupActive)=="function" and HolyStorm.Tasks:IsStartupActive()or false end
 local function startupPhase(domainId)
  if domainId=="permissions"or domainId=="character"or domainId=="twinks"then return 3 end
@@ -212,7 +221,7 @@ function Sync:RecordOffers(domainId,data,sender,isAnnouncement)
  local requestId=data.requestId;local senderId=senderGuid(sender);if requestId then self.heard[requestId]=self.heard[requestId]or{};self.heardAt[requestId]=now();self:ScheduleCleanup()end
  local pending=requestId and self.requests[requestId];local domain=self.domains[domainId]
  for _,meta in ipairs(data.offers)do
-  if type(meta)=="table"and validId(meta.objectId)and validId(meta.owner)and tonumber(meta.version)then
+  if type(meta)=="table"and validId(meta.objectId)and validId(meta.owner)and tonumber(meta.version)and not isLocalSource(sender,senderId)then
    meta=copy(meta);meta.direct=senderId~=nil and senderId==meta.owner;meta.senderGuid=senderId
    if requestId then local old=self.heard[requestId][meta.objectId];if not old or HolyStorm.PlayerData:CompareMetadata(old,meta)>0 then self.heard[requestId][meta.objectId]=meta end end
    if pending and pending.domain==domainId and(not pending.objectId or pending.objectId==meta.objectId)and(not data.requester or samePlayerName(data.requester,GetUnitName("player",true)))then
@@ -251,11 +260,12 @@ function Sync:GetOnlineName(guid)if type(guid)~="string"then return nil end;loca
 function Sync:QueueFetch(domainId,objectId,target,knownVersion,reason,knownRevisionID,requestId,desiredMeta,options)
  local domain=self.domains[domainId];if not domain or not validId(objectId)or type(target)~="string"or target==""then return nil,"INVALID_FETCH"end
  desiredMeta=type(desiredMeta)=="table"and desiredMeta or{};options=options or{}
+ local candidateGuid=desiredMeta.senderGuid or senderGuid(target);if isLocalSource(target,candidateGuid)then log("DEBUG","selection","Ignoring local player as sync payload source",{domain=domainId,objectId=objectId,sender=target,senderGuid=candidateGuid,requestId=requestId,reason="SELF_SOURCE"});return nil,"SELF_SOURCE"end
  local version=desiredMeta.version;local revision=desiredMeta.revisionID;local dedupeKey=transferKey(domainId,objectId,version,revision);local job=self.catchUpIndex[dedupeKey]
  if not job then local activeJob=self.activeTransfer and self.activeTransfer.job;if activeJob and activeJob.domain==domainId and activeJob.objectId==objectId and(version==nil or activeJob.requiredVersion==nil or tonumber(activeJob.requiredVersion)==tonumber(version)and activeJob.requiredRevision==revision)then job=activeJob end end
  if not job then for _,candidateJob in ipairs(self.catchUpJobs)do if candidateJob.domain==domainId and candidateJob.objectId==objectId and(candidateJob.state=="QUEUED"or candidateJob.state=="RUNNING")then if version==nil or candidateJob.requiredVersion==nil or tonumber(candidateJob.requiredVersion)==tonumber(version)and(candidateJob.requiredRevision==revision)then job=candidateJob;break end end end end
  if job and job.requiredVersion==nil and version~=nil then self.catchUpIndex[job.key]=nil;job.key=dedupeKey;job.requiredVersion=version;job.requiredRevision=revision;self.catchUpIndex[dedupeKey]=job end
- local class=options.priorityClass or priorityClass(reason);local candidate={sender=target,senderGuid=desiredMeta.senderGuid or senderGuid(target),owner=desiredMeta.owner,direct=desiredMeta.direct==true,version=version,revisionID=revision,meta=copy(desiredMeta)}
+ local class=options.priorityClass or priorityClass(reason);local candidate={sender=target,senderGuid=candidateGuid,owner=desiredMeta.owner,direct=desiredMeta.direct==true,version=version,revisionID=revision,meta=copy(desiredMeta)}
  if not job then
   if#self.catchUpJobs>=self.catchUpLimit then log("WARN","backpressure","Sync catch-up queue is full; job deferred",{domain=domainId,objectId=objectId,revision=revision,queueLimit=self.catchUpLimit,reason="QUEUE_LIMIT"});return nil,"QUEUE_FULL"end
   local characterUUID,block=splitCharacterId(objectId);job={key=dedupeKey,kind="FETCH",domain=domainId,objectId=objectId,characterUUID=characterUUID,block=block,entity=objectId,requiredVersion=version,requiredRevision=revision,knownVersion=knownVersion,knownRevisionID=knownRevisionID,sourceCandidates={},priorityClass=class,priority=priorities[class]or priorities.BACKGROUND_CATCHUP,state="QUEUED",queuedAt=now(),retryCount=0,maxRetries=self.maxRetries,requestId=requestId or self:NewRequestId(),reason=reason or"DISCOVERY",notBefore=now()+((class=="USER_INTERACTIVE")and.15 or 1.5)}
@@ -280,7 +290,7 @@ function Sync:OnFetch(domainId,data,sender)
  return self:QueueOutbound(domainId,data,sender,meta)~=nil
 end
 function Sync:BestSource(job)
- local best;for _,candidate in ipairs(job.sourceCandidates or{})do if not best or(candidate.direct and not best.direct)then best=candidate elseif candidate.direct==best.direct then local decision=HolyStorm.PlayerData:CompareMetadata(best.meta or{},candidate.meta or{});if decision>0 then best=candidate end end end;return best
+ local best;for _,candidate in ipairs(job.sourceCandidates or{})do if not isLocalSource(candidate.sender,candidate.senderGuid)then if not best or(candidate.direct and not best.direct)then best=candidate elseif candidate.direct==best.direct then local decision=HolyStorm.PlayerData:CompareMetadata(best.meta or{},candidate.meta or{});if decision>0 then best=candidate end end end end;return best
 end
 function Sync:ActivityPhase(transfer,phase)
  if not transfer then return end;transfer.phase=phase;transfer.lastActivityAt=now();self:NotifyActivity()
@@ -300,20 +310,20 @@ function Sync:ReleaseTransfer(result,reason)
  end
  self:NotifyActivity(true);self:QueuePump();if#self.pendingPayloadOrder>0 then self:SchedulePayloadPump()end;return true
 end
-function Sync:RetryTimedOut(requestId)
- local active=self.activeTransfer;if not active or active.requestId~=requestId then return end
+function Sync:RetryTimedOut(requestId,expectedTransfer)
+ local active=self.activeTransfer;if not active or active.requestId~=requestId or expectedTransfer and active~=expectedTransfer then return end
  log("WARN","retries","Sync payload response timed out",{requestId=requestId,objectId=active.objectId,characterUUID=active.characterUUID,domain=active.domain,source=active.selectedSource,retryCount=active.job and active.job.retryCount or 0,result="TIMEOUT"});self:ReleaseTransfer(false,"TIMEOUT")
 end
 function Sync:StartFetch(job)
- local source=self:BestSource(job);if not source then job.state="FAILED";recordJobMetric(self,job,"failed");self.catchUpIndex[job.key]=nil;log("WARN","selection","No valid source remains for sync job",{requestId=job.requestId,objectId=job.objectId,domain=job.domain,result="NO_SOURCE"});return false end
+ local source=self:BestSource(job);if not source then job.state="FAILED";recordJobMetric(self,job,"failed");self.catchUpIndex[job.key]=nil;log("WARN","selection","No valid source remains for sync job",{requestId=job.requestId,objectId=job.objectId,domain=job.domain,result="NO_SOURCE"});self:QueuePump();return false end
  local domain=self.domains[job.domain];local localMeta=domain and domain.getMetadata(job.objectId);if not domain then job.state="FAILED";recordJobMetric(self,job,"failed");self.catchUpIndex[job.key]=nil;log("WARN","backpressure","Sync job failed because its domain was unloaded",{requestId=job.requestId,objectId=job.objectId,domain=job.domain,result="UNKNOWN_DOMAIN"});self:QueuePump();return false end
- if job.requiredVersion~=nil then local offered={version=source.version or job.requiredVersion,revisionID=source.revisionID or job.requiredRevision,owner=source.owner,direct=source.direct};local decision=HolyStorm.PlayerData:CompareMetadata(localMeta,offered);local sibling=domain.freshness=="revision-chain"and localMeta and tonumber(localMeta.version)==tonumber(offered.version)and localMeta.revisionID~=offered.revisionID;if decision<=0 and not sibling then job.state="COMPLETED";recordJobMetric(self,job,"completed");self.catchUpIndex[job.key]=nil;return true end end
- local transfer={kind="FETCH",job=job,key=job.key,objectId=job.objectId,characterUUID=job.characterUUID,activityDomain=job.block or job.domain,domain=job.domain,direction="RECEIVE",phase="REQUEST",sender=source.sender,receiver=playerName(),selectedSource=source.sender,requestId=job.requestId,revision=source.revisionID or job.requiredRevision,priorityClass=job.priorityClass,retryCount=job.retryCount,maxRetries=job.maxRetries,startedAt=now(),bytes=0,fragments=0}
- self.lastSelection={domain=job.domain,objectId=job.objectId,selectedSource=source.sender,owner=source.owner,direct=source.direct,reason=job.reason,candidateCount=#(job.sourceCandidates or{}),at=now()};log("DEBUG","selection","Selecting payload source",{domain=job.domain,objectId=job.objectId,characterUUID=job.characterUUID,block=job.block,version=source.version or job.requiredVersion,revision=source.revisionID or job.requiredRevision,requestId=job.requestId,reason=job.reason,selectedSource=source.sender,originalOwner=source.owner,relay=source.direct~=true,candidateCount=#(job.sourceCandidates or{})})
+ if job.requiredVersion~=nil then local offered={version=source.version or job.requiredVersion,revisionID=source.revisionID or job.requiredRevision,owner=source.owner,direct=source.direct};local decision=HolyStorm.PlayerData:CompareMetadata(localMeta,offered);local sibling=domain.freshness=="revision-chain"and localMeta and tonumber(localMeta.version)==tonumber(offered.version)and localMeta.revisionID~=offered.revisionID;if decision<=0 and not sibling then job.state="COMPLETED";recordJobMetric(self,job,"completed");self.catchUpIndex[job.key]=nil;self:QueuePump();return true end end
+ local transfer={kind="FETCH",job=job,key=job.key,objectId=job.objectId,characterUUID=job.characterUUID,activityDomain=job.block or job.domain,domain=job.domain,direction="RECEIVE",phase="REQUEST",sender=source.sender,receiver=playerName(),selectedSource=source.sender,selectedSourceGuid=source.senderGuid,requestId=job.requestId,revision=source.revisionID or job.requiredRevision,priorityClass=job.priorityClass,retryCount=job.retryCount,maxRetries=job.maxRetries,startedAt=now(),bytes=0,fragments=0}
+ self.lastSelection={domain=job.domain,objectId=job.objectId,selectedSource=source.sender,selectedSourceGuid=source.senderGuid,owner=source.owner,direct=source.direct,reason=job.reason,candidateCount=#(job.sourceCandidates or{}),at=now()};log("DEBUG","selection","Selecting payload source",{domain=job.domain,objectId=job.objectId,characterUUID=job.characterUUID,block=job.block,version=source.version or job.requiredVersion,revision=source.revisionID or job.requiredRevision,requestId=job.requestId,reason=job.reason,selectedSource=source.sender,selectedSourceGuid=source.senderGuid,originalOwner=source.owner,relay=source.direct~=true,candidateCount=#(job.sourceCandidates or{})})
  job.state="RUNNING";job.startedAt=transfer.startedAt;job.selectedSource=source.sender;recordJobMetric(self,job,"started");self.activeTransfer=transfer;self:NotifyActivity(true)
  local sent=self:QueueEnvelope("FETCH",job.domain,{objectId=job.objectId,knownVersion=localMeta and localMeta.version or job.knownVersion,knownRevisionID=localMeta and localMeta.revisionID or job.knownRevisionID,revisionID=transfer.revision,reason=job.reason,requestId=job.requestId},"WHISPER",source.sender,job.priorityClass=="USER_INTERACTIVE"and 35 or 55)
  if not sent then return self:ReleaseTransfer(false,"FETCH_QUEUE_REJECTED")end
- transfer.timeoutTimer=C_Timer.NewTimer(30,function()Sync:RetryTimedOut(job.requestId)end);self:NotifyActivity();return true
+ transfer.timeoutTimer=C_Timer.NewTimer(30,function()Sync:RetryTimedOut(job.requestId,transfer)end);self:NotifyActivity();return true
 end
 function Sync:StartSend(job)
  local domain=self.domains[job.domain];local meta=domain and domain.getMetadata(job.objectId)
@@ -352,16 +362,18 @@ function Sync:OnPayload(domainId,data,sender,transport,kind)
  end
  if#self.pendingPayloadOrder>=self.maxPendingPayloads then log("WARN","backpressure","Complete payload deferred because receive queue is full",{domain=domainId,objectId=data.objectId,sender=sender,result="RECEIVE_QUEUE_FULL"});return false end
  self.sequence=self.sequence+1;local id="RX-"..self:NewRequestId().."-"..self.sequence;self.pendingPayloads[id]={id=id,domain=domainId,data=data,sender=sender,kind=kind,receivedAt=now(),bytes=transport.bytes,fragments=transport.packetTotal};self.pendingPayloadOrder[#self.pendingPayloadOrder+1]=id
- local active=self.activeTransfer;if active and active.kind=="FETCH"and active.domain==domainId and active.objectId==data.objectId and samePlayerName(active.selectedSource,sender)then if active.timeoutTimer then active.timeoutTimer:Cancel();active.timeoutTimer=nil end;active.receiveId=id;active.bytes=transport.bytes or active.bytes;active.fragments=transport.packetTotal or active.fragments;active.fragmentsTotal=transport.packetTotal or active.fragmentsTotal;self:ActivityPhase(active,"VALIDATE_COMMIT")end
+ local active=self.activeTransfer;if matchesFetchPayload(active,domainId,data,sender)then if active.timeoutTimer then active.timeoutTimer:Cancel();active.timeoutTimer=nil end;active.receiveId=id;active.bytes=transport.bytes or active.bytes;active.fragments=transport.packetTotal or active.fragments;active.fragmentsTotal=transport.packetTotal or active.fragmentsTotal;self:ActivityPhase(active,"VALIDATE_COMMIT")end
  self:SchedulePayloadPump();return true
 end
 function Sync:OnFragmentProgress(progress)
- local transfer=self.activeTransfer;if not transfer or transfer.direction~="RECEIVE"or not progress or not samePlayerName(transfer.selectedSource or transfer.sender,progress.sender)then return end
+ -- Fragment events do not carry the logical object/request until the envelope
+ -- is assembled, so sender-only correlation can report unrelated data as a fetch.
+ local transfer=self.activeTransfer;if not transfer or transfer.kind~="FETCH"or transfer.direction~="RECEIVE"or not progress or not progress.objectId or not progress.requestId or progress.domain~=transfer.domain or progress.objectId~=transfer.objectId or progress.requestId~=transfer.requestId or not samePlayerName(transfer.selectedSource or transfer.sender,progress.sender)then return end
  transfer.fragments=progress.fragments;transfer.fragmentsTotal=progress.fragmentsTotal;transfer.bytes=progress.bytes;self:NotifyActivity()
 end
 function Sync:RunReceivePayload()
  local active=self.activeTransfer;local index,id,pending
- for i,candidate in ipairs(self.pendingPayloadOrder)do local item=self.pendingPayloads[candidate];if item and(not active or active.kind=="FETCH"and active.domain==item.domain and active.objectId==item.data.objectId and samePlayerName(active.selectedSource,item.sender))then index,id,pending=i,candidate,item;break end end
+ for i,candidate in ipairs(self.pendingPayloadOrder)do local item=self.pendingPayloads[candidate];if item and(not active or matchesFetchPayload(active,item.domain,item.data,item.sender))then index,id,pending=i,candidate,item;break end end
  if not pending then return true end
  table.remove(self.pendingPayloadOrder,index);self.pendingPayloads[id]=nil
  local transfer=active;if not transfer then local meta=pending.data.metadata;local characterUUID=splitCharacterId(pending.data.objectId);transfer={kind="RECEIVE",objectId=pending.data.objectId,characterUUID=characterUUID,domain=pending.domain,direction="RECEIVE",phase="VALIDATE_COMMIT",sender=pending.sender,receiver=playerName(),requestId=pending.data.requestId,revision=meta and meta.revisionID,startedAt=now(),bytes=pending.bytes or 0};self.activeTransfer=transfer;self:NotifyActivity(true)end

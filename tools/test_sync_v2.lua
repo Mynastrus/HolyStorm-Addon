@@ -48,6 +48,7 @@ function HolyStorm.Comms:Send(payload,channel,target,priority,diagnostics,onComp
  if self.autoComplete and onComplete then onComplete(true,"tx-test",#payload)end
  return true,"tx-test"
 end
+function HolyStorm.Comms:IsSelfSender(sender)return sender=="Local-Realm"end
 LibStub=function(name)if name=="AceLocale-3.0"then return{GetLocale=function()return setmetatable({},{__index=function(_,key)return key end})end}end;return HolyStorm end
 
 assert(loadfile(root.."Sync/SyncManager.lua"))()
@@ -66,7 +67,7 @@ local function makeCharacter(index)
  return guid,ownerName
 end
 for index=1,1000 do makeCharacter(index)end
-names["Relay-One-Realm"]="Player-RelayOne";names["Relay-Two-Realm"]="Player-RelayTwo";names["Owner-Local-Realm"]="Player-Local"
+names["Relay-One-Realm"]="Player-RelayOne";names["Relay-Two-Realm"]="Player-RelayTwo";names["Owner-Local-Realm"]="Player-Local";names["Local-Realm"]="Player-Local"
 local exportIds,exportSize={},300
 Sync:RegisterDomain("character",{
  freshness="metadata",
@@ -95,6 +96,22 @@ exportSize=66001;local sentBeforeOversize=#HolyStorm.Comms.sent;local oversizeId
 assert(Sync:OnFetch("character",{objectId=oversizeId,knownVersion=0,requestId="oversize"} ,"Requester-Realm"));local oversizeJob=Sync.catchUpJobs[1];assert(Sync:RunQueuePump())
 assert(#HolyStorm.Comms.sent==sentBeforeOversize and oversizeJob.state=="FAILED","oversized atomic snapshot is failed before transport enqueue")
 exportSize=300;Sync.catchUpJobs={};Sync.catchUpIndex={};Sync.activeTransfer=nil
+
+-- Catch-up never fetches from the local player, and source election ignores a
+-- stale self candidate if one is already present in a queued job.
+local selfPoi="poi-self-source"
+local selfKey,selfReason=Sync:QueueFetch("character",selfPoi,"Local-Realm",0,"LOGIN_CATCHUP",nil,"self-source-request",{version=4,revisionID="poi-r4",owner="Player-Local",direct=true,senderGuid="Player-Local"})
+assert(selfKey==nil and selfReason=="SELF_SOURCE"and#Sync.catchUpJobs==0,"the local player is never queued as a payload source")
+local remoteKey=Sync:QueueFetch("character",selfPoi,"Relay-One-Realm",0,"LOGIN_CATCHUP",nil,"relay-source-request",{version=4,revisionID="poi-r4",owner="Owner-Poi",direct=false,senderGuid="Player-RelayOne"})
+local relayJob=Sync.catchUpIndex[remoteKey]
+relayJob.sourceCandidates[#relayJob.sourceCandidates+1]={sender="Local-Realm",senderGuid="Player-Local",owner="Player-Local",direct=true,version=9,revisionID="poi-r9",meta={version=9,revisionID="poi-r9"}}
+assert(Sync:BestSource(relayJob).sender=="Relay-One-Realm"and#relayJob.sourceCandidates==2,"a stale self candidate cannot outrank an actual peer source")
+Sync.catchUpJobs={};Sync.catchUpIndex={}
+
+local selfOfferId="local-offer-request";Sync.requests[selfOfferId]={id=selfOfferId,key="character\031poi-self-source",domain="character",objectId=selfPoi,candidates={},createdAt=clock,knownVersion=0};Sync.activeRequests["character\031poi-self-source"]=selfOfferId
+assert(Sync:RecordOffers("character",{requestId=selfOfferId,requester="Local-Realm",offers={{objectId=selfPoi,owner="Player-Local",version=4,revisionID="poi-r4"}}},"Local-Realm"))
+assert(next(Sync.requests[selfOfferId].candidates)==nil and#Sync.catchUpJobs==0,"a looped-back offer from the local player is discarded before source election")
+Sync.requests[selfOfferId]=nil;Sync.activeRequests["character\031poi-self-source"]=nil
 
 -- Discovery coalesces, while metadata paging covers every entity without a bulk payload.
 local requestId,state=Sync:Discover("character",nil,{scope="ALL",reason="LOGIN_CATCHUP",watermark=0})
@@ -141,6 +158,8 @@ local userJob=Sync.catchUpIndex[userKey];local selected=Sync:BestSource(userJob)
 assert(userQueueState=="MERGED"and userJob.priorityClass=="USER_INTERACTIVE"and selected.sender==userOwner and selected.direct,"interactive request promotes the job and direct owner wins source election")
 clock=1001;assert(Sync:RunQueuePump());assert(Sync.activeTransfer and Sync.activeTransfer.characterUUID==userGuid and Sync.activeTransfer.selectedSource==userOwner,"interactive character starts ahead of background catch-up")
 local activity=Sync:GetActivity();assert(activity.active and activity.activeOperations[1].characterUUID==userGuid and activity.queuedJobs==2999,"activity model exposes one active transfer and bounded queue state")
+Sync:OnFragmentProgress({sender=userOwner,channel="WHISPER",transmissionId="unrelated-transmission",fragments=2,fragmentsTotal=2,bytes=400})
+assert(Sync.activeTransfer.fragments==0 and Sync.activeTransfer.phase=="REQUEST","unrelated sender-only fragment progress cannot masquerade as this fetch")
 
 -- Presence/control can still update while the data slot is occupied.
 assert(Sync:OnPresence({version="DEV"},"Relay-One-Realm","Player-RelayOne","Player-RelayOne"))
@@ -148,10 +167,13 @@ assert(Sync:GetKnownVersion("Player-RelayOne")=="DEV","Presence remains independ
 
 -- Receive only imports a complete object on the TaskManager worker; failure keeps cache.
 local payload={objectId=userObject,snapshot={new=true}}
-assert(Sync:OnPayload("character",{objectId=userObject,metadata={owner=userGuid,version=2,revisionID="r2",updatedAt=clock},payload=payload},userOwner,{bytes=4096,packetTotal=19}))
+assert(Sync:OnPayload("character",{objectId=userObject,requestId="older-request",metadata={owner=userGuid,version=2,revisionID="r2",updatedAt=clock},payload=payload},userOwner,{bytes=4096,packetTotal=19}))
+assert(Sync:RunReceivePayload()and commits==0 and Sync.activeTransfer.phase=="REQUEST","a payload from another request does not finalize the active fetch")
+assert(Sync:OnPayload("character",{objectId=userObject,requestId="interactive-500",metadata={owner=userGuid,version=2,revisionID="r2",updatedAt=clock},payload=payload},userOwner,{bytes=4096,packetTotal=19}))
 assert(commits==0 and cached[userObject].cached==true,"uncommitted data is not visible before validation/import")
 assert(Sync:RunReceivePayload() and commits==1 and cached[userObject].new==true,"complete revision atomically replaces its cached snapshot")
-assert(not Sync:GetActivity(userGuid).active,"character activity clears after commit")
+assert(not Sync:GetActivity(userGuid).active and#Sync.pendingPayloadOrder==1,"only the matching response finalizes the fetch and leaves the unrelated response queued")
+assert(Sync:RunReceivePayload()and commits==1 and#Sync.pendingPayloadOrder==0,"the unrelated response drains independently after the active fetch closes")
 
 local stalePayload={objectId=userObject,snapshot={stale=true}}
 assert(Sync:OnPayload("character",{objectId=userObject,metadata={owner=userGuid,version=1,revisionID="r1",updatedAt=clock+100},payload=stalePayload},"Relay-One-Realm"))
@@ -215,8 +237,9 @@ assert(HolyStorm.Comms.sent[#HolyStorm.Comms.sent].priority==110,
 -- A lost response retries finitely and does not block the next eligible character.
 clock=1002
 assert(Sync:RunQueuePump());local timedOut=Sync.activeTransfer;assert(timedOut and timedOut.kind=="FETCH")
-timedOut.timeoutTimer.callback();assert(timedOut.job.retryCount==1 and timedOut.job.state=="QUEUED","response timeout returns the job to bounded retry state")
+local staleTimeout=timedOut.timeoutTimer.callback;staleTimeout();assert(timedOut.job.retryCount==1 and timedOut.job.state=="QUEUED","response timeout returns the job to bounded retry state")
 assert(Sync:RunQueuePump() and Sync.activeTransfer and Sync.activeTransfer.characterUUID~=userGuid,"queue advances to another stale character while the failed job backs off")
+local followingTransfer=Sync.activeTransfer;staleTimeout();assert(Sync.activeTransfer==followingTransfer and followingTransfer.job.retryCount==0,"a stale timeout cannot finalize the next fetch sharing a discovery request ID")
 Sync.activeTransfer=nil;Sync.catchUpJobs={};Sync.catchUpIndex={};Sync:NotifyActivity();assert(not Sync:GetActivity().active and Sync:GetActivity().queuedJobs==0,"idle activity model is empty after the queue drains")
 assert(activityEvents>0,"central activity changes emit update events")
 local syncMetrics=Sync:GetRuntimeMetrics();assert(syncMetrics.requested>0 and syncMetrics.started>0 and syncMetrics.completed>0 and syncMetrics.retried>0 and next(syncMetrics.byDomain)and next(syncMetrics.byReason),"sync lifecycle metrics include bounded domain and reason aggregates")
