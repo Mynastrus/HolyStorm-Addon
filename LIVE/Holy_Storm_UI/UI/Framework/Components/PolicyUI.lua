@@ -99,7 +99,7 @@ function UI:CreateList(parent,onSelect)
         self.selection=self.selected and(self.selected.id or self.selected.value);self:SetData(self.items)
     end
     function list:SetPoint(...)return self.frame:SetPoint(...)end;function list:SetSize(...)return self.frame:SetSize(...)end;function list:SetWidth(...)return self.frame:SetWidth(...)end;function list:SetHeight(...)return self.frame:SetHeight(...)end
-    function list:Show()return self.frame:Show()end;function list:Hide()return self.frame:Hide()end;function list:IsShown()return self.frame:IsShown()end
+    function list:Show()return self.frame:Show()end;function list:Hide()return self.frame:Hide()end;function list:SetShown(shown)if shown then return self:Show()else return self:Hide()end end;function list:IsShown()return self.frame:IsShown()end
     return list
 end
 
