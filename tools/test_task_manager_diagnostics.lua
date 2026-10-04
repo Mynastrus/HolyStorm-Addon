@@ -11,7 +11,8 @@ function LibStub(name)if name=="AceLocale-3.0"then return{GetLocale=function()re
 assert(loadfile(workspace.."/LIVE/Holy_Storm_UI/UI/Pages/TaskManager.lua"))()
 
 local longIdentifier=string.rep("character/object/0123456789abcdef",100)
-local delvesLastError="DELVES_WORLD_ACTIVITIES_UNAVAILABLE"
+local delvesLastError="PROVIDER_UNAVAILABLE"
+local delvesRuntimeState={state="ERROR",reason="MANUAL_COMMAND",lastError=delvesLastError,lastFailureStage="ADMISSION"}
 local taskMetrics={scheduler={wakeRequested=0,runs=0,coalescedWakes=0,budgetExhaustions=0,queueScans=0,queueChecks=0,tasksSelected=0,idleTransitions=0},tasks={byModule={},byTrigger={}}}
 local raidPerformance={runs=115,totalDuration=.2,totalElapsed=2.5,totalQueueWait=2.3,averageQueueWait=.02,maxQueueWait=.04,averageDuration=.0017,maxDuration=.006,module="Raids"}
 local workflowMetrics={byModule={},byTrigger={}}
@@ -37,8 +38,8 @@ HolyStorm.Sync={
  }end,
 }
 HolyStorm.CharacterScans={
- GetRuntimeMetrics=function()return{byBlock={delves={requested=1,automatic=0,manual=1,started=0,completed=0,failed=0,startFailed=1,triggers={}}},loginProducerScans=0}end,
- GetDiagnostics=function()return{runtimeStates={delves={state="ERROR",reason="MANUAL_COMMAND",lastError=delvesLastError}}}end,
+ GetRuntimeMetrics=function()return{byBlock={delves={requested=1,automatic=0,manual=1,started=0,completed=0,failed=0,failedAfterStart=0,startFailed=1,startFailure=1,admissionFailure=1,cancelled=0,retryCount=0,triggers={}}},loginProducerScans=0}end,
+ GetDiagnostics=function()delvesRuntimeState.lastError=delvesLastError;return{runtimeStates={delves=delvesRuntimeState}}end,
  IsIdle=function()return true end,
 }
 
@@ -66,14 +67,16 @@ assert(syncRow.details:find("test-backend",1,true),"transport diagnostics should
 assert(#syncRow.details<1800,"long transfer and transport identifiers must be bounded in the details layout")
 assert(not syncRow.details:find(longIdentifier,1,true),"complete long identifiers must not be emitted")
 assert(syncRow.details:find("...",1,true),"long diagnostic values should be visibly truncated")
-assert(delvesRow and delvesRow.started==0 and delvesRow.failed==0 and delvesRow.details:find("METRIC_START_FAILURES: 1",1,true),"pre-start Delves errors must not be counted as a failed running scan")
-assert(delvesRow.details:find("DELVES_WORLD_ACTIVITIES_UNAVAILABLE",1,true),"Delves last error should be exposed in Producer scan details")
-assert(delvesRuntimeRow and delvesRuntimeRow.details:find("DELVES_WORLD_ACTIVITIES_UNAVAILABLE",1,true),"Delves runtime diagnostics remain visible independently of the producer counters row")
+assert(delvesRow and delvesRow.started==0 and delvesRow.failed==0 and delvesRow.details:find("METRIC_FAILED_AFTER_START: 0",1,true)and delvesRow.details:find("METRIC_START_FAILURES: 1",1,true),"pre-start Delves errors must not be counted as a failed running scan")
+assert(delvesRow.details:find("PROVIDER_UNAVAILABLE",1,true),"Delves admission reason is exposed in Producer scan details")
+assert(delvesRuntimeRow and delvesRuntimeRow.details:find("ADMISSION",1,true),"Delves runtime diagnostics expose the preflight failure stage")
 assert(raidPerformanceRow and raidPerformanceRow.details:find("METRIC_RUNS: 115",1,true)and raidPerformanceRow.details:find("METRIC_TOTAL_EXECUTION: 0.200s",1,true)and raidPerformanceRow.details:find("METRIC_TOTAL_ELAPSED: 2.500s",1,true)and raidPerformanceRow.details:find("METRIC_TOTAL_QUEUE_WAIT: 2.300s",1,true)and raidPerformanceRow.details:find("METRIC_MAX_QUEUE_WAIT: 0.040s",1,true)and raidPerformanceRow.details:find("METRIC_MAXIMUM: 0.006s",1,true),"Raid scheduler steps, total elapsed/runtime, queue wait and longest step are visible in Developer performance details")
 
 page.detail={SetText=function(self,value)self.text=value end};page.data=rows;page.selected=delvesRow
-local selectedBeforeRefresh=delvesRow;delvesLastError="PROVIDER_UNAVAILABLE";local refreshedRows=page:BuildData();page.data=refreshedRows;page:ShowDetails(selectedBeforeRefresh)
-assert(page.selected~=selectedBeforeRefresh and page.detail.text:find("PROVIDER_UNAVAILABLE",1,true),"refreshing a selected Producer detail replaces stale row data with current runtime diagnostics")
+local selectedBeforeRefresh=delvesRow;delvesLastError="DELVES_API_NOT_READY";delvesRuntimeState.lastFailureStage="SEASON";delvesRuntimeState.lastFailureAPI="C_DelvesUI.GetCurrentDelvesSeasonNumber";delvesRuntimeState.lastFailureDetail="NOT_READY";delvesRuntimeState.retryCount=3;local refreshedRows=page:BuildData();page.data=refreshedRows;page:ShowDetails(selectedBeforeRefresh)
+assert(page.selected~=selectedBeforeRefresh and page.detail.text:find("DELVES_API_NOT_READY",1,true),"refreshing a selected Producer row replaces stale data with the latest exact error")
+local refreshedRuntimeRow;for _,row in ipairs(refreshedRows)do if row.name=="PRODUCER_DELVES_RUNTIME"then refreshedRuntimeRow=row end end;page:ShowDetails(refreshedRuntimeRow)
+assert(page.detail.text:find("SEASON",1,true)and page.detail.text:find("C_DelvesUI.GetCurrentDelvesSeasonNumber",1,true)and page.detail.text:find("NOT_READY",1,true)and page.detail.text:find("3",1,true),"Delves runtime details expose the exact terminal stage, API, cause, and retry count: "..tostring(page.detail.text))
 
 local raidSummaryRow
 for _,row in ipairs(rows)do if row.name=="RAID_SCAN_PERFORMANCE"then raidSummaryRow=row end end

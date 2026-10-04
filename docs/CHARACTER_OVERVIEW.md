@@ -72,7 +72,7 @@ The UI uses the stored current Encounter Journal catalog, boss order, lockouts, 
 
 ## Delves v3
 
-The tab requires v3 schema and snapshot versions. It labels the activity list as Great Vault World activities; it does not call them completed Delves. Weekly values require the stored reset identity to match the current global reset and `greatVault.currentPeriod` to be true. Legacy v2 fields and unsupported Delves history, companion, treasure map, flute, or crest facts are not displayed.
+The tab requires v3 schema and snapshot versions. It labels the activity list as Great Vault World activities; it does not call them completed Delves. Snapshot freshness follows the stored season and weekly reset identity. World progress and reward availability are optional and render as unknown when Blizzard's current-period data is unavailable or belongs to an unclaimed previous period. Legacy v2 fields and unsupported Delves history, companion, treasure map, flute, or crest facts are not displayed.
 
 ## Stats v2
 
