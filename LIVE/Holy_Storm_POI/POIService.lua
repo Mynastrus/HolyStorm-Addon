@@ -259,7 +259,7 @@ function POI:RequestCreate(input)
 end
 function POI:SetTemporaryMarker(mapID,x,y,options)local ok,marker=HolyStorm.MapLinks:SetTemporaryMarker(mapID,x,y,options);if ok then self:Refresh("TEMPORARY_MARKER")end;return ok,marker end
 function POI:ClearTemporaryMarker()local removed=HolyStorm.MapLinks:ClearTemporaryMarker();if removed then self:Refresh("TEMPORARY_MARKER_CLEAR")end;return removed end
-function POI:Refresh(reason)HolyStorm.Tasks:Queue("POI.MapRefresh",{mergeKey="all",debounce=.1,priority=88,triggerSource=reason or"POI_CHANGED"})end
+function POI:Refresh(reason)local refreshReason=reason or"POI_CHANGED";if HolyStorm.POIMap and HolyStorm.POIMap.SetRefreshReason then HolyStorm.POIMap:SetRefreshReason(refreshReason)end;HolyStorm.Tasks:Queue("POI.MapRefresh",{mergeKey="all",debounce=.1,priority=88,triggerSource=refreshReason})end
 function POI:ScheduleExpiration()
  local nextAt;for _,entry in ipairs(HolyStorm.Data.POIStore:GetAll())do if entry.status=="ACTIVE"and entry.expiresAt and entry.expiresAt>now()then nextAt=nextAt and math.min(nextAt,entry.expiresAt)or entry.expiresAt end end
  if nextAt then HolyStorm.Tasks:Queue("POI.Expire",{mergeKey="expiration",delay=math.max(0,nextAt-now()),priority=90,triggerSource="EXPIRATION_SCHEDULE"})end
@@ -284,7 +284,7 @@ function POI:GetDiagnostics()
  local pending,queued={},0;for _,request in pairs(HolyStorm.Sync.requests or{})do if request.domain=="poi"and request.objectId then pending[request.objectId]=true end end
  if HolyStorm.Tasks.GetLiveTasks then for _,task in ipairs(HolyStorm.Tasks:GetLiveTasks())do if task.module=="POI"or task.metadata and task.metadata.domain=="poi"then queued=queued+1 end end end
  local rows={};for _,entry in ipairs(HolyStorm.Data.POIStore:GetAll())do local map=HolyStorm.POIMap and HolyStorm.POIMap:GetRenderState(entry.poiID)or{};rows[#rows+1]={poiID=entry.poiID,target=entry.target,mapID=entry.mapID,x=entry.x,y=entry.y,creator=entry.creatorGuid,revision=entry.revision,revisionID=entry.revisionID,source=entry.provenance and entry.provenance.kind,receivedFrom=entry.receivedFrom,expiresAt=entry.expiresAt,sessionId=entry.sessionId,visible=self:CanView(entry),hidden=self:GetSettings().hidden[entry.poiID]==true,worldPin=map.worldPin==true,minimapPin=map.minimapPin==true,viewedMapID=map.viewedMapID,minimapViewedMapID=map.minimapViewedMapID,transform=map.transform,transformedX=map.transformedX,transformedY=map.transformedY,lastReceived=entry.syncedAt,pendingFetch=pending[entry.poiID]==true}end
- return{entries=rows,context=copy(self.currentContext),lastResync=self.lastResync,pendingCount=HolyStorm.Utils.TableCount(pending),queuedTasks=queued,suppressionRequests=HolyStorm.Utils.TableCount(HolyStorm.Sync.heard or{})}
+ return{entries=rows,context=copy(self.currentContext),lastResync=self.lastResync,pendingCount=HolyStorm.Utils.TableCount(pending),queuedTasks=queued,suppressionRequests=HolyStorm.Utils.TableCount(HolyStorm.Sync.heard or{}),worldMap=HolyStorm.POIMap and HolyStorm.POIMap.GetWorldMapDiagnostics and HolyStorm.POIMap:GetWorldMapDiagnostics()or nil}
 end
 function POI:PruneIncomingMetadata(entry,metadata)
  return type(metadata)=="table"and metadata.objectId==entry.poiID and tonumber(metadata.version)==entry.revision and metadata.revisionID==entry.revisionID and tonumber(metadata.updatedAt)==entry.updatedAt and metadata.owner==entry.modifiedBy and metadata.target==entry.target and metadata.scope==entry.scope

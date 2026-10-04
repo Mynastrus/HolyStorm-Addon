@@ -146,11 +146,30 @@ POI management page.
 The World Map uses Blizzard's `MapCanvasDataProviderMixin` and pooled
 `AcquirePin` contract. Exact map conversion goes through the shared MapLinks
 wrapper: direct coordinates for the same map, otherwise
-`C_Map.GetWorldPosFromMapPos` followed by `C_Map.GetMapPosFromWorldPos`. A
-missing transform, unexpected returned map ID, or invalid coordinate hides the
+`C_Map.GetWorldPosFromMapPos` followed by `C_Map.GetMapPosFromWorldPos`. POI
+rendering additionally requires the viewed and source maps to share an
+ancestor/descendant relationship. A missing transform, unrelated map,
+unexpected returned map ID, invalid map ID, or invalid coordinate hides the
 pin; no coordinates are guessed. Parent-map positions are computed at render
 time and are not stored redundantly. Transform results are cached by POI
-revision and source/target map IDs. Disabling the module removes its provider.
+revision and source/target map IDs. The provider reacts to the current map and
+never calls `SetMapID`; only an explicit POI "Show on Map" action navigates.
+
+Pin hover handlers are supplied as `OnMouseEnter` and `OnMouseLeave` mixin
+methods. The XML pin template must not install `OnEnter` or `OnLeave` frame
+scripts: Retail `MapCanvasMixin:AcquirePin` asserts those scripts are nil
+before connecting the mixin handlers. A violation can throw during the
+provider's map-change refresh and stop pin acquisition. The provider
+reconciles pins by POI ID, updates positions in place, and releases only
+obsolete pins. Repeated refreshes and map changes do not accumulate providers
+or active pins.
+
+The existing POI diagnostics view reports the currently viewed map, visible
+local and scoped POI counts, exact and transformed matches, unsupported map
+transforms, invalid map IDs/coordinates, acquired and active pin counts,
+provider registrations, last refresh reason, and last rendering failure.
+These are bounded aggregate values; per-POI rows continue to show visibility
+and pin state. The World Map and Minimap settings remain independent.
 
 ## Minimap and settings
 
@@ -207,8 +226,11 @@ isolation, no local publication, metadata-first discovery, object limits,
 relay authority, stale rejection, tombstones, retention pruning, expiration,
 capability validation/default scope, icon/category rejection, map conversion,
 and MapLinks integration. `tools/test_poi_map.lua` checks MapCanvas ownership,
-and `tools/test_poi_map_runtime.lua` checks pooled pins, Minimap throttling,
-transform caching, map switching, independent settings, and provider teardown.
+the pin script assertion contract, map hierarchy and no-navigation rule.
+`tools/test_poi_map_runtime.lua` checks exact/parent/unrelated/unsupported map
+rendering, invalid map/coordinate rejection, map-change callbacks, idempotent
+pin/provider lifecycle, Minimap throttling and independence, diagnostics, and
+provider teardown.
 The complete offline suite also runs Positions, Sync-v2, TaskManager/workflow,
 permission, locale-parity, persistence-boundary, and Lua syntax checks.
 
