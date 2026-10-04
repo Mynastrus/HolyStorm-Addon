@@ -2,10 +2,19 @@
   <Button name="HolyStormPOIPinTemplate" mixin="MapCanvasPinMixin,HolyStormPOIPinMixin" virtual="true">
     <Layers>
       <Layer level="BACKGROUND">
-        <Texture parentKey="glow" file="Interface\Buttons\UI-ActionButton-Border" alphaMode="ADD"/>
+        <Texture parentKey="glow" file="Interface\Buttons\UI-ActionButton-Border" alphaMode="ADD">
+          <Anchors>
+            <Anchor point="CENTER"/>
+          </Anchors>
+        </Texture>
       </Layer>
       <Layer level="ARTWORK">
-        <Texture parentKey="icon"/>
+        <Texture parentKey="icon">
+          <Anchors>
+            <Anchor point="TOPLEFT"/>
+            <Anchor point="BOTTOMRIGHT"/>
+          </Anchors>
+        </Texture>
       </Layer>
     </Layers>
   </Button>

@@ -1,7 +1,8 @@
 local addonVersion="1.1.0"
 local HolyStorm=LibStub("AceAddon-3.0"):GetAddon("Holy_Storm")
 local L=LibStub("AceLocale-3.0"):GetLocale("Holy_Storm_POI")
-local Map={version=addonVersion,worldProvider=nil,minimapPins={},activeWorldPins={},renderState={},activeEntries={},transformCache={},elapsed=0,installed=false,initialized=false,lastMinimapRefresh=0,lastMinimapSignature=nil,worldMapUnavailableLogged=false,worldMapFailed=false,worldMapDiagnostics={viewedMapID=nil,localActivePOICount=0,scopeVisiblePOICount=0,exactMapMatches=0,transformedParentMatches=0,skippedUnsupportedTransformations=0,invalidMapIDs=0,invalidCoordinates=0,acquiredPins=0,activePins=0,providerRegistrationCount=0,lastRefreshReason="INITIALIZE",lastRenderingFailureReason=nil}}
+local Map={version=addonVersion,worldProvider=nil,minimapPins={},activeWorldPins={},renderState={},activeEntries={},transformCache={},elapsed=0,installed=false,initialized=false,lastMinimapRefresh=0,lastMinimapSignature=nil,worldMapUnavailableLogged=false,worldMapFailed=false,worldMapDiagnostics={viewedMapID=nil,localActivePOICount=0,scopeVisiblePOICount=0,worldMapEnabledPOICount=0,exactMapMatches=0,transformedParentMatches=0,skippedUnsupportedTransformations=0,invalidMapIDs=0,invalidCoordinates=0,invalidIdentity=0,acquirePinAttempts=0,acquirePinSuccesses=0,acquiredPins=0,activePins=0,pinsRemovedByReconciliation=0,providerRegistrationCount=0,minimapKeyFailures=0,temporaryMinimapKeys=0,lastMinimapKeyFailureReason=nil,lastRefreshReason="INITIALIZE",lastRenderingFailureReason=nil}}
+local function finiteNumber(value)return type(value)=="number"and value==value and value~=math.huge and value~=-math.huge end
 local function remaining(seconds)if not seconds then return L["POI_PERMANENT"]end;if seconds<60 then return string.format(L["POI_SECONDS"],math.ceil(seconds))elseif seconds<3600 then return string.format(L["POI_MINUTES"],math.ceil(seconds/60))end;return string.format(L["POI_HOURS"],math.ceil(seconds/3600))end
 function Map:GetEntries()
  local out=HolyStorm.POI:GetVisible();local marker=HolyStorm.MapLinks.temporaryMarker;if marker then if marker.expiresAt and marker.expiresAt<=HolyStorm.Utils.Now()then HolyStorm.MapLinks:ClearTemporaryMarker()else marker.name=marker.name or L["POI_TEMPORARY_MARKER"];marker.icon="marker";marker.color={r=1,g=.82,b=0,a=1};marker.category="note";marker.creatorName=UnitName("player");out[#out+1]=marker end end;return out
@@ -23,14 +24,35 @@ function Map:ConfigureVisual(frame,entry,size)
  frame.entry=entry;frame:SetSize(size,size);local icon=HolyStorm.POI:GetIcon(entry);frame.icon:SetTexture(icon and icon.texture or"Interface\\Icons\\INV_Misc_Map_01");frame.icon:SetTexCoord(.07,.93,.07,.93);local c=entry.color or{r=1,g=.82,b=0,a=1};frame.glow:SetVertexColor(c.r or 1,c.g or 1,c.b or 1,c.a or 1)
 end
 function Map:GetRenderState(id)self.renderState[id]=self.renderState[id]or{};return self.renderState[id]end
+function Map:GetEntryKey(entry)
+ if type(entry)~="table"or type(entry.poiID)~="string"or#entry.poiID==0 or#entry.poiID>160 or not entry.poiID:match("^[%w%-_]+$")then return nil end
+ return entry.temporary and("temporary:"..entry.poiID)or entry.poiID
+end
+local function revisionComponent(entry)
+ if entry.temporary then return "temporary",true end
+ if type(entry.revisionID)=="string"and#entry.revisionID<=160 and entry.revisionID:match("^[%w%-_]+$")then return "revisionID:"..entry.revisionID,false end
+ local revision=entry.revision
+ if type(revision)=="number"and revision==revision and revision~=math.huge and revision~=-math.huge and revision>=1 and revision%1==0 then return "revision:"..string.format("%.0f",revision),false end
+ return nil,false
+end
+function Map:GetMinimapSignaturePart(entry,x,y)
+ local identity=self:GetEntryKey(entry);if not identity then return nil,"INVALID_POI_ID"end
+ if not finiteNumber(x)or not finiteNumber(y)then return nil,"INVALID_PROJECTED_COORDINATE"end
+ local revision,optional=revisionComponent(entry);if not revision then return nil,"MISSING_REVISION"end
+ return table.concat({identity,revision,string.format("%.5f",x),string.format("%.5f",y)},":"),nil,optional
+end
 function Map:IsValidMapID(mapID)
  if not HolyStorm.MapLinks:IsValidMapID(mapID)or not C_Map or type(C_Map.GetMapInfo)~="function"then return false end
  local ok,info=pcall(C_Map.GetMapInfo,tonumber(mapID));return ok and type(info)=="table"
 end
 function Map:IsValidWorldCoordinate(mapID,x,y)return self:IsValidMapID(mapID)and HolyStorm.MapLinks:IsValidCoordinate(mapID,x,y)end
 function Map:Transform(entry,targetMapID)
- local revisionKey=tostring(entry.revisionID or entry.revision)..":"..tostring(entry.mapID);local cache=self.transformCache[entry.poiID]
- if not cache or cache.revision~=revisionKey then cache={revision=revisionKey,targets={}};self.transformCache[entry.poiID]=cache end
+ local identity=self:GetEntryKey(entry);if not identity then return nil,nil,"INVALID_POI_ID"end
+ if entry.temporary then return HolyStorm.MapLinks:TransformCoordinate(entry.mapID,entry.x,entry.y,targetMapID)end
+ local revision=revisionComponent(entry);if not revision then return nil,nil,"MISSING_REVISION"end
+ local sourceMapID=tonumber(entry.mapID);if not sourceMapID or sourceMapID~=sourceMapID or sourceMapID==math.huge or sourceMapID==-math.huge then return nil,nil,"INVALID_MAP_ID"end
+ local revisionKey=table.concat({revision,string.format("%.0f",sourceMapID)},":");local cache=self.transformCache[identity]
+ if not cache or cache.revision~=revisionKey then cache={revision=revisionKey,targets={}};self.transformCache[identity]=cache end
  local cached=cache.targets[targetMapID];if cached then return cached.x,cached.y,cached.mode end
  local x,y,mode=HolyStorm.MapLinks:TransformCoordinate(entry.mapID,entry.x,entry.y,targetMapID)
  if x then
@@ -68,12 +90,12 @@ function Map:ClearWorldMapPins(canvas)
   elseif type(canvas.RemovePin)=="function"then for _,pin in pairs(self.activeWorldPins)do pcall(canvas.RemovePin,canvas,pin)end end
  end
  self.activeWorldPins={};self.worldMapDiagnostics.activePins=0
- for _,entry in ipairs(self.activeEntries)do local state=self:GetRenderState(entry.poiID);state.worldPin=false;state.viewedMapID=nil;state.transform=nil;state.transformedX=nil;state.transformedY=nil end
+ for _,entry in ipairs(self.activeEntries)do local key=self:GetEntryKey(entry);if key then local state=self:GetRenderState(key);state.worldPin=false;state.viewedMapID=nil;state.transform=nil;state.transformedX=nil;state.transformedY=nil end end
 end
 function Map:RefreshWorldMap(provider,reason)
  local diagnostics=self.worldMapDiagnostics
  diagnostics.lastRefreshReason=conciseReason(reason or "WORLD_MAP_REFRESH")
- diagnostics.lastRenderingFailureReason=nil;diagnostics.exactMapMatches=0;diagnostics.transformedParentMatches=0;diagnostics.skippedUnsupportedTransformations=0;diagnostics.invalidMapIDs=0;diagnostics.invalidCoordinates=0;diagnostics.acquiredPins=0
+ diagnostics.lastRenderingFailureReason=nil;diagnostics.exactMapMatches=0;diagnostics.transformedParentMatches=0;diagnostics.skippedUnsupportedTransformations=0;diagnostics.invalidMapIDs=0;diagnostics.invalidCoordinates=0;diagnostics.invalidIdentity=0;diagnostics.worldMapEnabledPOICount=0;diagnostics.acquirePinAttempts=0;diagnostics.acquirePinSuccesses=0;diagnostics.acquiredPins=0;diagnostics.pinsRemovedByReconciliation=0
  diagnostics.localActivePOICount=0;diagnostics.scopeVisiblePOICount=#self.activeEntries
  for _,entry in ipairs(self.activeEntries)do if entry.target=="PERSONAL"and not entry.temporary then diagnostics.localActivePOICount=diagnostics.localActivePOICount+1 end end
  local ok,reasonValue=pcall(function()
@@ -84,23 +106,30 @@ function Map:RefreshWorldMap(provider,reason)
   end
   diagnostics.viewedMapID=tonumber(viewed)
   if not canvas or type(canvas.AcquirePin)~="function"or type(canvas.RemovePin)~="function"then diagnostics.lastRenderingFailureReason="MAPCANVAS_PIN_API_UNAVAILABLE";self:ClearWorldMapPins(canvas);return end
-  for _,entry in ipairs(self.activeEntries)do local state=self:GetRenderState(entry.poiID);state.worldPin=false;state.viewedMapID=viewed;state.transform=nil;state.transformedX=nil;state.transformedY=nil end
+  for _,entry in ipairs(self.activeEntries)do local key=self:GetEntryKey(entry);if key then local state=self:GetRenderState(key);state.worldPin=false;state.viewedMapID=viewed;state.transform=nil;state.transformedX=nil;state.transformedY=nil end end
   local nextPins={};local settings=HolyStorm.POI:GetSettings()
   if settings.worldMapEnabled then
+   diagnostics.worldMapEnabledPOICount=#self.activeEntries
    for _,entry in ipairs(self.activeEntries)do
-    local x,y,mode=self:TransformForWorldMap(entry,viewed);local state=self:GetRenderState(entry.poiID);state.worldPin=false;state.viewedMapID=viewed;state.transform=mode
-    if x and self:IsValidWorldCoordinate(viewed,x,y)then
-     if mode=="DIRECT"then diagnostics.exactMapMatches=diagnostics.exactMapMatches+1 else diagnostics.transformedParentMatches=diagnostics.transformedParentMatches+1 end
-     local pin=self.activeWorldPins[entry.poiID]
-     if pin then self:ConfigureVisual(pin,entry,settings.worldMapSize)else pin=canvas:AcquirePin("HolyStormPOIPinTemplate",entry);if not pin then error("ACQUIRE_PIN_FAILED")end;diagnostics.acquiredPins=diagnostics.acquiredPins+1 end
-     pin:SetPosition(x,y);nextPins[entry.poiID]=pin;state.worldPin=true;state.transformedX=x;state.transformedY=y
+    local key=self:GetEntryKey(entry)
+    if not key then diagnostics.invalidIdentity=diagnostics.invalidIdentity+1;diagnostics.lastRenderingFailureReason="INVALID_POI_ID"
     else
-     state.transformedX=nil;state.transformedY=nil
-     if mode=="INVALID_MAP_ID"or mode=="INVALID_VIEWED_MAP"then diagnostics.invalidMapIDs=diagnostics.invalidMapIDs+1 elseif mode=="INVALID_COORDINATE"or mode=="TRANSFORM_INVALID_COORDINATE"then diagnostics.invalidCoordinates=diagnostics.invalidCoordinates+1 else diagnostics.skippedUnsupportedTransformations=diagnostics.skippedUnsupportedTransformations+1 end
+     local x,y,mode=self:TransformForWorldMap(entry,viewed);local state=self:GetRenderState(key);state.worldPin=false;state.viewedMapID=viewed;state.transform=mode
+     if x and self:IsValidWorldCoordinate(viewed,x,y)then
+      if mode=="DIRECT"then diagnostics.exactMapMatches=diagnostics.exactMapMatches+1 else diagnostics.transformedParentMatches=diagnostics.transformedParentMatches+1 end
+      local pin=self.activeWorldPins[key]
+      if pin then self:ConfigureVisual(pin,entry,settings.worldMapSize)else diagnostics.acquirePinAttempts=diagnostics.acquirePinAttempts+1;pin=canvas:AcquirePin("HolyStormPOIPinTemplate",entry);if not pin then error("ACQUIRE_PIN_FAILED")end;diagnostics.acquirePinSuccesses=diagnostics.acquirePinSuccesses+1;diagnostics.acquiredPins=diagnostics.acquirePinSuccesses end
+      pin:SetPosition(x,y);nextPins[key]=pin;state.worldPin=true;state.transformedX=x;state.transformedY=y
+     else
+      state.transformedX=nil;state.transformedY=nil
+      if mode=="INVALID_MAP_ID"or mode=="INVALID_VIEWED_MAP"then diagnostics.invalidMapIDs=diagnostics.invalidMapIDs+1 elseif mode=="INVALID_COORDINATE"or mode=="TRANSFORM_INVALID_COORDINATE"then diagnostics.invalidCoordinates=diagnostics.invalidCoordinates+1 else diagnostics.skippedUnsupportedTransformations=diagnostics.skippedUnsupportedTransformations+1 end
+      diagnostics.lastRenderingFailureReason=diagnostics.lastRenderingFailureReason or conciseReason(mode)
+     end
     end
    end
   end
-  for id,pin in pairs(self.activeWorldPins)do if not nextPins[id]then canvas:RemovePin(pin)end end
+  diagnostics.worldMapEnabledPOICount=settings.worldMapEnabled and diagnostics.scopeVisiblePOICount or 0
+  for id,pin in pairs(self.activeWorldPins)do if not nextPins[id]then canvas:RemovePin(pin);diagnostics.pinsRemovedByReconciliation=diagnostics.pinsRemovedByReconciliation+1 end end
   self.activeWorldPins=nextPins
   if type(canvas.GetNumActivePinsByTemplate)=="function"then local countOK,count=pcall(canvas.GetNumActivePinsByTemplate,canvas,"HolyStormPOIPinTemplate");diagnostics.activePins=countOK and tonumber(count)or HolyStorm.Utils.TableCount(nextPins)else diagnostics.activePins=HolyStorm.Utils.TableCount(nextPins)end
  end)
@@ -109,21 +138,25 @@ function Map:RefreshWorldMap(provider,reason)
  end
 end
 function Map:RefreshMinimap(force)
- local settings=HolyStorm.POI:GetSettings();if not settings.minimapEnabled or#self.activeEntries==0 then for _,entry in ipairs(self.activeEntries)do self:GetRenderState(entry.poiID).minimapPin=false end;for _,pin in ipairs(self.minimapPins)do pin.entry=nil;pin:Hide()end;return true end
+ local diagnostics=self.worldMapDiagnostics;diagnostics.minimapKeyFailures=0;diagnostics.temporaryMinimapKeys=0;diagnostics.lastMinimapKeyFailureReason=nil
+ local settings=HolyStorm.POI:GetSettings();if not settings.minimapEnabled or#self.activeEntries==0 then for _,entry in ipairs(self.activeEntries)do local key=self:GetEntryKey(entry);if key then self:GetRenderState(key).minimapPin=false end end;for _,pin in ipairs(self.minimapPins)do pin.entry=nil;pin:Hide()end;return true end
  local time=HolyStorm.Utils.Now();if not force and time-self.lastMinimapRefresh<1 then return false end;self.lastMinimapRefresh=time
  local entries=self.activeEntries;local context=HolyStorm.MapLinks:GetMinimapContext();local used,visible,parts=0,{},{}
- for _,entry in ipairs(self.activeEntries)do self:GetRenderState(entry.poiID).minimapPin=false end
+ for _,entry in ipairs(self.activeEntries)do local key=self:GetEntryKey(entry);if key then self:GetRenderState(key).minimapPin=false end end
  if context then for _,entry in ipairs(entries)do
   local tx,ty,mode=self:Transform(entry,context.mapID);local x,y,mapID
   if tx then x,y,mode,mapID=HolyStorm.MapLinks:ProjectToMinimap(entry.mapID,entry.x,entry.y,false,context,tx,ty,mode)end
-  local state=self:GetRenderState(entry.poiID);state.minimapPin=false;state.minimapTransform=mode
-  if x then visible[#visible+1]={entry=entry,x=x,y=y,mapID=mapID};parts[#parts+1]=table.concat({entry.poiID,entry.revisionID or entry.revision,string.format("%.5f",x),string.format("%.5f",y)},":")end
+  local key=self:GetEntryKey(entry);local state=key and self:GetRenderState(key)or nil;if state then state.minimapPin=false;state.minimapTransform=mode end
+  if mode=="MISSING_REVISION"or mode=="INVALID_POI_ID"then diagnostics.minimapKeyFailures=diagnostics.minimapKeyFailures+1;diagnostics.lastMinimapKeyFailureReason=conciseReason(mode)end
+  if x then local signaturePart,keyError,optional=self:GetMinimapSignaturePart(entry,x,y);if signaturePart then visible[#visible+1]={entry=entry,x=x,y=y,mapID=mapID};parts[#parts+1]=signaturePart;if optional then diagnostics.temporaryMinimapKeys=diagnostics.temporaryMinimapKeys+1 end else diagnostics.minimapKeyFailures=diagnostics.minimapKeyFailures+1;diagnostics.lastMinimapKeyFailureReason=conciseReason(keyError)end end
  end end
- local signature=table.concat({context and context.mapID or"none",context and string.format("%.4f:%.4f:%s:%.4f",context.x,context.y,tostring(context.rotate),context.facing)or"",settings.minimapEnabled and settings.minimapSize or 0,table.concat(parts,"|")},";")
- if signature==self.lastMinimapSignature then for _,pinData in ipairs(visible)do local state=self:GetRenderState(pinData.entry.poiID);state.minimapPin=true;state.minimapViewedMapID=pinData.mapID end;return true end;self.lastMinimapSignature=signature
+ local contextKey="";local mapKey="none";if type(context)=="table"and self:IsValidMapID(context.mapID)and finiteNumber(context.x)and finiteNumber(context.y)and finiteNumber(context.facing)then mapKey=string.format("%.0f",context.mapID);contextKey=string.format("%.4f:%.4f:%s:%.4f",context.x,context.y,context.rotate and"true"or"false",context.facing)end
+ local size=settings.minimapEnabled and tonumber(settings.minimapSize)or 0;if not finiteNumber(size)then size=0 end;local sizeKey=string.format("%.0f",size)
+ local signature=table.concat({mapKey,contextKey,sizeKey,table.concat(parts,"|")},";")
+ if signature==self.lastMinimapSignature then for _,pinData in ipairs(visible)do local key=self:GetEntryKey(pinData.entry);local state=key and self:GetRenderState(key)or nil;if state then state.minimapPin=true;state.minimapViewedMapID=pinData.mapID end end;return true end;self.lastMinimapSignature=signature
  for _,pinData in ipairs(visible)do local entry=pinData.entry;used=used+1;local pin=self.minimapPins[used]
   if not pin then pin=CreateFrame("Button",nil,Minimap);pin:SetFrameLevel(Minimap:GetFrameLevel()+5);pin.glow=pin:CreateTexture(nil,"BACKGROUND");pin.glow:SetTexture("Interface\\Buttons\\UI-ActionButton-Border");pin.glow:SetBlendMode("ADD");pin.glow:SetPoint("CENTER");pin.icon=pin:CreateTexture(nil,"ARTWORK");pin.icon:SetAllPoints();pin:SetScript("OnEnter",function(p)Map:ShowTooltip(p,p.entry)end);pin:SetScript("OnLeave",function()GameTooltip:Hide()end);pin:SetScript("OnClick",function(p,button)if button=="RightButton"then Map:OpenContext(p,p.entry)else HolyStorm:CallCapability("poi.open",p.entry.poiID)end end);pin:RegisterForClicks("LeftButtonUp","RightButtonUp");self.minimapPins[used]=pin end
-  self:ConfigureVisual(pin,entry,settings.minimapSize);pin.glow:SetSize(settings.minimapSize+12,settings.minimapSize+12);pin:ClearAllPoints();pin:SetPoint("CENTER",Minimap,"CENTER",pinData.x,pinData.y);pin:Show();local state=self:GetRenderState(entry.poiID);state.minimapPin=true;state.minimapViewedMapID=pinData.mapID
+  self:ConfigureVisual(pin,entry,settings.minimapSize);pin.glow:SetSize(settings.minimapSize+12,settings.minimapSize+12);pin:ClearAllPoints();pin:SetPoint("CENTER",Minimap,"CENTER",pinData.x,pinData.y);pin:Show();local key=self:GetEntryKey(entry);local state=key and self:GetRenderState(key)or nil;if state then state.minimapPin=true;state.minimapViewedMapID=pinData.mapID end
  end
  for index=used+1,#self.minimapPins do self.minimapPins[index]:Hide();self.minimapPins[index].entry=nil end
  return true
@@ -157,7 +190,7 @@ end
 function Map:Refresh(reason)
  if not self.initialized then return false end
  self.worldMapDiagnostics.lastRefreshReason=conciseReason(reason or self.worldMapDiagnostics.lastRefreshReason or "POI_CHANGED")
- self.activeEntries=self:GetEntries();self:UpdateMinimapUpdater();local active={};for _,entry in ipairs(self.activeEntries)do active[entry.poiID]=true end;for id in pairs(self.renderState)do if not active[id]then self.renderState[id]=nil;self.transformCache[id]=nil end end
+ self.activeEntries=self:GetEntries();self:UpdateMinimapUpdater();local active={};for _,entry in ipairs(self.activeEntries)do local key=self:GetEntryKey(entry);if key then active[key]=true end end;for id in pairs(self.renderState)do if not active[id]then self.renderState[id]=nil;self.transformCache[id]=nil end end
  local worldVisible=self:IsWorldMapVisible();if worldVisible and not self.worldProvider then self:InstallWorldMap()end
  if worldVisible and self.worldProvider and not self.worldMapFailed then self:RefreshWorldMap(self.worldProvider,self.worldMapDiagnostics.lastRefreshReason)end
  self:RefreshMinimap(true);HolyStorm.Events:Emit("HS_POI_MAP_REFRESHED");return true
@@ -188,6 +221,7 @@ end
 HolyStorm.POIMap=Map
 
 HolyStormPOIPinMixin={}
+function HolyStormPOIPinMixin:OnLoad()self:UseFrameLevelType("PIN_FRAME_LEVEL_AREA_POI")end
 function HolyStormPOIPinMixin:OnAcquired(entry)Map:ConfigureVisual(self,entry,HolyStorm.POI:GetSettings().worldMapSize);self.glow:SetSize(HolyStorm.POI:GetSettings().worldMapSize+14,HolyStorm.POI:GetSettings().worldMapSize+14);self:Show()end
 function HolyStormPOIPinMixin:OnReleased()self.entry=nil;self:Hide();GameTooltip:Hide()end
 function HolyStormPOIPinMixin:OnMouseEnter()if self.entry then Map:ShowTooltip(self,self.entry)end end

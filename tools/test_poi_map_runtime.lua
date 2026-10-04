@@ -3,14 +3,14 @@ local workspace=(arg[0]:gsub("tools[/\\]test_poi_map_runtime.lua$",""))
 local entries={{poiID="poi-one",revision=1,revisionID="r-one",mapID=84,x=.25,y=.75,name="One",icon="marker",color={r=1,g=.8,b=0,a=1},target="PERSONAL"},{poiID="poi-two",revision=1,revisionID="r-two",mapID=84,x=.75,y=.25,name="Two",icon="marker",color={r=1,g=.8,b=0,a=1},target="PERSONAL"}}
 local settings={worldMapEnabled=true,minimapEnabled=true,worldMapSize=22,minimapSize=18}
 local stats={transform=0,context=0,projection=0,minimapFrames=0,worldFrames=0,providerAdds=0,providerRemoves=0,worldAcquire=0,worldRemove=0,setMapID=0}
-local function fakeTexture()return{SetTexture=function()end,SetBlendMode=function()end,SetPoint=function()end,SetAllPoints=function()end,SetSize=function()end,SetVertexColor=function()end,SetTexCoord=function()end}end
+local function fakeTexture()return{SetTexture=function(self,value)self.texture=value end,SetBlendMode=function()end,SetPoint=function()end,SetAllPoints=function()end,SetSize=function()end,SetVertexColor=function()end,SetTexCoord=function()end}end
 local function fakeFrame(kind,parent)
  local frame={kind=kind,parent=parent,shown=false,level=1,width=100,height=100}
  function frame:SetFrameLevel(level)self.level=level end;function frame:GetFrameLevel()return self.level end
  function frame:CreateTexture()return fakeTexture()end;function frame:SetScript()end;function frame:RegisterForClicks()end
- function frame:SetSize(w,h)self.width,self.height=w,h end;function frame:GetWidth()return self.width end;function frame:GetHeight()return self.height end
- function frame:Show()self.shown=true end;function frame:Hide()self.shown=false end;function frame:ClearAllPoints()end;function frame:SetPoint()end
- function frame:SetTexCoord()end;function frame:SetPosition(x,y)self.x,self.y=x,y end
+ function frame:SetSize(w,h)self.width,self.height=w,h end;function frame:GetWidth()return self.width end;function frame:GetHeight()return self.height end;function frame:SetAlpha(alpha)self.alpha=alpha end;function frame:GetAlpha()return self.alpha or 1 end
+ function frame:Show()self.shown=true end;function frame:Hide()self.shown=false end;function frame:ClearAllPoints()end;function frame:SetPoint(_,_,_,x,y)self.pointX,self.pointY=x,y end
+ function frame:SetTexCoord()end;function frame:SetPosition(x,y)self.x,self.y=x,y end;function frame:UseFrameLevelType(value)self.frameLevelType=value end
  return frame
 end
 local canvas={mapID=84,pins={},activePins={}}
@@ -19,14 +19,14 @@ function canvas:GetNumActivePinsByTemplate()local n=0;for _ in pairs(self.active
 function canvas:RemoveAllPinsByTemplate()for pin in pairs(self.activePins)do pin.active=false;pin:OnReleased()end;self.activePins={}end
 function canvas:AcquirePin(_,entry)
  local pin;for _,candidate in ipairs(self.pins)do if not candidate.active then pin=candidate;break end end
- if not pin then pin=fakeFrame("world-pin");pin.icon=fakeTexture();pin.glow=fakeTexture();pin.OnAcquired=HolyStormPOIPinMixin.OnAcquired;pin.OnReleased=HolyStormPOIPinMixin.OnReleased;self.pins[#self.pins+1]=pin;stats.worldFrames=stats.worldFrames+1 end
+ if not pin then pin=fakeFrame("world-pin");pin.icon=fakeTexture();pin.glow=fakeTexture();pin.OnLoad=HolyStormPOIPinMixin.OnLoad;pin.OnAcquired=HolyStormPOIPinMixin.OnAcquired;pin.OnReleased=HolyStormPOIPinMixin.OnReleased;pin:OnLoad();self.pins[#self.pins+1]=pin;stats.worldFrames=stats.worldFrames+1 end
  stats.worldAcquire=stats.worldAcquire+1;pin.active=true;self.activePins[pin]=true;pin:OnAcquired(entry);return pin
 end
 function canvas:RemovePin(pin)if self.activePins[pin]then self.activePins[pin]=nil;pin.active=false;pin:OnReleased();stats.worldRemove=stats.worldRemove+1 end end
 local world={canvas=canvas,shown=false,dataProviders={}}
 function world:HookScript(event,callback)self[event]=callback end
 function world:IsVisible()return self.shown end
-function world:AddDataProvider(provider)self.provider=provider;self.dataProviders[provider]=true;stats.providerAdds=stats.providerAdds+1;if provider.OnAdded then provider:OnAdded(self)end;provider:RefreshAllData()end
+function world:AddDataProvider(provider)self.provider=provider;self.dataProviders[provider]=true;stats.providerAdds=stats.providerAdds+1;if provider.OnAdded then provider:OnAdded(self)end end
 function world:RemoveDataProvider(provider)if self.provider==provider then provider:RemoveAllData();self.dataProviders[provider]=nil;self.provider=nil;stats.providerRemoves=stats.providerRemoves+1 end end
 function world:SetMapID(mapID)stats.setMapID=stats.setMapID+1;canvas.mapID=mapID;for provider in pairs(self.dataProviders)do if provider.OnMapChanged then provider:OnMapChanged()end end end
 function world:GetMapID()return canvas:GetMapID()end
@@ -36,6 +36,7 @@ function world:RemoveAllPinsByTemplate(template)return canvas:RemoveAllPinsByTem
 function world:GetNumActivePinsByTemplate(template)return canvas:GetNumActivePinsByTemplate(template)end
 local minimap=fakeFrame("minimap");function minimap:GetFrameLevel()return self.level end
 GameTooltip={Hide=function()end}
+UnitName=function()return"Test"end
 WorldMapFrame=world;Minimap=minimap;MapCanvasPinMixin={};MapCanvasDataProviderMixin={GetMap=function(self)return self.mapCanvas end,OnAdded=function(self,map)self.mapCanvas=map end}
 function CreateFromMixins(...)local object={};for index=1,select("#",...)do for key,value in pairs(select(index,...))do object[key]=value end end;return object end
 function CreateFrame(kind,name,parent)if parent==Minimap then stats.minimapFrames=stats.minimapFrames+1 end;return fakeFrame(kind,parent)end
@@ -76,6 +77,8 @@ assert(world.provider and stats.providerAdds==1,"opening the World Map installs 
 assert(addon.MapLinks.minimapActive.poi==true,"POI enables minimap work only while visible POIs and minimap display are active")
 assert(#Map.activeEntries==2,"map snapshots both POIs")
 assert(stats.worldFrames==2 and stats.minimapFrames==2 and canvas:GetNumActivePinsByTemplate("HolyStormPOIPinTemplate")==2,"opening the World Map immediately creates pooled pins from the active POIs")
+local firstWorldPin=Map.activeWorldPins["poi-one"];assert(firstWorldPin and firstWorldPin.entry.poiID=="poi-one"and firstWorldPin.x==.25 and firstWorldPin.y==.75 and firstWorldPin.width==22 and firstWorldPin.height==22 and firstWorldPin:GetAlpha()==1 and firstWorldPin.shown and firstWorldPin.frameLevelType=="PIN_FRAME_LEVEL_AREA_POI"and firstWorldPin.icon.texture=="test-icon","exact-map pin is acquired, visibly initialized, layered, and positioned at the original normalized coordinates")
+assert(Map:GetWorldMapDiagnostics().acquirePinAttempts==2 and Map:GetWorldMapDiagnostics().acquirePinSuccesses==2,"initial exact-map refresh counts successful AcquirePin calls separately")
 assert(stats.context==1 and stats.projection==2 and stats.transform==2,"one validated Minimap context and shared coordinate transforms serve the initial OnShow pass")
 assert(Map:GetRenderState("poi-one").worldPin and Map:GetRenderState("poi-one").transform=="DIRECT" and Map:GetWorldMapDiagnostics().exactMapMatches==2,"exact source-map POIs render and are counted")
 local acquisitions=stats.worldAcquire;world.shown=false;world.shown=true;world.OnShow(world);assert(stats.providerAdds==1 and stats.worldAcquire==acquisitions,"repeated map close/open events do not duplicate providers or pins")
@@ -97,4 +100,18 @@ settings.worldMapEnabled=true;Map:Refresh("WORLD_MAP_ENABLED");assert(Map:GetRen
 assert(Map:Shutdown());assert(not world.provider and stats.providerRemoves==1 and addon.MapLinks.minimapUpdaters.poi==nil and addon.MapLinks.minimapActive.poi==false and addon.MapLinks.poiProviders["holy-storm-poi"]==nil,"shutdown unregisters world map, Minimap, and MapLinks providers")
 assert(Map:Initialize() and Map:Refresh("REINITIALIZE"));assert(stats.providerAdds==2 and stats.providerRemoves==1 and stats.worldFrames==2 and Map:GetWorldMapDiagnostics().providerRegistrationCount==2,"reinitialization adds one provider and reuses pooled frames")
 assert(Map:Refresh("REPEATED_MAP_CHANGE"));assert(stats.providerAdds==2 and Map:GetWorldMapDiagnostics().activePins==2,"repeated map refreshes leave exactly one active pin per visible POI")
+local reservedIdPOI={poiID="temporary-coordinate",revision=1,revisionID="r-reserved",mapID=84,x=.2,y=.2,name="Reserved ID",icon="marker",color={r=1,g=.8,b=0,a=1},target="PERSONAL"};entries[#entries+1]=reservedIdPOI
+addon.MapLinks.temporaryMarker={poiID="temporary-coordinate",mapID=84,x=.4,y=.4,name="Temporary",status="ACTIVE",target="PERSONAL",temporary=true,localOnly=true}
+assert(Map:Refresh("TEMPORARY_MARKER"));local temporaryPin=Map.activeWorldPins["temporary:temporary-coordinate"];local storedReservedPin=Map.activeWorldPins["temporary-coordinate"]
+assert(temporaryPin and storedReservedPin and temporaryPin~=storedReservedPin and temporaryPin.x==.4 and temporaryPin.y==.4 and storedReservedPin.x==.2 and storedReservedPin.y==.2 and canvas:GetNumActivePinsByTemplate("HolyStormPOIPinTemplate")==4,"revisionless temporary marker renders beside a stored POI with the reserved marker ID without reconciliation collision")
+local markerDiagnostics=Map:GetWorldMapDiagnostics();assert(markerDiagnostics.temporaryMinimapKeys==1 and markerDiagnostics.minimapKeyFailures==0 and markerDiagnostics.invalidIdentity==0,"temporary marker uses an explicit optional revision component without key failures")
+local temporaryKey=Map:GetMinimapSignaturePart({poiID="temporary-coordinate",temporary=true},-.5,.5);local missingRevisionKey,missingRevisionError=Map:GetMinimapSignaturePart({poiID="missing-revision"},-.5,.5)
+assert(temporaryKey and not missingRevisionKey and missingRevisionError=="MISSING_REVISION" and Map:GetEntryKey({poiID="temporary-coordinate",temporary=true})~="temporary-coordinate","optional temporary revision has a stable namespace while persistent identity still requires a revision")
+local repeatedAcquires=stats.worldAcquire;for _=1,3 do assert(Map:RefreshMinimap(true),"repeated Minimap refresh handles the revisionless temporary marker")end
+assert(stats.worldAcquire==repeatedAcquires and canvas:GetNumActivePinsByTemplate("HolyStormPOIPinTemplate")==4,"repeated Minimap refreshes do not disturb World Map pins or duplicate them")
+local priorMinimapX=Map.minimapPins[4]and Map.minimapPins[4].pointX
+addon.MapLinks.temporaryMarker.x=.6;assert(Map:Refresh("TEMPORARY_MARKER_MOVED"));temporaryPin=Map.activeWorldPins["temporary:temporary-coordinate"]
+assert(temporaryPin.x==.6 and Map.minimapPins[4].pointX~=priorMinimapX and Map:GetWorldMapDiagnostics().temporaryMinimapKeys==1 and Map:GetWorldMapDiagnostics().minimapKeyFailures==0,"moving a temporary marker refreshes its uncached World Map coordinates and stable Minimap signature")
+addon.MapLinks.temporaryMarker=nil;entries[#entries]=nil;assert(Map:Refresh("TEMPORARY_MARKER_REMOVED"));assert(Map:GetWorldMapDiagnostics().pinsRemovedByReconciliation==2 and canvas:GetNumActivePinsByTemplate("HolyStormPOIPinTemplate")==2,"reconciliation releases the temporary marker and colliding persistent ID pins independently")
+assert(Map:Shutdown(),"final World Map state shuts down cleanly")
 print("POI World Map assertion contract, exact/parent/unrelated map rendering, validation, idempotent provider and pin lifecycle, Minimap independence and diagnostics tests passed")
