@@ -228,36 +228,57 @@ end
 local function transferKey(domainId,objectId,version,revision)
  return table.concat({domainId,tostring(objectId),tostring(version or"?"),tostring(revision or"")} ,"\030")
 end
+local function activityOwner(record)
+ local owner=record and record.owner
+ if type(owner)~="table"then return{ownerType="NONE",ownerId=nil}end
+ local isTransfer=owner==Sync.activeTransfer or(not owner.activityHandoff and(owner.kind=="FETCH"or owner.kind=="SEND"or owner.kind=="RECEIVE"))
+ local job=isTransfer and owner.job or owner
+ local ownerType=isTransfer and("TRANSFER_"..tostring(owner.kind or"UNKNOWN"))or(owner.activityHandoff and"CATCHUP_HANDOFF"or"UNKNOWN")
+ return{ownerType=ownerType,ownerId=owner.requestId or owner.transmissionId or owner.objectId or owner.entity,requestId=owner.requestId or(job and job.requestId),domain=owner.activityDomain or owner.block or owner.domain,entity=owner.entity or owner.objectId or(job and job.entity),source=owner.selectedSource or owner.sender or(job and job.selectedSource),catchUpJobState=job and job.state,catchUpJobId=job and job.requestId}
+end
+local function activityTransition(record,transition,reason)
+ local owner=activityOwner(record);record.lastTransition=transition;record.lastTransitionAt=now();record.lastReason=reason
+ log("DEBUG","activity","Sync activity transition",{transition=transition,activityId=record.id,domain=owner.domain or(record.details and record.details.domain),ownerType=owner.ownerType,ownerId=owner.ownerId,entity=owner.entity,requestId=owner.requestId or(record.details and record.details.requestId),source=owner.source,phase=record.owner and record.owner.phase or(record.details and record.details.phase),ownerLiveness=record.activeReason,createdAt=record.createdAt,lastTransitionAt=record.lastTransitionAt,reason=reason})
+end
 function Sync:IsTransferActivityAuthoritative(transfer)
- if not transfer or self.activeTransfer~=transfer then return false end
- if transfer.processing or transfer.preparing then return true end
+ if not transfer or self.activeTransfer~=transfer then return false,"NOT_ACTIVE_TRANSFER"end
  if transfer.kind=="FETCH"then
-  if transfer.receiveId and self.pendingPayloads[transfer.receiveId]then return true end
-  return transfer.awaitingResponse==true and transfer.timeoutTimer~=nil and (tonumber(transfer.timeoutAt)or 0)>now()
+  if transfer.receiveId and self.pendingPayloads[transfer.receiveId]then return true,"MATCHED_PAYLOAD_PENDING"end
+  if transfer.processing==true and transfer.phase=="VALIDATE_COMMIT"then return true,"RECEIVE_PROCESSING"end
+  if transfer.awaitingResponse==true and transfer.timeoutTimer~=nil and(tonumber(transfer.timeoutAt)or 0)>now()then return true,"FETCH_TIMEOUT_ARMED"end
+  return false,"FETCH_WITHOUT_TIMEOUT_OR_PAYLOAD"
  end
  if transfer.kind=="SEND"then
-  if transfer.transmissionId and HolyStorm.Comms and type(HolyStorm.Comms.IsTransmissionActive)=="function"then return HolyStorm.Comms:IsTransmissionActive(transfer.transmissionId)==true end
-  return transfer.sendPending==true
+  if transfer.transmissionId and HolyStorm.Comms and type(HolyStorm.Comms.IsTransmissionActive)=="function"and HolyStorm.Comms:IsTransmissionActive(transfer.transmissionId)==true then return true,"COMMS_TRANSMISSION_ACTIVE"end
+  return false,"SEND_WITHOUT_ACTIVE_TRANSMISSION"
  end
- if transfer.kind=="RECEIVE"then return transfer.processing==true or transfer.receiveId and self.pendingPayloads[transfer.receiveId]~=nil end
- return false
+ if transfer.kind=="RECEIVE"then
+  if transfer.processing==true and transfer.phase=="VALIDATE_COMMIT"then return true,"RECEIVE_PROCESSING"end
+  if transfer.receiveId and self.pendingPayloads[transfer.receiveId]then return true,"MATCHED_PAYLOAD_PENDING"end
+  return false,"RECEIVE_WITHOUT_PENDING_WORKER"
+ end
+ return false,"UNKNOWN_TRANSFER_KIND"
 end
 function Sync:IsCatchUpHandoffAuthoritative(job)
- return job~=nil and job.activityHandoff==true and job.handoffProcessing==true and job.activityId~=nil
+ if not job or job.activityHandoff~=true or job.handoffProcessing~=true or not job.activityId then return false,"HANDOFF_NOT_MARKED"end
+ if job.state~="DISPATCHING"then return false,"HANDOFF_JOB_NOT_DISPATCHING"end
+ for _,queued in ipairs(self.catchUpJobs)do if queued==job then return false,"HANDOFF_JOB_QUEUED"end end
+ return true,"SOURCE_HANDOFF_DISPATCHING"
 end
 function Sync:BeginActivity(details,isActive,owner)
  if type(isActive)~="function"then return nil,"ACTIVITY_OWNER_REQUIRED"end
  details=type(details)=="table"and details or{};self.activitySequence=self.activitySequence+1
  local id=string.format("SYNC-ACT-%08X-%04X",now()%0xFFFFFFFF,self.activitySequence%0xFFFF)
- local startedAt=tonumber(details.startedAt)or now();local record={id=id,details=copy(details),startedAt=startedAt,isActive=isActive,owner=owner}
- self.activeActivities[id]=record;if type(owner)=="table"then owner.activityId=id end
+ local createdAt=now();local startedAt=tonumber(details.startedAt)or createdAt;local record={id=id,details=copy(details),startedAt=startedAt,createdAt=createdAt,isActive=isActive,owner=owner}
+ self.activeActivities[id]=record;if type(owner)=="table"then owner.activityId=id end;activityTransition(record,"BEGIN","ACTIVITY_REGISTERED")
  self:NotifyActivity(true);return id
 end
 function Sync:BeginTransferActivity(transfer)
  if not transfer then return nil end
  local id=transfer.activityId
  if id and self.activeActivities[id]then
-  local record=self.activeActivities[id];record.owner=transfer;record.isActive=function()return Sync:IsTransferActivityAuthoritative(transfer)end
+  local record=self.activeActivities[id];local previousOwner=record.owner;record.owner=transfer;record.isActive=function()return Sync:IsTransferActivityAuthoritative(transfer)end
+  if previousOwner~=transfer then activityTransition(record,"OWNER_CHANGE","TRANSFER_OWNER_ASSIGNED")end
  else
   id=self:BeginActivity({domain=transfer.activityDomain or transfer.domain,entity=transfer.entity or transfer.objectId,characterUUID=transfer.characterUUID,direction=transfer.direction,phase=transfer.phase,startedAt=transfer.startedAt},function()return Sync:IsTransferActivityAuthoritative(transfer)end,transfer)
  end
@@ -266,6 +287,7 @@ end
 function Sync:EndActivity(activityId,reason,suppressNotify)
  if not activityId then return false end;local record=self.activeActivities[activityId];if not record then return false end
  self.activeActivities[activityId]=nil;local owner=record.owner
+ activityTransition(record,reason=="ACTIVITY_RECONCILED_STALE"and"ORPHAN_RELEASE"or"END",reason or"ACTIVITY_ENDED")
  if type(owner)=="table"and owner.activityId==activityId then owner.activityId=nil;if owner.activityHandoff then owner.activityHandoff=nil end;owner.handoffProcessing=nil end
  if not suppressNotify then self:NotifyActivity(true,true)end
  return true
@@ -279,8 +301,9 @@ function Sync:ReconcileActivity(reason)
   else self:ReleaseTransfer(false,"ACTIVITY_RECONCILED_STALE",transfer);changed=true end
  end
  for id,record in pairs(self.activeActivities)do
-  local ok,value=false,false;if type(record.isActive)=="function"then ok,value=pcall(record.isActive)end
-  if ok and value==true then active=active+1 else stale[#stale+1]={id=id,record=record}end
+  local ok,value,livenessReason=false,false,nil;if type(record.isActive)=="function"then ok,value,livenessReason=pcall(record.isActive)end
+  record.activeReason=ok and livenessReason or(ok and"OWNER_INACTIVE"or"OWNER_CHECK_ERROR")
+  if ok and value==true then active=active+1 else stale[#stale+1]={id=id,record=record,reason=record.activeReason}end
  end
  local mismatch=self.activityPublishedActive==true and active==0
  self.activityStateMismatch=mismatch
@@ -294,7 +317,11 @@ function Sync:ReconcileActivity(reason)
    self:ReleaseTransfer(false,"ACTIVITY_RECONCILED_STALE",owner)
   elseif type(owner)=="table"and owner.activityHandoff and owner.activityId==entry.id then
    self:EndActivity(entry.id,"ACTIVITY_RECONCILED_STALE",true)
-  else self:EndActivity(entry.id,"ACTIVITY_RECONCILED_STALE",true)end
+  else
+   local ownerInfo=activityOwner(entry.record)
+   log("WARN","activity","Sync activity owner is no longer progress-capable; releasing registration",{transition="ORPHAN_RELEASE",activityId=entry.id,domain=ownerInfo.domain or(entry.record.details and entry.record.details.domain),ownerType=ownerInfo.ownerType,ownerId=ownerInfo.ownerId,requestId=ownerInfo.requestId or(entry.record.details and entry.record.details.requestId),reason=entry.reason})
+   self:EndActivity(entry.id,"ACTIVITY_RECONCILED_STALE",true)
+  end
  end
  self.reconcilingActivity=false
  if #stale>0 then self.activityNotifyDeferred=nil end
@@ -303,9 +330,9 @@ end
 local function activitySnapshot(sync,characterUUID)
  local active,ids={},{};local current=now()
  for id,record in pairs(sync.activeActivities)do
-  local details=record.details or{};local owner=record.owner;local transfer=type(owner)=="table"and owner.activityId==id and owner or nil
+  local details=record.details or{};local owner=record.owner;local ownerInfo=activityOwner(record);local transfer=type(owner)=="table"and owner.activityId==id and owner==sync.activeTransfer and owner or nil
   local job=type(owner)=="table"and owner.activityHandoff and owner.activityId==id and owner or nil
-  local item={activityId=id,characterUUID=(transfer and transfer.characterUUID)or(job and job.characterUUID)or details.characterUUID,entity=(transfer and(transfer.entity or transfer.objectId))or(job and(job.entity or job.objectId))or details.entity,domain=(transfer and(transfer.activityDomain or transfer.domain))or(job and(job.block or job.domain))or details.domain,direction=(transfer and transfer.direction)or details.direction,phase=(transfer and transfer.phase)or(job and"SOURCE_FALLBACK")or details.phase,sender=(transfer and transfer.sender)or details.sender,receiver=(transfer and transfer.receiver)or(job and job.target)or details.receiver,requestId=(transfer and transfer.requestId)or(job and job.requestId)or details.requestId,revision=(transfer and transfer.revision)or(job and job.requiredRevision)or details.revision,bytes=transfer and transfer.bytes or details.bytes,fragments=transfer and transfer.fragments or details.fragments,fragmentsTotal=transfer and transfer.fragmentsTotal or details.fragmentsTotal,retryCount=(transfer and transfer.retryCount)or(job and job.retryCount)or details.retryCount or 0,maxRetries=(transfer and transfer.maxRetries)or(job and job.maxRetries)or details.maxRetries or sync.maxRetries,priority=(transfer and transfer.priorityClass)or(job and job.priorityClass)or details.priority,startedAt=record.startedAt,activityAge=math.max(0,current-(tonumber(record.startedAt)or current)),queuePosition=1}
+  local item={activityId=id,ownerType=ownerInfo.ownerType,ownerId=ownerInfo.ownerId,catchUpJobState=ownerInfo.catchUpJobState,catchUpJobId=ownerInfo.catchUpJobId,activeReason=record.activeReason,lastTransition=record.lastTransition,lastTransitionAt=record.lastTransitionAt,lastReason=record.lastReason,createdAt=record.createdAt,characterUUID=(transfer and transfer.characterUUID)or(job and job.characterUUID)or details.characterUUID,entity=(transfer and(transfer.entity or transfer.objectId))or(job and(job.entity or job.objectId))or details.entity,domain=(transfer and(transfer.activityDomain or transfer.domain))or(job and(job.block or job.domain))or details.domain,direction=(transfer and transfer.direction)or details.direction,phase=(transfer and transfer.phase)or(job and"SOURCE_FALLBACK")or details.phase,sender=(transfer and transfer.sender)or details.sender,receiver=(transfer and transfer.receiver)or(job and job.target)or details.receiver,source=ownerInfo.source,requestId=(transfer and transfer.requestId)or(job and job.requestId)or details.requestId,revision=(transfer and transfer.revision)or(job and job.requiredRevision)or details.revision,bytes=transfer and transfer.bytes or details.bytes,fragments=transfer and transfer.fragments or details.fragments,fragmentsTotal=transfer and transfer.fragmentsTotal or details.fragmentsTotal,retryCount=(transfer and transfer.retryCount)or(job and job.retryCount)or details.retryCount or 0,maxRetries=(transfer and transfer.maxRetries)or(job and job.maxRetries)or details.maxRetries or sync.maxRetries,priority=(transfer and transfer.priorityClass)or(job and job.priorityClass)or details.priority,startedAt=record.startedAt,activityAge=math.max(0,current-(tonumber(record.startedAt)or current)),queuePosition=1}
   if not characterUUID or item.characterUUID==characterUUID then active[#active+1]=item;ids[#ids+1]=id end
  end
  table.sort(active,function(left,right)if left.startedAt==right.startedAt then return left.activityId<right.activityId end;return left.startedAt<right.startedAt end);table.sort(ids)
@@ -419,7 +446,9 @@ function Sync:BestSource(job)
  local best;for _,candidate in ipairs(job.sourceCandidates or{})do if not sourceExhausted(job,candidate)and not isLocalSource(candidate.sender,candidate.senderGuid)then if not best or(candidate.direct and not best.direct)then best=candidate elseif candidate.direct==best.direct then local decision=HolyStorm.PlayerData:CompareMetadata(best.meta or{},candidate.meta or{});if decision>0 then best=candidate end end end end;return best
 end
 function Sync:ActivityPhase(transfer,phase)
- if not transfer then return end;transfer.phase=phase;transfer.lastActivityAt=now();self:NotifyActivity()
+ if not transfer then return end;local previous=transfer.phase;transfer.phase=phase;transfer.lastActivityAt=now()
+ if previous~=phase and transfer.activityId then local record=self.activeActivities[transfer.activityId];if record then activityTransition(record,"PHASE_CHANGE",tostring(previous or"UNKNOWN").."->"..tostring(phase))end end
+ self:NotifyActivity()
 end
 function Sync:ReleaseTransfer(result,reason,expectedTransfer)
  local transfer=self.activeTransfer;if not transfer or expectedTransfer and transfer~=expectedTransfer then return false end
@@ -472,6 +501,7 @@ function Sync:RetryTimedOut(requestId,expectedTransfer)
  log("WARN","retries","Sync payload response timed out",{requestId=requestId,objectId=active.objectId,characterUUID=active.characterUUID,domain=active.domain,source=active.selectedSource,retryCount=active.job and active.job.retryCount or 0,result="TIMEOUT"});self:ReleaseTransfer(false,"TIMEOUT",active)
 end
 function Sync:StartFetch(job)
+ job.state="DISPATCHING"
  local source=self:BestSource(job)
  if not source then job.state="FAILED";recordJobMetric(self,job,"failed");self.catchUpIndex[job.key]=nil;self:EndActivity(job.activityId,"NO_SOURCE",true);job.activityId=nil;job.activityHandoff=nil;log("WARN","selection","No valid source remains for sync job",{requestId=job.requestId,objectId=job.objectId,domain=job.domain,result="NO_SOURCE"});self:NotifyActivity(true,true);self:QueuePump();return false end
  local domain=self.domains[job.domain];local localMeta=domain and domain.getMetadata(job.objectId)
@@ -480,12 +510,11 @@ function Sync:StartFetch(job)
  job.requestId=self:NewRequestId()
  local transfer={kind="FETCH",job=job,key=job.key,objectId=job.objectId,entity=job.entity,characterUUID=job.characterUUID,activityDomain=job.block or job.domain,domain=job.domain,direction="RECEIVE",phase="REQUEST",sender=source.sender,receiver=playerName(),selectedSource=source.sender,selectedSourceGuid=source.senderGuid,requestId=job.requestId,revision=source.revisionID or job.requiredRevision,priorityClass=job.priorityClass,retryCount=job.retryCount,maxRetries=job.maxRetries,startedAt=job.activityStartedAt or now(),bytes=0,fragments=0,preparing=true,awaitingResponse=false}
  self.lastSelection={domain=job.domain,objectId=job.objectId,selectedSource=source.sender,selectedSourceGuid=source.senderGuid,owner=source.owner,direct=source.direct,reason=job.reason,candidateCount=#(job.sourceCandidates or{}),at=now()};log("DEBUG","selection","Selecting payload source",{domain=job.domain,objectId=job.objectId,characterUUID=job.characterUUID,block=job.block,version=source.version or job.requiredVersion,revision=source.revisionID or job.requiredRevision,requestId=job.requestId,reason=job.reason,selectedSource=source.sender,selectedSourceGuid=source.senderGuid,originalOwner=source.owner,relay=source.direct~=true,candidateCount=#(job.sourceCandidates or{})})
- transfer.activityId=job.activityHandoff and job.activityId or nil;job.state="RUNNING";job.startedAt=transfer.startedAt;job.selectedSource=source.sender;job.activityStartedAt=nil;recordJobMetric(self,job,"started");self.activeTransfer=transfer;self:BeginTransferActivity(transfer);job.activityHandoff=nil;job.handoffProcessing=nil;job.activityId=nil
- transfer.timeoutAt=now()+30;transfer.timeoutTimer=C_Timer.NewTimer(30,function()Sync:RetryTimedOut(job.requestId,transfer)end);transfer.awaitingResponse=true
- self:NotifyActivity(true)
+ transfer.activityId=job.activityHandoff and job.activityId or nil;job.state="RUNNING";job.startedAt=transfer.startedAt;job.selectedSource=source.sender;job.activityStartedAt=nil;recordJobMetric(self,job,"started");self.activeTransfer=transfer
+ transfer.timeoutAt=now()+30;transfer.timeoutTimer=C_Timer.NewTimer(30,function()Sync:RetryTimedOut(job.requestId,transfer)end);transfer.awaitingResponse=true;transfer.preparing=false;self:BeginTransferActivity(transfer);job.activityHandoff=nil;job.handoffProcessing=nil;job.activityId=nil
  local sent=self:QueueEnvelope("FETCH",job.domain,{objectId=job.objectId,knownVersion=localMeta and localMeta.version or job.knownVersion,knownRevisionID=localMeta and localMeta.revisionID or job.knownRevisionID,revisionID=transfer.revision,reason=job.reason,requestId=job.requestId},"WHISPER",source.sender,job.priorityClass=="USER_INTERACTIVE"and 35 or 55)
  if not sent then return self:ReleaseTransfer(false,"FETCH_QUEUE_REJECTED",transfer)end
- transfer.preparing=false;self:NotifyActivity();return true
+ self:NotifyActivity();return true
 end
 function Sync:StartSend(job,transfer)
  transfer=transfer or self.activeTransfer;if not transfer or self.activeTransfer~=transfer then return false end
@@ -496,14 +525,16 @@ function Sync:StartSend(job,transfer)
  local envelope={protocol=self.protocol,kind="PAYLOAD",domain=job.domain,data={objectId=job.objectId,metadata=meta,payload=payload,reason=job.reason,requestId=job.requestId},sentAt=now(),sender=UnitGUID("player")}
  local serialized,err=HolyStorm.Serializer:Serialize(envelope);if not serialized then return self:ReleaseTransfer(false,"SERIALIZE:"..tostring(err),transfer)end
  local fragments=math.max(1,math.ceil(#serialized/HolyStorm.Comms.chunkSize));if#serialized>HolyStorm.Comms.receiveLimits.maxPayloadBytes or fragments>HolyStorm.Comms.receiveLimits.maxFragments then job.maxRetries=0;log("ERROR","backpressure","Atomic sync payload exceeds HSC1 transfer limit",{requestId=job.requestId,objectId=job.objectId,domain=job.domain,revision=meta.revisionID,bytes=#serialized,fragments=fragments,limit=HolyStorm.Comms.receiveLimits.maxFragments,result="DEFERRED_SIZE_LIMIT"});return self:ReleaseTransfer(false,"PAYLOAD_TOO_LARGE",transfer)end
- transfer.phase="TRANSFER";transfer.bytes=#serialized;transfer.fragments=0;transfer.fragmentsTotal=fragments;transfer.revision=meta.revisionID;transfer.selectedSource=playerName();transfer.sendPending=true;job.state="RUNNING";job.startedAt=transfer.startedAt;recordJobMetric(self,job,"started");self:NotifyActivity(true)
+ transfer.phase="TRANSFER";transfer.bytes=#serialized;transfer.fragments=0;transfer.fragmentsTotal=fragments;transfer.revision=meta.revisionID;transfer.selectedSource=playerName();transfer.sendPending=true;job.state="RUNNING";job.startedAt=transfer.startedAt;recordJobMetric(self,job,"started")
  if fragments>=48 then log("WARN","fragmentation","Large atomic sync domain transfer queued",{requestId=job.requestId,objectId=job.objectId,characterUUID=job.characterUUID,domain=job.domain,revision=meta.revisionID,recipient=job.target,priority=job.priorityClass,bytes=#serialized,fragments=fragments})end
- local function progress(sent,total)if Sync.activeTransfer==transfer then transfer.fragments=sent;transfer.fragmentsTotal=total;Sync:NotifyActivity()end end
+ local function progress(sent,total)if Sync.activeTransfer==transfer then transfer.fragments=sent;transfer.fragmentsTotal=total;if transfer.activityId then Sync:NotifyActivity()end end end
  local function complete(ok,id,bytes,reason)if Sync.activeTransfer~=transfer then return end;transfer.transmissionId=id;transfer.sendPending=false;Sync:ReleaseTransfer(ok,reason,transfer)end
  local queued,id=HolyStorm.Comms:Send(serialized,"WHISPER",job.target,job.priority,{domain=job.domain,objectId=job.objectId,characterUUID=job.characterUUID,block=job.block,messageKind="PAYLOAD",messageClass="payload",revision=meta.revisionID,requestId=job.requestId,selectedSource=playerName(),originalOwner=meta.owner,relay=meta.owner~=UnitGUID("player"),priority=job.priorityClass,serializedBytes=#serialized},complete,progress)
  if self.activeTransfer~=transfer then return queued~=false end
  if not queued then return self:ReleaseTransfer(false,"TRANSPORT_QUEUE_REJECTED",transfer)end
- transfer.preparing=false;transfer.transmissionId=id;return true
+ transfer.preparing=false;transfer.transmissionId=id
+ if not self:IsTransferActivityAuthoritative(transfer)then return self:ReleaseTransfer(false,"TRANSMISSION_NOT_ACTIVE",transfer)end
+ self:BeginTransferActivity(transfer);return true
 end
 function Sync:RunQueuePump()
  if self.activeTransfer then return true end
@@ -512,14 +543,14 @@ function Sync:RunQueuePump()
  if not selected then if earliest then self:QueuePump(math.max(.05,earliest-now()))end;return true end
  local job=selected.job;table.remove(self.catchUpJobs,index)
  local ok,result=pcall(function()
-  if job.kind=="SEND"then local transfer={kind="SEND",job=job,key=job.key,objectId=job.objectId,entity=job.entity,characterUUID=job.characterUUID,domain=job.domain,activityDomain=job.block or job.domain,direction="SEND",phase="PREPARING",sender=playerName(),receiver=job.target,requestId=job.requestId,priorityClass=job.priorityClass,retryCount=job.retryCount,maxRetries=job.maxRetries,startedAt=now(),preparing=true};self.activeTransfer=transfer;self:BeginTransferActivity(transfer);return self:StartSend(job,transfer)end
+  if job.kind=="SEND"then local transfer={kind="SEND",job=job,key=job.key,objectId=job.objectId,entity=job.entity,characterUUID=job.characterUUID,domain=job.domain,activityDomain=job.block or job.domain,direction="SEND",phase="PREPARING",sender=playerName(),receiver=job.target,requestId=job.requestId,priorityClass=job.priorityClass,retryCount=job.retryCount,maxRetries=job.maxRetries,startedAt=now(),preparing=true};job.state="DISPATCHING";self.activeTransfer=transfer;return self:StartSend(job,transfer)end
   return self:StartFetch(job)
  end)
  if not ok then
   local transfer=self.activeTransfer
   log("ERROR","activity","Sync queue operation raised an error",{requestId=job.requestId,domain=job.domain,objectId=job.objectId,error=tostring(result),result="OPERATION_ERROR"})
   if transfer and transfer.job==job then self:ReleaseTransfer(false,"SYNC_OPERATION_ERROR",transfer)
-  else job.state="QUEUED";job.notBefore=now()+1;if not job.activityHandoff then job.activityId=nil end;self.catchUpJobs[#self.catchUpJobs+1]=job;self:QueuePump(1)end
+   else job.state="QUEUED";job.notBefore=now()+1;if not job.activityHandoff then job.activityId=nil end;self.catchUpJobs[#self.catchUpJobs+1]=job;self:QueuePump(1);self:NotifyActivity(true)end
   return false
  end
  return result
@@ -596,11 +627,13 @@ function Sync:GetDiagnostics()
  local candidates=0;for _,request in pairs(self.requests)do for _,peers in pairs(request.candidates or{})do candidates=candidates+HolyStorm.Utils.TableCount(peers)end end
  local activity=self:GetActivity();local transfer=self.activeTransfer;local first
  for _,operation in ipairs(activity.activeOperations)do if transfer and operation.activityId==transfer.activityId then first=operation;break end end
- local activeRequest=transfer and transfer.kind=="FETCH"and transfer.awaitingResponse and{requestId=transfer.requestId,domain=transfer.domain,entity=transfer.objectId,phase=transfer.phase,age=math.max(0,now()-(transfer.startedAt or now()))}or nil
+ local activeRequest=transfer and transfer.kind=="FETCH"and transfer.awaitingResponse and{requestId=transfer.requestId,domain=transfer.domain,entity=transfer.objectId,phase=transfer.phase,source=transfer.selectedSource,timeoutArmed=transfer.timeoutTimer~=nil,timeoutAt=transfer.timeoutAt,age=math.max(0,now()-(transfer.startedAt or now()))}or nil
  local activeJob=transfer and transfer.job;local handoffJob
  if not activeJob then for _,id in ipairs(activity.activeActivityIds)do local record=self.activeActivities[id];local owner=record and record.owner;if type(owner)=="table"and owner.activityHandoff then handoffJob=owner;break end end end
- activeJob=activeJob or handoffJob;local idle=not activity.active
- return{requests=HolyStorm.Utils.TableCount(self.requests),activeRequests=HolyStorm.Utils.TableCount(self.activeRequests),heard=HolyStorm.Utils.TableCount(self.heard),knownOnline=HolyStorm.Utils.TableCount(self.knownOnline),domains=HolyStorm.Utils.TableCount(self.domains),peerCandidates=candidates,lastSelection=self.lastSelection,publishedVersions=HolyStorm.Utils.TableCount(self.publishedVersions),catchUpQueued=activity.queuedJobs,catchUpQueueLength=activity.queuedJobs,activeTransfer=first,activeRequest=activeRequest,activeCatchUpJob=activeJob and{requestId=activeJob.requestId,domain=activeJob.domain,objectId=activeJob.objectId,state=activeJob.state,phase=first and first.phase or"SOURCE_FALLBACK"},activeActivityIds=activity.activeActivityIds,activityCount=activity.activityCount,activityDomain=activity.activityDomain,activityPhase=activity.activityPhase,activityAge=activity.activityAge,activityStateMismatch=activity.activityStateMismatch,activity=activity.active,pendingPayloads=#self.pendingPayloadOrder,queueLimit=self.catchUpLimit,cleanupScheduled=self.cleanupTimer~=nil or self.cleanupTaskId~=nil,idle=idle,metrics=self.runtimeMetrics,transport=HolyStorm.Comms and HolyStorm.Comms:GetDiagnostics().transport}
+ activeJob=activeJob or handoffJob;local idle=not activity.active;local queuedJobs={}
+ for _,job in ipairs(self.catchUpJobs)do if job.state=="QUEUED"and#queuedJobs<5 then queuedJobs[#queuedJobs+1]={requestId=job.requestId,domain=job.domain,objectId=job.objectId,state=job.state,notBefore=job.notBefore,retryCount=job.retryCount,sourceCandidates=#(job.sourceCandidates or{})}end end
+ local activeCatchUpJob=activeJob and{requestId=activeJob.requestId,domain=activeJob.domain,objectId=activeJob.objectId,state=activeJob.state,queued=activeJob.state=="QUEUED",source=activeJob.selectedSource or(first and first.source),phase=first and first.phase or"SOURCE_FALLBACK",activityId=activeJob.activityId}
+ return{requests=HolyStorm.Utils.TableCount(self.requests),activeRequests=HolyStorm.Utils.TableCount(self.activeRequests),heard=HolyStorm.Utils.TableCount(self.heard),knownOnline=HolyStorm.Utils.TableCount(self.knownOnline),domains=HolyStorm.Utils.TableCount(self.domains),peerCandidates=candidates,lastSelection=self.lastSelection,publishedVersions=HolyStorm.Utils.TableCount(self.publishedVersions),catchUpQueued=activity.queuedJobs,catchUpQueueLength=activity.queuedJobs,queuedCatchUpJobs=queuedJobs,activeTransfer=first,activeRequest=activeRequest,activeCatchUpJob=activeCatchUpJob,activeActivityIds=activity.activeActivityIds,activityCount=activity.activityCount,activityDomain=activity.activityDomain,activityPhase=activity.activityPhase,activityAge=activity.activityAge,activityStateMismatch=activity.activityStateMismatch,activity=activity.active,pendingPayloads=#self.pendingPayloadOrder,queueLimit=self.catchUpLimit,cleanupScheduled=self.cleanupTimer~=nil or self.cleanupTaskId~=nil,idle=idle,metrics=self.runtimeMetrics,transport=HolyStorm.Comms and HolyStorm.Comms:GetDiagnostics().transport}
 end
 function Sync:Cleanup()
  local current=now();local requestCutoff=current-self.requestTimeout;for requestId,request in pairs(self.requests)do if(request.createdAt or 0)<=requestCutoff then self.activeRequests[request.key or key(request.domain,request.objectId)]=nil;self.requests[requestId]=nil end end;for requestId,at in pairs(self.heardAt)do if at<=requestCutoff then self.heardAt[requestId]=nil;self.heard[requestId]=nil end end;for id,snapshot in pairs(self.offerSnapshots)do if(tonumber(snapshot.createdAt)or 0)<=requestCutoff then self.offerSnapshots[id]=nil end end

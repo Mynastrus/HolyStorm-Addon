@@ -91,7 +91,7 @@ end
 -- Successful POI fetch releases its one owned activity and empties the queue.
 reset();local successJob,successOwner=makeJob("poi-success",{"Owner-Success-Realm"});local successTransfer=start(successJob);local successId=successTransfer.activityId
 assert(Sync:GetActivity().active and Sync:GetActivity().activityCount==1,"fetch request is active")
-local activeDiagnostics=Sync:GetDiagnostics();assert(activeDiagnostics.activityCount==1 and activeDiagnostics.activeActivityIds[1]==successId and activeDiagnostics.activeTransfer.requestId==successTransfer.requestId and activeDiagnostics.activeRequest.requestId==successTransfer.requestId and activeDiagnostics.activeCatchUpJob.state=="RUNNING"and activeDiagnostics.catchUpQueueLength==0 and activeDiagnostics.activityDomain=="poi"and activeDiagnostics.activityPhase=="REQUEST"and activeDiagnostics.activityAge>=0,"Sync diagnostics expose only the current authoritative operation")
+local activeDiagnostics=Sync:GetDiagnostics();assert(activeDiagnostics.activityCount==1 and activeDiagnostics.activeActivityIds[1]==successId and activeDiagnostics.activeTransfer.requestId==successTransfer.requestId and activeDiagnostics.activeTransfer.ownerType=="TRANSFER_FETCH"and activeDiagnostics.activeTransfer.ownerId==successTransfer.requestId and activeDiagnostics.activeTransfer.activeReason=="FETCH_TIMEOUT_ARMED"and activeDiagnostics.activeTransfer.lastTransition=="BEGIN"and activeDiagnostics.activeRequest.requestId==successTransfer.requestId and activeDiagnostics.activeRequest.timeoutArmed and activeDiagnostics.activeRequest.source==successTransfer.selectedSource and activeDiagnostics.activeCatchUpJob.state=="RUNNING"and activeDiagnostics.catchUpQueueLength==0 and activeDiagnostics.activityDomain=="poi"and activeDiagnostics.activityPhase=="REQUEST"and activeDiagnostics.activityAge>=0,"Sync diagnostics expose exact owner, timeout, source and operation phase")
 complete(successTransfer,successOwner,true)
 assert(not Sync:GetActivity().active and Sync:GetActivity().activityCount==0,"successful POI fetch returns ACTIVE -> IDLE")
 local idleDiagnostics=Sync:GetDiagnostics();assert(Sync:GetActivity().queuedJobs==0 and idleDiagnostics.activeTransfer==nil and idleDiagnostics.activityCount==0 and idleDiagnostics.activeRequest==nil and idleDiagnostics.activeCatchUpJob==nil,"empty queue remains idle after success")
@@ -158,6 +158,19 @@ assert(not Sync:GetActivity().active and invalidJob.state=="QUEUED","invalid pay
 reset();Sync.requests["metadata-request"]={id="metadata-request",key="poi:*:ALL",domain="poi",createdAt=clock,candidates={}};Sync.activeRequests["poi:*:ALL"]="metadata-request"
 HolyStorm.Tasks.queue={{id="Sync.PresenceHeartbeat",status="WAITING"},{id="Position.Cleanup",status="WAITING"}}
 assert(not Sync:GetActivity().active and not Sync:GetRuntimeMetrics().active,"waiting Presence, Position.Cleanup and metadata discovery stay idle")
+
+-- Retail stuck-footer regression: a POI handoff owner that falls back into the queue is not active work.
+reset();local orphanJob=makeJob("poi-queued-handoff",{"Owner-Queued-Realm"});local orphanTransfer=start(orphanJob);local orphanActivityId=orphanTransfer.activityId
+orphanTransfer.timeoutTimer:Cancel();orphanTransfer.timeoutTimer=nil;orphanTransfer.awaitingResponse=false;Sync.activeTransfer=nil
+orphanJob.state="QUEUED";orphanJob.activityHandoff=true;orphanJob.handoffProcessing=true;orphanJob.activityId=orphanActivityId;Sync.catchUpJobs={orphanJob}
+local orphanRecord=Sync.activeActivities[orphanActivityId];orphanRecord.owner=orphanJob;orphanRecord.isActive=function()return Sync:IsCatchUpHandoffAuthoritative(orphanJob)end
+HolyStorm.Tasks.queue={{id="Sync.PresenceHeartbeat",status="WAITING",blockReason="DEBOUNCE"}}
+local retailDiagnostics=Sync:GetDiagnostics()
+assert(retailDiagnostics.activityCount==0 and retailDiagnostics.activity==false and retailDiagnostics.idle==true,"queued POI maintenance with only waiting Presence reconciles to idle")
+assert(retailDiagnostics.activeTransfer==nil and retailDiagnostics.activeRequest==nil and retailDiagnostics.activeCatchUpJob==nil and retailDiagnostics.catchUpQueueLength==1 and retailDiagnostics.queuedCatchUpJobs[1].domain=="poi"and retailDiagnostics.queuedCatchUpJobs[1].requestId==orphanJob.requestId and retailDiagnostics.queuedCatchUpJobs[1].state=="QUEUED","the waiting POI job stays visible as queued without an active worker")
+assert(not Sync:GetActivity().active and Sync:GetActivity().activeActivityIds[1]==nil and orphanJob.activityHandoff==nil,"orphan handoff activity is removed and the queued job cannot retain it")
+local orphanTransition;for _,entry in ipairs(HolyStorm.Logger.history)do local context=entry.context;if entry.category=="activity"and type(context)=="table"and context.transition=="ORPHAN_RELEASE"and context.activityId==orphanActivityId then orphanTransition=context end end
+assert(orphanTransition and orphanTransition.ownerType=="CATCHUP_HANDOFF"and orphanTransition.ownerId==orphanJob.requestId and orphanTransition.ownerLiveness=="HANDOFF_JOB_NOT_DISPATCHING","orphan transition diagnostics identify the exact queued POI owner")
 
 -- Independent activity owners overlap safely; ending A cannot hide B.
 reset();local aLive,bLive=true,true
