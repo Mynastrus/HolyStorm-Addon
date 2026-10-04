@@ -87,6 +87,22 @@ retained. A timed-out/failed source is removed when another candidate exists.
 Outbound `canShare` authorization is checked on receipt of FETCH and again
 immediately before export.
 
+The OFFER sender is the current transport source; `metadata.owner` remains the
+revision author and does not imply that the author holds the payload. POI
+advertisements revalidate the exact stored revision and recipient scope before
+they are sent. Personal POIs are never shared, and transient POIs require the
+current matching group or raid session.
+
+FETCH_RESULT is an additive protocol-v3 control envelope correlated by domain,
+entity, request ID and source. NOT_FOUND, NOT_VISIBLE, STALE, INVALID and
+UNAVAILABLE let a source decline a request without waiting for the fetch
+timeout. The requester immediately exhausts that source and tries another
+candidate. Outbound response jobs include the request ID in their dedup key so
+a retry cannot inherit an earlier response's correlation ID. Timed-out sources
+receive the configured bounded retries; exhausted source/revision pairs stay
+suppressed in memory for ten minutes (up to 512 entries), unless a new source,
+new revision or explicit user refresh appears.
+
 The central planner does not create owner revisions. PlayerData continues to
 accept only owner-originated revisions, preserve origin timestamps and
 identity through relays, reject older revisions and same-revision conflicts,
@@ -108,9 +124,14 @@ snapshot could invalidate its schema and commit semantics.
 HSC1 retains its current 220-byte chunks, 300-fragment ceiling and serializer
 byte ceiling. Transfers at 48 fragments or more produce a semantic warning
 with request, entity, domain, revision, bytes and fragment count. A transfer
-over the HSC1 ceiling is failed/deferred before frames are queued. Packet-level
-send/receive detail stays at DEBUG; Comms reports aggregate completion and
-fragment progress to Sync.
+over the HSC1 ceiling is declined with UNAVAILABLE before payload frames are
+queued. Packet-level send/receive detail stays at DEBUG; Comms reports
+aggregate completion and fragment progress to Sync.
+
+The displayed queued Sync count is the number of catch-up/send jobs waiting in
+the Sync queue. It excludes the active transfer and completed inbound payloads;
+pending inbound payloads have their own diagnostic count. An active FETCH with
+an armed timeout remains real active work.
 
 ## Receive and atomic commit
 

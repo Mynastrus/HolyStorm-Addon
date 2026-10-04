@@ -92,9 +92,9 @@ assert(Sync:RunQueuePump() and #exportIds==1 and exportIds[1]==outboundId,"one F
 assert(HolyStorm.Serializer.lastEnvelope.kind=="PAYLOAD"and HolyStorm.Serializer.lastEnvelope.data.objectId==outboundId and HolyStorm.Serializer.lastEnvelope.data.payload.objectId==outboundId,"outbound snapshots never combine multiple characters")
 assert(not Sync:GetActivity().active,"send completion callback closes the active transfer")
 HolyStorm.Comms.autoComplete=false;Sync.catchUpJobs={};Sync.catchUpIndex={}
-exportSize=66001;local sentBeforeOversize=#HolyStorm.Comms.sent;local oversizeId=remoteEntries[2].objectId
+exportSize=66001;local sentBeforeOversize=#HolyStorm.Comms.sent;local oversizeId=remoteEntries[2].objectId;local taskCountBeforeOversize=#HolyStorm.Tasks.queue
 assert(Sync:OnFetch("character",{objectId=oversizeId,knownVersion=0,requestId="oversize"} ,"Requester-Realm"));local oversizeJob=Sync.catchUpJobs[1];assert(Sync:RunQueuePump())
-assert(#HolyStorm.Comms.sent==sentBeforeOversize and oversizeJob.state=="FAILED","oversized atomic snapshot is failed before transport enqueue")
+local negativeResponseTask=HolyStorm.Tasks.queue[#HolyStorm.Tasks.queue];assert(#HolyStorm.Comms.sent==sentBeforeOversize and oversizeJob.state=="COMPLETED"and#HolyStorm.Tasks.queue==taskCountBeforeOversize+1 and negativeResponseTask.options.metadata.envelope.kind=="FETCH_RESULT"and negativeResponseTask.options.metadata.envelope.data.result=="UNAVAILABLE","oversized atomic snapshot is not sent and returns an explicit negative response")
 exportSize=300;Sync.catchUpJobs={};Sync.catchUpIndex={};Sync.activeTransfer=nil
 
 -- Catch-up never fetches from the local player, and source election ignores a

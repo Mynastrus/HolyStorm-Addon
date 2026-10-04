@@ -2,7 +2,7 @@ local root = (arg[0]:gsub("tools[/\\]test_comms_receive_limits.lua$", "")) .. "L
 local clock, events, logs, timers = 1000, {}, {}, {}
 local locale = setmetatable({}, { __index = function(_, key) return key end })
 local HolyStorm = {
-    Utils = { Now = function() return clock end },
+    Utils = { Now = function() return clock end, TableCount = function(value) local count = 0; for _ in pairs(value or {}) do count = count + 1 end; return count end },
     Serializer = { limits = { bytes = 262144 } }, Logger = {},
     Tasks = { definitions = {} }, Events = { listeners = {} },
 }

@@ -299,6 +299,23 @@ function POI:IsRelayMember(senderGuid,target)
  for index=1,count do local unit=raid and("raid"..index)or("party"..index);if UnitExists and UnitExists(unit)and UnitGUID(unit)==senderGuid then return true end end
  return UnitGUID("player")==senderGuid
 end
+function POI:CanServe(metadata,recipientGuid,recipientName)
+ if type(metadata)~="table"or not validId(metadata.objectId)then return false,"INVALID"end
+ if metadata.target=="PERSONAL"then return false,"NOT_VISIBLE"end
+ local entry=self:Get(metadata.objectId);if not entry then return false,"NOT_FOUND"end
+ local valid=self:Validate(entry);if not valid then return false,"INVALID"end
+ if entry.status=="ACTIVE"and self:IsExpired(entry)then return false,"NOT_FOUND"end
+ if not self:PruneIncomingMetadata(entry,metadata)then return false,"STALE"end
+ if not self:IsModuleEnabled(entry.target)then return false,"MODULE_DISABLED"end
+ if entry.target=="GUILD"then
+  if entry.guildId~=HolyStorm.Data.POIStore:GetGuildId()then return false,"NOT_VISIBLE"end
+  if not self:IsRelayMember(recipientGuid,"GUILD")then return false,"NOT_VISIBLE"end
+ elseif entry.target=="GROUP"or entry.target=="RAID"then
+  local context=self:GetCurrentContext();if not context or context.target~=entry.target or context.sessionId~=entry.sessionId then return false,"STALE"end
+  if not self:IsRelayMember(recipientGuid,entry.target)then return false,"NOT_VISIBLE"end
+ else return false,"NOT_VISIBLE"end
+ return true
+end
 function POI:CompareFork(current,incoming)
  if current.status=="DELETED"and incoming.status~="DELETED"then return false,"TOMBSTONE_WINS"end
  if incoming.status=="DELETED"and current.status~="DELETED"then return true,"TOMBSTONE_WINS"end
@@ -336,9 +353,10 @@ function POI:Import(id,entry,metadata,senderGuid,sender)
  HolyStorm.Events:Emit(event,id,imported.target);HolyStorm.Events:Emit("HS_POI_LIST_CHANGED",id,event);self:ScheduleExpiration();self:Refresh("SYNC");return true
 end
 function POI:RegisterSyncDomain()
- HolyStorm.Sync:RegisterDomain("poi",{freshness="revision-chain",getChannel=function(meta)return meta and(meta.target=="RAID"and"RAID"or meta.target=="GROUP"and"PARTY"or"GUILD")or"GUILD"end,
+ HolyStorm.Sync:RegisterDomain("poi",{freshness="revision-chain",catchUp=false,getChannel=function(meta)return meta and(meta.target=="RAID"and"RAID"or meta.target=="GROUP"and"PARTY"or"GUILD")or"GUILD"end,getRecipients=function()return nil end,
   getMetadata=function(id)local entry=POI:Get(id);if not entry or entry.target=="PERSONAL"or entry.status=="ACTIVE"and POI:IsExpired(entry)then return nil end;return{objectId=id,owner=entry.modifiedBy,version=entry.revision,revisionID=entry.revisionID,previousRevisionID=entry.previousRevisionID,updatedAt=entry.updatedAt,target=entry.target,scope=entry.scope,sessionId=entry.sessionId}end,
-  listMetadata=function(since,request)local out={};for _,entry in ipairs(HolyStorm.Data.POIStore:GetAll())do if entry.target~="PERSONAL"and(entry.status=="DELETED"or not POI:IsExpired(entry))and(entry.updatedAt or 0)>since and(not request or not request.scope or entry.target==request.scope)and(not entry.sessionId or not request or not request.sessionId or entry.sessionId==request.sessionId)then out[#out+1]={objectId=entry.poiID,owner=entry.modifiedBy,version=entry.revision,revisionID=entry.revisionID,previousRevisionID=entry.previousRevisionID,updatedAt=entry.updatedAt,target=entry.target,scope=entry.scope,sessionId=entry.sessionId}end end;return out end,
+  canShare=function(meta,recipientGuid,recipientName)return POI:CanServe(meta,recipientGuid,recipientName)end,
+  listMetadata=function(since,request)local out={};for _,entry in ipairs(HolyStorm.Data.POIStore:GetAll())do local inScope=entry.target=="GUILD"and(not request or not request.scope or request.scope=="GUILD")or(entry.target=="GROUP"or entry.target=="RAID")and request and request.scope==entry.target and request.sessionId==entry.sessionId;if entry.target~="PERSONAL"and inScope and(entry.status=="DELETED"or not POI:IsExpired(entry))and(entry.updatedAt or 0)>since then out[#out+1]={objectId=entry.poiID,owner=entry.modifiedBy,version=entry.revision,revisionID=entry.revisionID,previousRevisionID=entry.previousRevisionID,updatedAt=entry.updatedAt,target=entry.target,scope=entry.scope,sessionId=entry.sessionId}end end;return out end,
   export=function(id)local entry=POI:Get(id);if not entry or entry.target=="PERSONAL"then return nil end;entry.receivedFrom=nil;entry.syncedAt=nil;return entry end,
   validate=function(entry,meta,id)local valid,reason=POI:Validate(entry);if not valid then log("WARN","Rejected incoming POI",{poiID=id,reason=reason});return false,reason end;if not POI:PruneIncomingMetadata(entry,meta)or entry.target=="PERSONAL"then return false,"METADATA_MISMATCH"end;if entry.target=="GUILD"and entry.guildId~=HolyStorm.Data.POIStore:GetGuildId()then return false,"WRONG_GUILD"end;if entry.target=="GROUP"or entry.target=="RAID"then local context=POI:GetCurrentContext();if not context or context.target~=entry.target or context.sessionId~=entry.sessionId then return false,"WRONG_SESSION"end end;return true end,
   authorize=function(entry,meta,senderGuid)local id=permission(entry.target,entry.status=="DELETED"and"delete"or POI:Get(entry.poiID)and"edit"or"create");if not id or meta.owner~=entry.modifiedBy then return false end;if meta.direct and senderGuid~=meta.owner then return false end;if not meta.direct and not POI:IsRelayMember(senderGuid,entry.target)then return false end;local engine=HolyStorm.PermissionEngine or HolyStorm.Policy;return engine and engine:Can(id,account(meta.owner),meta.owner,entry)==true end,

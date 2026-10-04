@@ -1,7 +1,7 @@
 local addonVersion="3.5.0"
 local HolyStorm=LibStub("AceAddon-3.0"):GetAddon("Holy_Storm")
 local L=LibStub("AceLocale-3.0"):GetLocale("Holy_Storm")
-local Sync={version=addonVersion,protocol=3,domains={},requests={},activeRequests={},heard={},heardAt={},sequence=0,maxOffers=100,knownOnline={},knownVersions={},presenceResolutionDiagnostics={},publishedVersions={},requestTimeout=60,presenceTimeout=300,presenceRefreshMin=180,presenceRefreshJitter=60,cleanupTimer=nil,cleanupDue=nil,cleanupTaskId=nil,activityNotifyTimer=nil,activitySequence=0,activeActivities={},activityPublishedActive=false,activityStateMismatch=false,activityMismatchLogged=false,retiredRequestIds={},retiredRequestOrder={},maxRetiredRequests=256,loginSessionId=nil,presencePublished=false,peerVersionReceived=false,outdatedNotified=false,catchUpJobs={},catchUpIndex={},catchUpLimit=20000,activeTransfer=nil,pendingPayloads={},pendingPayloadOrder={},maxPendingPayloads=64,maxRetries=3,offerSnapshots={},runtimeMetrics={requested=0,started=0,completed=0,failed=0,retried=0,byDomain={},byReason={}}}
+local Sync={version=addonVersion,protocol=3,domains={},requests={},activeRequests={},heard={},heardAt={},sequence=0,maxOffers=100,knownOnline={},knownVersions={},presenceResolutionDiagnostics={},publishedVersions={},requestTimeout=60,presenceTimeout=300,presenceRefreshMin=180,presenceRefreshJitter=60,cleanupTimer=nil,cleanupDue=nil,cleanupTaskId=nil,activityNotifyTimer=nil,activitySequence=0,activeActivities={},activityPublishedActive=false,activityStateMismatch=false,activityMismatchLogged=false,retiredRequestIds={},retiredRequestOrder={},maxRetiredRequests=256,terminalFetches={},terminalFetchOrder={},lastTerminalFetch=nil,terminalFetchRetention=600,maxTerminalFetches=512,loginSessionId=nil,presencePublished=false,peerVersionReceived=false,outdatedNotified=false,catchUpJobs={},catchUpIndex={},catchUpLimit=20000,activeTransfer=nil,pendingPayloads={},pendingPayloadOrder={},maxPendingPayloads=64,maxRetries=3,offerSnapshots={},runtimeMetrics={requested=0,started=0,completed=0,failed=0,retried=0,byDomain={},byReason={}}}
 local function copy(v)return HolyStorm.Utils.DeepCopy(v)end
 local function now()return HolyStorm.Utils.Now()end
 local function validId(v)return type(v)=="string"and#v>0 and#v<=160 end
@@ -44,8 +44,8 @@ local function logUnresolvedPresence(sync,data,sender,claimedGuid,reason,receive
 end
 local function audience(channel,target)if target and target~=""then return target end;local labels={GUILD="Guild",RAID="Raid",PARTY="Party",INSTANCE_CHAT="Instance"};return labels[channel]or"Broadcast"end
 local function receiver(channel)return channel=="WHISPER"and playerName()or audience(channel)end
-local messageClasses={PRESENCE="discovery",DISCOVER="discovery",ANNOUNCE="metadata",OFFER="metadata",FETCH="request",PAYLOAD="payload",LIVE="payload"}
-local function envelopeDiagnostics(envelope,channel,target,correlationId)local data=type(envelope.data)=="table"and envelope.data or{};local meta=type(data.metadata)=="table"and data.metadata or type(data.offers)=="table"and type(data.offers[1])=="table"and data.offers[1]or{};local objectId=data.objectId or meta.objectId;local characterUUID,blockType;if type(objectId)=="string"then characterUUID,blockType=objectId:match("^(.-)\031([^\031]+)$")end;local destination=audience(channel,target);return{direction="SEND",sender=playerName(),receiver=destination,target=target or destination,from=playerName(),to=destination,channel=channel,domain=envelope.domain,logicalObject=blockType or objectId,blockType=blockType,block=blockType,characterUUID=characterUUID,objectId=objectId,messageKind=envelope.kind,messageClass=messageClasses[envelope.kind]or"control",version=meta.version or data.version,revision=meta.revisionID or data.revisionID,reason=data.reason,requestId=data.requestId,correlationId=correlationId,originalOwner=meta.owner,relay=meta.owner and meta.owner~=UnitGUID("player")or false,retry=false}end
+local messageClasses={PRESENCE="discovery",DISCOVER="discovery",ANNOUNCE="metadata",OFFER="metadata",FETCH="request",FETCH_RESULT="request",PAYLOAD="payload",LIVE="payload"}
+local function envelopeDiagnostics(envelope,channel,target,correlationId)local data=type(envelope.data)=="table"and envelope.data or{};local meta=type(data.metadata)=="table"and data.metadata or type(data.offers)=="table"and type(data.offers[1])=="table"and data.offers[1]or type(data.currentMetadata)=="table"and data.currentMetadata or{};local objectId=data.objectId or meta.objectId;local characterUUID,blockType;if type(objectId)=="string"then characterUUID,blockType=objectId:match("^(.-)\031([^\031]+)$")end;local destination=audience(channel,target);return{direction="SEND",sender=playerName(),receiver=destination,target=target or destination,from=playerName(),to=destination,channel=channel,domain=envelope.domain,logicalObject=blockType or objectId,blockType=blockType,block=blockType,characterUUID=characterUUID,objectId=objectId,messageKind=envelope.kind,messageClass=messageClasses[envelope.kind]or"control",version=meta.version or data.currentVersion or data.version,revision=meta.revisionID or data.currentRevisionID or data.revisionID,reason=data.reason or data.result,requestId=data.requestId,correlationId=correlationId,originalOwner=meta.owner,relay=meta.owner and meta.owner~=UnitGUID("player")or false,retry=false}end
 local function senderGuid(sender,claimedGuid)return HolyStorm.Data.GuildStore:ResolveSenderGuid(sender,claimedGuid)end
 local function samePlayerName(a,b)if not a or not b then return false end;if Ambiguate then return Ambiguate(a,"none")==Ambiguate(b,"none")end;return a==b end
 local function splitCharacterId(objectId)if type(objectId)~="string"then return nil end;return objectId:match("^(.-)\031([^\031]+)$")end
@@ -68,6 +68,27 @@ local function exhaustSource(job,sender,guid)
  local source={sender=sender,senderGuid=guid}
  if not sourceExhausted(job,source)then job.exhaustedSources[#job.exhaustedSources+1]=source end
  for index=#(job.sourceCandidates or{}),1,-1 do local candidate=job.sourceCandidates[index];if sameSource(candidate.sender,candidate.senderGuid,sender,guid)then table.remove(job.sourceCandidates,index)end end
+end
+local function sourceDiagnostics(sources)
+ local out={};for _,source in ipairs(sources or{})do out[#out+1]={sender=source.sender,senderGuid=source.senderGuid,originOwner=source.owner,isOriginOwner=source.direct==true,revisionID=source.revisionID or(source.meta and source.meta.revisionID)}end;return out
+end
+local function exhaustedSourceDiagnostics(sources)
+ local out={};for _,source in ipairs(sources or{})do out[#out+1]={sender=source.sender,senderGuid=source.senderGuid}end;return out
+end
+local function readableDedupKey(value)return tostring(value or""):gsub("[%c]","|")end
+local function sourceListed(sources,sender,guid)
+ for _,source in ipairs(sources or{})do if sameSource(source.sender,source.senderGuid,sender,guid)then return true end end
+ return false
+end
+local function pruneTerminalFetches(sync)
+ local current=now()
+ for keyValue,entry in pairs(sync.terminalFetches)do if(tonumber(entry.expiresAt)or 0)<=current then sync.terminalFetches[keyValue]=nil end end
+ while #sync.terminalFetchOrder>sync.maxTerminalFetches do local oldest=table.remove(sync.terminalFetchOrder,1);if sync.terminalFetches[oldest.key]==oldest.entry then sync.terminalFetches[oldest.key]=nil end end
+end
+local function rememberTerminalFetch(sync,job,reason)
+ local entry={dedupKey=readableDedupKey(job.key),domain=job.domain,entity=job.objectId,revision=job.requiredRevision,version=job.requiredVersion,discoveryGeneration=job.discoveryGeneration,terminalReason=reason or job.terminalReason or"ALL_SOURCES_EXHAUSTED",requeueReason=job.requeueReason,sourceCandidates=sourceDiagnostics(job.allSourceCandidates or job.sourceCandidates),exhaustedSources=exhaustedSourceDiagnostics(job.exhaustedSources),queueLength=#sync.catchUpJobs,createdAt=now(),expiresAt=now()+sync.terminalFetchRetention}
+ sync.terminalFetches[job.key]=entry;sync.terminalFetchOrder[#sync.terminalFetchOrder+1]={key=job.key,entry=entry};sync.lastTerminalFetch=copy(entry);pruneTerminalFetches(sync)
+ log("WARN","selection","Sync job reached terminal source exhaustion",{domain=entry.domain,entity=entry.entity,revision=entry.revision,requestId=job.requestId,dedupKey=entry.dedupKey,discoveryGeneration=entry.discoveryGeneration,terminalReason=entry.terminalReason,requeueReason=entry.requeueReason,candidateSources=entry.sourceCandidates,exhaustedSources=entry.exhaustedSources,queueLength=entry.queueLength})
 end
 local function recordRetry(sync,job)
  sync.runtimeMetrics.retried=sync.runtimeMetrics.retried+1
@@ -112,6 +133,7 @@ function Sync:GetNextCleanupAt()
  for _,request in pairs(self.requests)do include((tonumber(request.createdAt)or 0)+self.requestTimeout)end
  for _,snapshot in pairs(self.offerSnapshots)do include((tonumber(snapshot.createdAt)or 0)+self.requestTimeout)end
  for _,request in pairs(self.retiredRequestIds)do include(tonumber(request.expiresAt))end
+ for _,entry in pairs(self.terminalFetches)do include(tonumber(entry.expiresAt))end
  for _,at in pairs(self.heardAt)do include((tonumber(at)or 0)+self.requestTimeout)end
  for _,at in pairs(self.knownOnline)do include((tonumber(at)or 0)+self.presenceTimeout)end
  for _,entry in pairs(self.knownVersions)do if not entry.localPlayer then include((tonumber(entry.receivedAt)or 0)+self.presenceTimeout)end end
@@ -410,37 +432,84 @@ function Sync:QueueFetch(domainId,objectId,target,knownVersion,reason,knownRevis
  local domain=self.domains[domainId];if not domain or not validId(objectId)or type(target)~="string"or target==""then return nil,"INVALID_FETCH"end
  desiredMeta=type(desiredMeta)=="table"and desiredMeta or{};options=options or{}
  local candidateGuid=desiredMeta.senderGuid or senderGuid(target);if isLocalSource(target,candidateGuid)then log("DEBUG","selection","Ignoring local player as sync payload source",{domain=domainId,objectId=objectId,sender=target,senderGuid=candidateGuid,requestId=requestId,reason="SELF_SOURCE"});return nil,"SELF_SOURCE"end
- local version=desiredMeta.version;local revision=desiredMeta.revisionID;local dedupeKey=transferKey(domainId,objectId,version,revision);local job=self.catchUpIndex[dedupeKey]
+ pruneTerminalFetches(self);local version=desiredMeta.version;local revision=desiredMeta.revisionID;local dedupeKey=transferKey(domainId,objectId,version,revision);local job=self.catchUpIndex[dedupeKey]
  if not job then local activeJob=self.activeTransfer and self.activeTransfer.job;if activeJob and activeJob.domain==domainId and activeJob.objectId==objectId and(version==nil or activeJob.requiredVersion==nil or tonumber(activeJob.requiredVersion)==tonumber(version)and activeJob.requiredRevision==revision)then job=activeJob end end
  if not job then for _,candidateJob in ipairs(self.catchUpJobs)do if candidateJob.domain==domainId and candidateJob.objectId==objectId and(candidateJob.state=="QUEUED"or candidateJob.state=="RUNNING")then if version==nil or candidateJob.requiredVersion==nil or tonumber(candidateJob.requiredVersion)==tonumber(version)and(candidateJob.requiredRevision==revision)then job=candidateJob;break end end end end
  if job and job.requiredVersion==nil and version~=nil then self.catchUpIndex[job.key]=nil;job.key=dedupeKey;job.requiredVersion=version;job.requiredRevision=revision;self.catchUpIndex[dedupeKey]=job end
  local class=options.priorityClass or priorityClass(reason);local candidate={sender=target,senderGuid=candidateGuid,owner=desiredMeta.owner,direct=desiredMeta.direct==true,version=version,revisionID=revision,meta=copy(desiredMeta)}
+ local terminal=self.terminalFetches[dedupeKey];local jobCreated=false
+ if not job and terminal then
+  if class=="USER_INTERACTIVE"then self.terminalFetches[dedupeKey]=nil;log("INFO","selection","Explicit refresh cleared terminal Sync source suppression",{domain=domainId,entity=objectId,revision=revision,dedupKey=readableDedupKey(dedupeKey),requeueReason=reason,queueLength=#self.catchUpJobs})
+  elseif sourceListed(terminal.exhaustedSources,target,candidateGuid)then
+   log("DEBUG","suppression","Unchanged exhausted Sync source suppressed",{domain=domainId,entity=objectId,revision=revision,dedupKey=readableDedupKey(dedupeKey),source=target,sourceGuid=candidateGuid,terminalReason=terminal.terminalReason,requeueReason=reason,discoveryGeneration=terminal.discoveryGeneration,queueLength=#self.catchUpJobs});return nil,"SOURCE_EXHAUSTED"
+  else
+   job={key=dedupeKey,kind="FETCH",domain=domainId,objectId=objectId,entity=objectId,requiredVersion=version,requiredRevision=revision,knownVersion=knownVersion,knownRevisionID=knownRevisionID,sourceCandidates={},allSourceCandidates=copy(terminal.sourceCandidates or{}),exhaustedSources=copy(terminal.exhaustedSources or{}),sourceAttempts={},priorityClass=class,priority=priorities[class]or priorities.BACKGROUND_CATCHUP,state="QUEUED",queuedAt=now(),retryCount=0,maxRetries=self.maxRetries,requestId=requestId or self:NewRequestId(),reason=reason or"DISCOVERY",requeueReason="NEW_SOURCE",discoveryGeneration=(terminal.discoveryGeneration or 0)+1,notBefore=now()+((class=="USER_INTERACTIVE")and.15 or 1.5)};jobCreated=true
+   self.catchUpIndex[dedupeKey]=job;self.catchUpJobs[#self.catchUpJobs+1]=job;recordJobMetric(self,job,"requested");log("INFO","selection","New source reopened terminal Sync job",{domain=domainId,entity=objectId,revision=revision,source=target,dedupKey=readableDedupKey(dedupeKey),discoveryGeneration=job.discoveryGeneration,queueLength=#self.catchUpJobs})
+  end
+ end
  if not job then
   if#self.catchUpJobs>=self.catchUpLimit then log("WARN","backpressure","Sync catch-up queue is full; job deferred",{domain=domainId,objectId=objectId,revision=revision,queueLimit=self.catchUpLimit,reason="QUEUE_LIMIT"});return nil,"QUEUE_FULL"end
-  local characterUUID,block=splitCharacterId(objectId);job={key=dedupeKey,kind="FETCH",domain=domainId,objectId=objectId,characterUUID=characterUUID,block=block,entity=objectId,requiredVersion=version,requiredRevision=revision,knownVersion=knownVersion,knownRevisionID=knownRevisionID,sourceCandidates={},priorityClass=class,priority=priorities[class]or priorities.BACKGROUND_CATCHUP,state="QUEUED",queuedAt=now(),retryCount=0,maxRetries=self.maxRetries,requestId=requestId or self:NewRequestId(),reason=reason or"DISCOVERY",notBefore=now()+((class=="USER_INTERACTIVE")and.15 or 1.5)}
+  local characterUUID,block=splitCharacterId(objectId);job={key=dedupeKey,kind="FETCH",domain=domainId,objectId=objectId,characterUUID=characterUUID,block=block,entity=objectId,requiredVersion=version,requiredRevision=revision,knownVersion=knownVersion,knownRevisionID=knownRevisionID,sourceCandidates={},allSourceCandidates={},exhaustedSources={},sourceAttempts={},priorityClass=class,priority=priorities[class]or priorities.BACKGROUND_CATCHUP,state="QUEUED",queuedAt=now(),retryCount=0,maxRetries=self.maxRetries,requestId=requestId or self:NewRequestId(),reason=reason or"DISCOVERY",requeueReason=reason or"DISCOVERY",discoveryGeneration=1,notBefore=now()+((class=="USER_INTERACTIVE")and.15 or 1.5)};jobCreated=true
   self.catchUpIndex[dedupeKey]=job;self.catchUpJobs[#self.catchUpJobs+1]=job;recordJobMetric(self,job,"requested")
  end
  job.exhaustedSources=job.exhaustedSources or{}
- local found=false
+ local found=false;local candidateAdded=false;local newJob=jobCreated
  if not sourceExhausted(job,candidate)then
   for _,source in ipairs(job.sourceCandidates)do if sameSource(source.sender,source.senderGuid,candidate.sender,candidate.senderGuid)then found=true;source.direct=source.direct or candidate.direct;if candidate.version and(not source.version or candidate.version>source.version)then source.version=candidate.version;source.revisionID=candidate.revisionID;source.owner=candidate.owner;source.meta=candidate.meta end;break end end
-  if not found then if#job.sourceCandidates<5 then job.sourceCandidates[#job.sourceCandidates+1]=candidate elseif candidate.direct then for index,source in ipairs(job.sourceCandidates)do if not source.direct then job.sourceCandidates[index]=candidate;break end end end end
+  if not found then if#job.sourceCandidates<5 then job.sourceCandidates[#job.sourceCandidates+1]=candidate;candidateAdded=true elseif candidate.direct then for index,source in ipairs(job.sourceCandidates)do if not source.direct then job.sourceCandidates[index]=candidate;candidateAdded=true;break end end end end
+  if not sourceListed(job.allSourceCandidates,candidate.sender,candidate.senderGuid)and#job.allSourceCandidates<16 then job.allSourceCandidates[#job.allSourceCandidates+1]=copy(candidate)end
  end
  if(priorities[class]or 90)<job.priority then job.priorityClass=class;job.priority=priorities[class];job.notBefore=math.min(job.notBefore,now()+.15)end
- job.requestId=requestId or job.requestId;self:QueuePump(math.max(0,job.notBefore-now()));self:NotifyActivity();return job.key,"MERGED"
+ if job.state~="RUNNING"and job.state~="DISPATCHING"and requestId then job.requestId=requestId end
+ if candidateAdded and not newJob and job.state=="QUEUED"then job.requeueReason="NEW_SOURCE"end
+ self:QueuePump(math.max(0,job.notBefore-now()));self:NotifyActivity();return job.key,"MERGED"
 end
 function Sync:QueueOutbound(domainId,data,sender,meta)
- local characterUUID,block=splitCharacterId(data.objectId);local keyValue=table.concat({"SEND",string.lower(sender),domainId,data.objectId,tostring(meta.revisionID or meta.version)} ,"\030");if self.catchUpIndex[keyValue]then return keyValue,"MERGED"end
+ local characterUUID,block=splitCharacterId(data.objectId);local keyValue=table.concat({"SEND",string.lower(sender),domainId,data.objectId,tostring(meta.revisionID or meta.version),tostring(data.requestId or"")} ,"\030");if self.catchUpIndex[keyValue]then return keyValue,"MERGED"end
  if#self.catchUpJobs>=self.catchUpLimit then return nil,"QUEUE_FULL"end
  local job={key=keyValue,kind="SEND",domain=domainId,objectId=data.objectId,characterUUID=characterUUID,block=block,entity=data.objectId,target=sender,requiredVersion=meta.version,requiredRevision=meta.revisionID,requestId=data.requestId or self:NewRequestId(),priorityClass="BACKGROUND_CATCHUP",priority=priorities.BACKGROUND_CATCHUP,state="QUEUED",queuedAt=now(),retryCount=0,maxRetries=self.maxRetries,reason="REQUEST_RESPONSE",notBefore=now()}
  self.catchUpIndex[keyValue]=job;self.catchUpJobs[#self.catchUpJobs+1]=job;recordJobMetric(self,job,"requested");self:QueuePump();self:NotifyActivity();return keyValue,"QUEUED"
 end
+function Sync:SendFetchResult(domainId,data,sender,result,reason,meta)
+ if type(data)~="table"or not validId(data.requestId)or not validId(data.objectId)or type(sender)~="string"or sender==""then return false end
+ local details={requestId=data.requestId,objectId=data.objectId,result=result,reason=reason}
+ if meta then
+  details.currentVersion=meta.version;details.currentRevisionID=meta.revisionID
+  details.currentMetadata={objectId=data.objectId,owner=meta.owner,version=meta.version,revisionID=meta.revisionID,previousRevisionID=meta.previousRevisionID,updatedAt=meta.updatedAt,target=meta.target,scope=meta.scope,sessionId=meta.sessionId}
+ end
+ local queued=self:QueueEnvelope("FETCH_RESULT",domainId,details,"WHISPER",sender,45)
+ log(queued and"DEBUG"or"WARN","request",queued and"Sync fetch result queued"or"Sync fetch result could not be queued",{domain=domainId,entity=data.objectId,revision=data.revisionID,requestId=data.requestId,result=result,reason=reason,receiver=sender})
+ return queued~=nil and queued~=false
+end
 function Sync:OnFetch(domainId,data,sender)
- local domain=self.domains[domainId];if not domain or type(data)~="table"or not validId(data.objectId)then return false end
- local meta=domain.getMetadata(data.objectId);local recipientGuid=senderGuid(sender);if domain.canShare and(not meta or not domain.canShare(meta,recipientGuid,sender,"fetch"))then log("WARN","privacy","Payload request rejected by outbound authorization",{domain=domainId,objectId=data.objectId,receiver=sender});return false end
- local sibling=domain and domain.freshness=="revision-chain"and meta and data.knownRevisionID and meta.revisionID~=data.knownRevisionID and tonumber(meta.version)==tonumber(data.knownVersion)
- if not meta or((tonumber(meta.version)or 0)<=(tonumber(data.knownVersion)or-1)and not sibling)then return false end
- return self:QueueOutbound(domainId,data,sender,meta)~=nil
+ if type(data)~="table"or not validId(data.objectId)or not validId(data.requestId)then return false end
+ if data.revisionID~=nil and not validId(data.revisionID)or data.knownVersion~=nil and not tonumber(data.knownVersion)then self:SendFetchResult(domainId,data,sender,"INVALID","INVALID_REQUEST_METADATA");return false end
+ local domain=self.domains[domainId];if not domain then self:SendFetchResult(domainId,data,sender,"UNAVAILABLE","UNKNOWN_DOMAIN");return false end
+ local metadataOK,meta=pcall(domain.getMetadata,data.objectId);if not metadataOK then self:SendFetchResult(domainId,data,sender,"UNAVAILABLE","METADATA_LOOKUP_FAILED");return false end
+ if not meta then self:SendFetchResult(domainId,data,sender,"NOT_FOUND","OBJECT_NOT_FOUND");return false end
+ local recipientGuid=senderGuid(sender)
+ if domain.canShare then local authOK,canShare,shareReason=pcall(domain.canShare,meta,recipientGuid,sender,"fetch");if not authOK then self:SendFetchResult(domainId,data,sender,"UNAVAILABLE","AUTHORIZATION_CHECK_FAILED");return false elseif not canShare then local result=shareReason=="MODULE_DISABLED"and"UNAVAILABLE"or shareReason=="NOT_FOUND"and"NOT_FOUND"or shareReason=="STALE"and"STALE"or shareReason=="INVALID"and"INVALID"or"NOT_VISIBLE";log("WARN","privacy","Payload request rejected by outbound authorization",{domain=domainId,objectId=data.objectId,receiver=sender,reason=shareReason,result=result});self:SendFetchResult(domainId,data,sender,result,shareReason or"SOURCE_AUTHORIZATION",meta);return false end end
+ if data.revisionID and meta.revisionID~=data.revisionID then self:SendFetchResult(domainId,data,sender,"STALE","REVISION_MISMATCH",meta);return false end
+ local sibling=domain.freshness=="revision-chain"and data.knownRevisionID and meta.revisionID~=data.knownRevisionID and tonumber(meta.version)==tonumber(data.knownVersion)
+ if((tonumber(meta.version)or 0)<=(tonumber(data.knownVersion)or-1)and not sibling)then self:SendFetchResult(domainId,data,sender,"STALE","SOURCE_NOT_NEWER",meta);return false end
+ local queueOK,queued,queueReason=pcall(self.QueueOutbound,self,domainId,data,sender,meta);if not queueOK or not queued then self:SendFetchResult(domainId,data,sender,"UNAVAILABLE",queueOK and(queueReason or"OUTBOUND_QUEUE_FAILED")or"OUTBOUND_QUEUE_ERROR",meta);return false end
+ return true
+end
+function Sync:OnFetchResult(domainId,data,sender)
+ local transfer=self.activeTransfer
+ if type(data)~="table"or not validId(data.requestId)or not validId(data.objectId)or not transfer or transfer.kind~="FETCH"or transfer.awaitingResponse~=true or not transfer.timeoutTimer or transfer.domain~=domainId or transfer.objectId~=data.objectId or transfer.requestId~=data.requestId or not samePlayerName(transfer.selectedSource,sender)then
+  log("DEBUG","request","Unmatched or late Sync fetch result ignored",{domain=domainId,entity=type(data)=="table"and data.objectId,requestId=type(data)=="table"and data.requestId,sender=sender,activeRequestId=transfer and transfer.requestId,result="UNMATCHED_REQUEST"});return false,"UNMATCHED_REQUEST"
+ end
+ local resolved=senderGuid(sender);if transfer.selectedSourceGuid and resolved and transfer.selectedSourceGuid~=resolved then return false,"SOURCE_MISMATCH"end
+ local allowed={NOT_FOUND=true,NOT_VISIBLE=true,STALE=true,INVALID=true,UNAVAILABLE=true};if not allowed[data.result]then return false,"INVALID_RESULT"end
+ if transfer.timeoutTimer then transfer.timeoutTimer:Cancel();transfer.timeoutTimer=nil end;transfer.awaitingResponse=false
+ log("WARN","request","Sync fetch source returned a correlated negative result",{domain=domainId,entity=data.objectId,revision=transfer.revision,requestId=data.requestId,source=sender,result=data.result,reason=data.reason})
+ local current=type(data.currentMetadata)=="table"and data.currentMetadata or nil
+ if data.result=="STALE"and current and tonumber(current.version)and validId(current.revisionID)and current.revisionID~=transfer.revision then
+  current=copy(current);current.senderGuid=senderGuid(sender);current.direct=current.owner==current.senderGuid
+  local job=transfer.job;self:QueueFetch(domainId,data.objectId,sender,job and job.knownVersion or-1,job and job.reason or"DISCOVERY",job and job.knownRevisionID,data.requestId,current,{priorityClass=job and job.priorityClass,requeueReason="NEWER_SOURCE_REVISION"})
+ end
+ return self:ReleaseTransfer(false,"FETCH_RESULT:"..data.result,transfer)
 end
 function Sync:BestSource(job)
  local best;for _,candidate in ipairs(job.sourceCandidates or{})do if not sourceExhausted(job,candidate)and not isLocalSource(candidate.sender,candidate.senderGuid)then if not best or(candidate.direct and not best.direct)then best=candidate elseif candidate.direct==best.direct then local decision=HolyStorm.PlayerData:CompareMetadata(best.meta or{},candidate.meta or{});if decision>0 then best=candidate end end end end;return best
@@ -460,18 +529,19 @@ function Sync:ReleaseTransfer(result,reason,expectedTransfer)
   if not job then return end
   local retryLimit=tonumber(job.maxRetries)or self.maxRetries
   if result==false and transfer.kind=="FETCH"then
-   if job.retryCount<retryLimit then
+   local immediateSourceFailure=type(reason)=="string"and reason:match("^FETCH_RESULT:")~=nil
+   if not immediateSourceFailure and job.retryCount<retryLimit then
     job.retryCount=job.retryCount+1;recordRetry(self,job);job.state="QUEUED";job.notBefore=now()+math.min(16,2^job.retryCount);self.catchUpJobs[#self.catchUpJobs+1]=job
     log("WARN","retries","Sync fetch timed out or failed; retrying the same source",{requestId=job.requestId,objectId=job.objectId,characterUUID=job.characterUUID,domain=job.domain,revision=job.requiredRevision,source=transfer.selectedSource,recipient=job.target,priority=job.priorityClass,retryCount=job.retryCount,maxRetries=retryLimit,result=reason or"TRANSFER_FAILED"})
    else
-    exhaustSource(job,transfer.selectedSource,transfer.selectedSourceGuid);job.retryCount=0
+    exhaustSource(job,transfer.selectedSource,transfer.selectedSourceGuid);job.retryCount=0;job.terminalReason=reason or"SOURCE_EXHAUSTED"
     local nextSource=self:BestSource(job)
     if nextSource then
      recordRetry(self,job);job.state="QUEUED";job.notBefore=now();job.activityHandoff=true;job.handoffProcessing=true;job.activityId=transfer.activityId;preserveActivity=job.activityId~=nil
-     log("WARN","selection","Sync fetch source exhausted; trying another source",{requestId=job.requestId,objectId=job.objectId,characterUUID=job.characterUUID,domain=job.domain,revision=job.requiredRevision,source=transfer.selectedSource,nextSource=nextSource.sender,priority=job.priorityClass,maxRetries=retryLimit,result=reason or"TRANSFER_FAILED"})
+     job.requeueReason="SOURCE_FALLBACK";log("WARN","selection","Sync fetch source exhausted; trying another source",{requestId=job.requestId,objectId=job.objectId,characterUUID=job.characterUUID,domain=job.domain,revision=job.requiredRevision,source=transfer.selectedSource,nextSource=nextSource.sender,priority=job.priorityClass,maxRetries=retryLimit,result=reason or"TRANSFER_FAILED",dedupKey=readableDedupKey(job.key),candidateSources=sourceDiagnostics(job.allSourceCandidates),exhaustedSources=exhaustedSourceDiagnostics(job.exhaustedSources),queueLengthBefore=#self.catchUpJobs,queueLengthAfter=#self.catchUpJobs+1,discoveryGeneration=job.discoveryGeneration})
     else
-     job.state="FAILED";recordJobMetric(self,job,"failed");self.catchUpIndex[job.key]=nil
-     log("WARN","selection","Sync fetch skipped after all sources were exhausted; existing snapshot retained",{requestId=job.requestId,objectId=job.objectId,characterUUID=job.characterUUID,domain=job.domain,revision=job.requiredRevision,source=transfer.selectedSource,priority=job.priorityClass,retryCount=job.retryCount,maxRetries=retryLimit,result=reason or"NO_SOURCE"})
+     job.state="FAILED";recordJobMetric(self,job,"failed");self.catchUpIndex[job.key]=nil;rememberTerminalFetch(self,job,job.terminalReason)
+     log("WARN","selection","Sync fetch skipped after all sources were exhausted; existing snapshot retained",{requestId=job.requestId,objectId=job.objectId,characterUUID=job.characterUUID,domain=job.domain,revision=job.requiredRevision,source=transfer.selectedSource,priority=job.priorityClass,retryCount=job.retryCount,maxRetries=retryLimit,result=reason or"NO_SOURCE",dedupKey=readableDedupKey(job.key),candidateSources=sourceDiagnostics(job.allSourceCandidates),exhaustedSources=exhaustedSourceDiagnostics(job.exhaustedSources),queueLength=#self.catchUpJobs,discoveryGeneration=job.discoveryGeneration})
     end
    end
   elseif result==false and job.retryCount<retryLimit then
@@ -507,11 +577,11 @@ function Sync:StartFetch(job)
  local domain=self.domains[job.domain];local localMeta=domain and domain.getMetadata(job.objectId)
  if not domain then job.state="FAILED";recordJobMetric(self,job,"failed");self.catchUpIndex[job.key]=nil;self:EndActivity(job.activityId,"UNKNOWN_DOMAIN",true);job.activityId=nil;job.activityHandoff=nil;log("WARN","backpressure","Sync job failed because its domain was unloaded",{requestId=job.requestId,objectId=job.objectId,domain=job.domain,result="UNKNOWN_DOMAIN"});self:NotifyActivity(true,true);self:QueuePump();return false end
  if job.requiredVersion~=nil then local offered={version=source.version or job.requiredVersion,revisionID=source.revisionID or job.requiredRevision,owner=source.owner,direct=source.direct};local decision=HolyStorm.PlayerData:CompareMetadata(localMeta,offered);local sibling=domain.freshness=="revision-chain"and localMeta and tonumber(localMeta.version)==tonumber(offered.version)and localMeta.revisionID~=offered.revisionID;if decision<=0 and not sibling then job.state="COMPLETED";recordJobMetric(self,job,"completed");self.catchUpIndex[job.key]=nil;self:EndActivity(job.activityId,"ALREADY_CURRENT",true);job.activityId=nil;job.activityHandoff=nil;self:NotifyActivity(true,true);self:QueuePump();return true end end
- job.requestId=self:NewRequestId()
+ job.requestId=self:NewRequestId();local sourceKey=tostring(source.senderGuid or string.lower(source.sender));job.sourceAttempts=job.sourceAttempts or{};job.sourceAttempts[sourceKey]=(job.sourceAttempts[sourceKey]or 0)+1;job.attempt=job.sourceAttempts[sourceKey]
  local transfer={kind="FETCH",job=job,key=job.key,objectId=job.objectId,entity=job.entity,characterUUID=job.characterUUID,activityDomain=job.block or job.domain,domain=job.domain,direction="RECEIVE",phase="REQUEST",sender=source.sender,receiver=playerName(),selectedSource=source.sender,selectedSourceGuid=source.senderGuid,requestId=job.requestId,revision=source.revisionID or job.requiredRevision,priorityClass=job.priorityClass,retryCount=job.retryCount,maxRetries=job.maxRetries,startedAt=job.activityStartedAt or now(),bytes=0,fragments=0,preparing=true,awaitingResponse=false}
- self.lastSelection={domain=job.domain,objectId=job.objectId,selectedSource=source.sender,selectedSourceGuid=source.senderGuid,owner=source.owner,direct=source.direct,reason=job.reason,candidateCount=#(job.sourceCandidates or{}),at=now()};log("DEBUG","selection","Selecting payload source",{domain=job.domain,objectId=job.objectId,characterUUID=job.characterUUID,block=job.block,version=source.version or job.requiredVersion,revision=source.revisionID or job.requiredRevision,requestId=job.requestId,reason=job.reason,selectedSource=source.sender,selectedSourceGuid=source.senderGuid,originalOwner=source.owner,relay=source.direct~=true,candidateCount=#(job.sourceCandidates or{})})
+ self.lastSelection={domain=job.domain,objectId=job.objectId,selectedSource=source.sender,selectedSourceGuid=source.senderGuid,owner=source.owner,direct=source.direct,reason=job.reason,candidateCount=#(job.sourceCandidates or{}),at=now()};log("DEBUG","selection","Selecting payload source",{domain=job.domain,objectId=job.objectId,characterUUID=job.characterUUID,block=job.block,version=source.version or job.requiredVersion,revision=source.revisionID or job.requiredRevision,requestId=job.requestId,reason=job.reason,selectedSource=source.sender,selectedSourceGuid=source.senderGuid,originalOwner=source.owner,relay=source.direct~=true,candidateCount=#(job.sourceCandidates or{}),attempt=job.attempt,dedupKey=readableDedupKey(job.key),discoveryGeneration=job.discoveryGeneration,requeueReason=job.requeueReason,queueLength=#self.catchUpJobs})
  transfer.activityId=job.activityHandoff and job.activityId or nil;job.state="RUNNING";job.startedAt=transfer.startedAt;job.selectedSource=source.sender;job.activityStartedAt=nil;recordJobMetric(self,job,"started");self.activeTransfer=transfer
- transfer.timeoutAt=now()+30;transfer.timeoutTimer=C_Timer.NewTimer(30,function()Sync:RetryTimedOut(job.requestId,transfer)end);transfer.awaitingResponse=true;transfer.preparing=false;self:BeginTransferActivity(transfer);job.activityHandoff=nil;job.handoffProcessing=nil;job.activityId=nil
+ transfer.attempt=job.attempt;transfer.timeoutAt=now()+30;local transferRequestId=transfer.requestId;transfer.timeoutTimer=C_Timer.NewTimer(30,function()Sync:RetryTimedOut(transferRequestId,transfer)end);transfer.awaitingResponse=true;transfer.preparing=false;self:BeginTransferActivity(transfer);job.activityHandoff=nil;job.handoffProcessing=nil;job.activityId=nil
  local sent=self:QueueEnvelope("FETCH",job.domain,{objectId=job.objectId,knownVersion=localMeta and localMeta.version or job.knownVersion,knownRevisionID=localMeta and localMeta.revisionID or job.knownRevisionID,revisionID=transfer.revision,reason=job.reason,requestId=job.requestId},"WHISPER",source.sender,job.priorityClass=="USER_INTERACTIVE"and 35 or 55)
  if not sent then return self:ReleaseTransfer(false,"FETCH_QUEUE_REJECTED",transfer)end
  self:NotifyActivity();return true
@@ -520,18 +590,21 @@ function Sync:StartSend(job,transfer)
  transfer=transfer or self.activeTransfer;if not transfer or self.activeTransfer~=transfer then return false end
  transfer.kind="SEND";transfer.job=job;transfer.key=job.key;transfer.objectId=job.objectId;transfer.entity=job.entity;transfer.characterUUID=job.characterUUID;transfer.activityDomain=job.block or job.domain;transfer.domain=job.domain;transfer.direction="SEND";transfer.phase="PREPARING";transfer.sender=playerName();transfer.receiver=job.target;transfer.requestId=job.requestId;transfer.priorityClass=job.priorityClass;transfer.retryCount=job.retryCount;transfer.maxRetries=job.maxRetries;transfer.startedAt=transfer.startedAt or now();transfer.preparing=true
  local domain=self.domains[job.domain];local meta=domain and domain.getMetadata(job.objectId)
- if not domain or not meta or domain.canShare and not domain.canShare(meta,senderGuid(job.target),job.target,"fetch")then return self:ReleaseTransfer(false,"AUTHORIZATION_OR_OBJECT_CHANGED",transfer)end
- local payload=domain.export(job.objectId);if payload==nil then return self:ReleaseTransfer(false,"EXPORT_FAILED",transfer)end
+ local function failResponse(reason,result)local notified=self:SendFetchResult(job.domain,{objectId=job.objectId,requestId=job.requestId,revisionID=job.requiredRevision},job.target,result or"UNAVAILABLE",reason,meta);return self:ReleaseTransfer(notified==true,reason,transfer)end
+ if not domain or not meta then return failResponse("OBJECT_CHANGED","NOT_FOUND")end
+ if domain.canShare then local authOK,canShare,shareReason=pcall(domain.canShare,meta,senderGuid(job.target),job.target,"fetch");if not authOK then return failResponse("AUTHORIZATION_CHECK_FAILED","UNAVAILABLE")elseif not canShare then local result=shareReason=="MODULE_DISABLED"and"UNAVAILABLE"or shareReason=="NOT_FOUND"and"NOT_FOUND"or shareReason=="STALE"and"STALE"or shareReason=="INVALID"and"INVALID"or"NOT_VISIBLE";return failResponse(shareReason or"AUTHORIZATION_OR_OBJECT_CHANGED",result)end end
+ if job.requiredRevision and meta.revisionID~=job.requiredRevision then return failResponse("REVISION_CHANGED","STALE")end
+ local payload=domain.export(job.objectId);if payload==nil then return failResponse("EXPORT_FAILED","NOT_FOUND")end
  local envelope={protocol=self.protocol,kind="PAYLOAD",domain=job.domain,data={objectId=job.objectId,metadata=meta,payload=payload,reason=job.reason,requestId=job.requestId},sentAt=now(),sender=UnitGUID("player")}
- local serialized,err=HolyStorm.Serializer:Serialize(envelope);if not serialized then return self:ReleaseTransfer(false,"SERIALIZE:"..tostring(err),transfer)end
- local fragments=math.max(1,math.ceil(#serialized/HolyStorm.Comms.chunkSize));if#serialized>HolyStorm.Comms.receiveLimits.maxPayloadBytes or fragments>HolyStorm.Comms.receiveLimits.maxFragments then job.maxRetries=0;log("ERROR","backpressure","Atomic sync payload exceeds HSC1 transfer limit",{requestId=job.requestId,objectId=job.objectId,domain=job.domain,revision=meta.revisionID,bytes=#serialized,fragments=fragments,limit=HolyStorm.Comms.receiveLimits.maxFragments,result="DEFERRED_SIZE_LIMIT"});return self:ReleaseTransfer(false,"PAYLOAD_TOO_LARGE",transfer)end
+ local serialized,err=HolyStorm.Serializer:Serialize(envelope);if not serialized then return failResponse("SERIALIZE:"..tostring(err),"UNAVAILABLE")end
+ local fragments=math.max(1,math.ceil(#serialized/HolyStorm.Comms.chunkSize));if#serialized>HolyStorm.Comms.receiveLimits.maxPayloadBytes or fragments>HolyStorm.Comms.receiveLimits.maxFragments then log("ERROR","backpressure","Atomic sync payload exceeds HSC1 transfer limit",{requestId=job.requestId,objectId=job.objectId,domain=job.domain,revision=meta.revisionID,bytes=#serialized,fragments=fragments,limit=HolyStorm.Comms.receiveLimits.maxFragments,result="DEFERRED_SIZE_LIMIT"});return failResponse("PAYLOAD_TOO_LARGE","UNAVAILABLE")end
  transfer.phase="TRANSFER";transfer.bytes=#serialized;transfer.fragments=0;transfer.fragmentsTotal=fragments;transfer.revision=meta.revisionID;transfer.selectedSource=playerName();transfer.sendPending=true;job.state="RUNNING";job.startedAt=transfer.startedAt;recordJobMetric(self,job,"started")
  if fragments>=48 then log("WARN","fragmentation","Large atomic sync domain transfer queued",{requestId=job.requestId,objectId=job.objectId,characterUUID=job.characterUUID,domain=job.domain,revision=meta.revisionID,recipient=job.target,priority=job.priorityClass,bytes=#serialized,fragments=fragments})end
  local function progress(sent,total)if Sync.activeTransfer==transfer then transfer.fragments=sent;transfer.fragmentsTotal=total;if transfer.activityId then Sync:NotifyActivity()end end end
  local function complete(ok,id,bytes,reason)if Sync.activeTransfer~=transfer then return end;transfer.transmissionId=id;transfer.sendPending=false;Sync:ReleaseTransfer(ok,reason,transfer)end
  local queued,id=HolyStorm.Comms:Send(serialized,"WHISPER",job.target,job.priority,{domain=job.domain,objectId=job.objectId,characterUUID=job.characterUUID,block=job.block,messageKind="PAYLOAD",messageClass="payload",revision=meta.revisionID,requestId=job.requestId,selectedSource=playerName(),originalOwner=meta.owner,relay=meta.owner~=UnitGUID("player"),priority=job.priorityClass,serializedBytes=#serialized},complete,progress)
  if self.activeTransfer~=transfer then return queued~=false end
- if not queued then return self:ReleaseTransfer(false,"TRANSPORT_QUEUE_REJECTED",transfer)end
+ if not queued then return failResponse("TRANSPORT_QUEUE_REJECTED","UNAVAILABLE")end
  transfer.preparing=false;transfer.transmissionId=id
  if not self:IsTransferActivityAuthoritative(transfer)then return self:ReleaseTransfer(false,"TRANSMISSION_NOT_ACTIVE",transfer)end
  self:BeginTransferActivity(transfer);return true
@@ -549,7 +622,10 @@ function Sync:RunQueuePump()
  if not ok then
   local transfer=self.activeTransfer
   log("ERROR","activity","Sync queue operation raised an error",{requestId=job.requestId,domain=job.domain,objectId=job.objectId,error=tostring(result),result="OPERATION_ERROR"})
-  if transfer and transfer.job==job then self:ReleaseTransfer(false,"SYNC_OPERATION_ERROR",transfer)
+  if transfer and transfer.job==job and transfer.kind=="SEND"and job.reason=="REQUEST_RESPONSE"then
+   local replyOK,replyQueued=pcall(function()return self:SendFetchResult(job.domain,{objectId=job.objectId,requestId=job.requestId,revisionID=job.requiredRevision},job.target,"UNAVAILABLE","SYNC_OPERATION_ERROR")end)
+   self:ReleaseTransfer(replyOK and replyQueued==true,"SYNC_OPERATION_ERROR",transfer)
+  elseif transfer and transfer.job==job then self:ReleaseTransfer(false,"SYNC_OPERATION_ERROR",transfer)
    else job.state="QUEUED";job.notBefore=now()+1;if not job.activityHandoff then job.activityId=nil end;self.catchUpJobs[#self.catchUpJobs+1]=job;self:QueuePump(1);self:NotifyActivity(true)end
   return false
  end
@@ -614,29 +690,30 @@ function Sync:ResetActivityState(reason)
  if self.activityNotifyTimer then self.activityNotifyTimer:Cancel();self.activityNotifyTimer=nil end
  if self.activeTransfer and self.activeTransfer.timeoutTimer then self.activeTransfer.timeoutTimer:Cancel();self.activeTransfer.timeoutTimer=nil end
  self.activeTransfer=nil;self.activeActivities={};self.catchUpJobs={};self.catchUpIndex={};self.pendingPayloads={};self.pendingPayloadOrder={};self.retiredRequestIds={};self.retiredRequestOrder={}
+ if reason=="INITIALIZE"or reason=="SYNC_SHUTDOWN"then self.terminalFetches={};self.terminalFetchOrder={};self.lastTerminalFetch=nil end
  self.activityStateMismatch=false;self.activityMismatchLogged=false;self.activityPublishedActive=false;self.activityNotifyDeferred=nil
  if HolyStorm.Events then HolyStorm.Events:Emit("HS_SYNC_ACTIVITY_UPDATED",activitySnapshot(self))end
  return true
 end
 function Sync:SelectForTestOrDispatch()return self:RunQueuePump()end
 function Sync:GetRuntimeMetrics()
- local activity=self:GetActivity();local requests=HolyStorm.Utils.TableCount(self.activeRequests);local queued=activity.queuedJobs+#self.pendingPayloadOrder;return{requested=self.runtimeMetrics.requested,started=self.runtimeMetrics.started,completed=self.runtimeMetrics.completed,failed=self.runtimeMetrics.failed,retried=self.runtimeMetrics.retried,byDomain=self.runtimeMetrics.byDomain,byReason=self.runtimeMetrics.byReason,queued=queued,requests=requests,active=activity.active,activityCount=activity.activityCount,activeActivityIds=activity.activeActivityIds}
+ local activity=self:GetActivity();local requests=HolyStorm.Utils.TableCount(self.activeRequests);return{requested=self.runtimeMetrics.requested,started=self.runtimeMetrics.started,completed=self.runtimeMetrics.completed,failed=self.runtimeMetrics.failed,retried=self.runtimeMetrics.retried,byDomain=self.runtimeMetrics.byDomain,byReason=self.runtimeMetrics.byReason,queued=activity.queuedJobs,queuedCatchUpJobs=activity.queuedJobs,pendingPayloads=#self.pendingPayloadOrder,requests=requests,active=activity.active,activityCount=activity.activityCount,activeActivityIds=activity.activeActivityIds}
 end
 function Sync:ResetRuntimeMetrics()self.runtimeMetrics={requested=0,started=0,completed=0,failed=0,retried=0,byDomain={},byReason={}};return true end
 function Sync:GetDiagnostics()
  local candidates=0;for _,request in pairs(self.requests)do for _,peers in pairs(request.candidates or{})do candidates=candidates+HolyStorm.Utils.TableCount(peers)end end
  local activity=self:GetActivity();local transfer=self.activeTransfer;local first
  for _,operation in ipairs(activity.activeOperations)do if transfer and operation.activityId==transfer.activityId then first=operation;break end end
- local activeRequest=transfer and transfer.kind=="FETCH"and transfer.awaitingResponse and{requestId=transfer.requestId,domain=transfer.domain,entity=transfer.objectId,phase=transfer.phase,source=transfer.selectedSource,timeoutArmed=transfer.timeoutTimer~=nil,timeoutAt=transfer.timeoutAt,age=math.max(0,now()-(transfer.startedAt or now()))}or nil
+ local activeRequest=transfer and transfer.kind=="FETCH"and transfer.awaitingResponse and{requestId=transfer.requestId,domain=transfer.domain,entity=transfer.objectId,revision=transfer.revision,phase=transfer.phase,source=transfer.selectedSource,currentSource=transfer.selectedSource,candidateSources=sourceDiagnostics(transfer.job and transfer.job.allSourceCandidates or transfer.job and transfer.job.sourceCandidates),exhaustedSources=exhaustedSourceDiagnostics(transfer.job and transfer.job.exhaustedSources),attempt=transfer.attempt,terminalReason=transfer.job and transfer.job.terminalReason,requeueReason=transfer.job and transfer.job.requeueReason,queueLength=#self.catchUpJobs,dedupKey=transfer.key and readableDedupKey(transfer.key),discoveryGeneration=transfer.job and transfer.job.discoveryGeneration,timeoutArmed=transfer.timeoutTimer~=nil,timeoutAt=transfer.timeoutAt,age=math.max(0,now()-(transfer.startedAt or now()))}or nil
  local activeJob=transfer and transfer.job;local handoffJob
  if not activeJob then for _,id in ipairs(activity.activeActivityIds)do local record=self.activeActivities[id];local owner=record and record.owner;if type(owner)=="table"and owner.activityHandoff then handoffJob=owner;break end end end
  activeJob=activeJob or handoffJob;local idle=not activity.active;local queuedJobs={}
- for _,job in ipairs(self.catchUpJobs)do if job.state=="QUEUED"and#queuedJobs<5 then queuedJobs[#queuedJobs+1]={requestId=job.requestId,domain=job.domain,objectId=job.objectId,state=job.state,notBefore=job.notBefore,retryCount=job.retryCount,sourceCandidates=#(job.sourceCandidates or{})}end end
- local activeCatchUpJob=activeJob and{requestId=activeJob.requestId,domain=activeJob.domain,objectId=activeJob.objectId,state=activeJob.state,queued=activeJob.state=="QUEUED",source=activeJob.selectedSource or(first and first.source),phase=first and first.phase or"SOURCE_FALLBACK",activityId=activeJob.activityId}
- return{requests=HolyStorm.Utils.TableCount(self.requests),activeRequests=HolyStorm.Utils.TableCount(self.activeRequests),heard=HolyStorm.Utils.TableCount(self.heard),knownOnline=HolyStorm.Utils.TableCount(self.knownOnline),domains=HolyStorm.Utils.TableCount(self.domains),peerCandidates=candidates,lastSelection=self.lastSelection,publishedVersions=HolyStorm.Utils.TableCount(self.publishedVersions),catchUpQueued=activity.queuedJobs,catchUpQueueLength=activity.queuedJobs,queuedCatchUpJobs=queuedJobs,activeTransfer=first,activeRequest=activeRequest,activeCatchUpJob=activeCatchUpJob,activeActivityIds=activity.activeActivityIds,activityCount=activity.activityCount,activityDomain=activity.activityDomain,activityPhase=activity.activityPhase,activityAge=activity.activityAge,activityStateMismatch=activity.activityStateMismatch,activity=activity.active,pendingPayloads=#self.pendingPayloadOrder,queueLimit=self.catchUpLimit,cleanupScheduled=self.cleanupTimer~=nil or self.cleanupTaskId~=nil,idle=idle,metrics=self.runtimeMetrics,transport=HolyStorm.Comms and HolyStorm.Comms:GetDiagnostics().transport}
+ for _,job in ipairs(self.catchUpJobs)do if job.state=="QUEUED"and#queuedJobs<5 then queuedJobs[#queuedJobs+1]={requestId=job.requestId,domain=job.domain,objectId=job.objectId,entity=job.objectId,revision=job.requiredRevision,state=job.state,notBefore=job.notBefore,retryCount=job.retryCount,attempt=job.attempt,sourceCandidates=sourceDiagnostics(job.allSourceCandidates or job.sourceCandidates),currentSource=job.selectedSource,exhaustedSources=exhaustedSourceDiagnostics(job.exhaustedSources),terminalReason=job.terminalReason,requeueReason=job.requeueReason,queueLength=#self.catchUpJobs,dedupKey=readableDedupKey(job.key),discoveryGeneration=job.discoveryGeneration}end end
+ local activeCatchUpJob=activeJob and{requestId=activeJob.requestId,domain=activeJob.domain,objectId=activeJob.objectId,entity=activeJob.objectId,revision=activeJob.requiredRevision,state=activeJob.state,queued=activeJob.state=="QUEUED",source=activeJob.selectedSource or(first and first.source),currentSource=activeJob.selectedSource or(first and first.source),candidateSources=sourceDiagnostics(activeJob.allSourceCandidates or activeJob.sourceCandidates),exhaustedSources=exhaustedSourceDiagnostics(activeJob.exhaustedSources),attempt=activeJob.attempt,terminalReason=activeJob.terminalReason,requeueReason=activeJob.requeueReason,queueLength=#self.catchUpJobs,dedupKey=readableDedupKey(activeJob.key),discoveryGeneration=activeJob.discoveryGeneration,phase=first and first.phase or"SOURCE_FALLBACK",activityId=activeJob.activityId}
+ return{requests=HolyStorm.Utils.TableCount(self.requests),activeRequests=HolyStorm.Utils.TableCount(self.activeRequests),heard=HolyStorm.Utils.TableCount(self.heard),knownOnline=HolyStorm.Utils.TableCount(self.knownOnline),domains=HolyStorm.Utils.TableCount(self.domains),peerCandidates=candidates,lastSelection=self.lastSelection,lastTerminalFetch=self.lastTerminalFetch,publishedVersions=HolyStorm.Utils.TableCount(self.publishedVersions),catchUpQueued=activity.queuedJobs,catchUpQueueLength=activity.queuedJobs,queuedCatchUpJobs=queuedJobs,activeTransfer=first,activeRequest=activeRequest,activeCatchUpJob=activeCatchUpJob,activeActivityIds=activity.activeActivityIds,activityCount=activity.activityCount,activityDomain=activity.activityDomain,activityPhase=activity.activityPhase,activityAge=activity.activityAge,activityStateMismatch=activity.activityStateMismatch,activity=activity.active,pendingPayloads=#self.pendingPayloadOrder,queueLimit=self.catchUpLimit,cleanupScheduled=self.cleanupTimer~=nil or self.cleanupTaskId~=nil,idle=idle,metrics=self.runtimeMetrics,transport=HolyStorm.Comms and HolyStorm.Comms:GetDiagnostics().transport}
 end
 function Sync:Cleanup()
- local current=now();local requestCutoff=current-self.requestTimeout;for requestId,request in pairs(self.requests)do if(request.createdAt or 0)<=requestCutoff then self.activeRequests[request.key or key(request.domain,request.objectId)]=nil;self.requests[requestId]=nil end end;for requestId,at in pairs(self.heardAt)do if at<=requestCutoff then self.heardAt[requestId]=nil;self.heard[requestId]=nil end end;for id,snapshot in pairs(self.offerSnapshots)do if(tonumber(snapshot.createdAt)or 0)<=requestCutoff then self.offerSnapshots[id]=nil end end
+ local current=now();local requestCutoff=current-self.requestTimeout;for requestId,request in pairs(self.requests)do if(request.createdAt or 0)<=requestCutoff then self.activeRequests[request.key or key(request.domain,request.objectId)]=nil;self.requests[requestId]=nil end end;for requestId,at in pairs(self.heardAt)do if at<=requestCutoff then self.heardAt[requestId]=nil;self.heard[requestId]=nil end end;for id,snapshot in pairs(self.offerSnapshots)do if(tonumber(snapshot.createdAt)or 0)<=requestCutoff then self.offerSnapshots[id]=nil end end;pruneTerminalFetches(self)
  for requestId,entry in pairs(self.retiredRequestIds)do if(tonumber(entry.expiresAt)or 0)<=current then self.retiredRequestIds[requestId]=nil end end
  local presenceCutoff=current-self.presenceTimeout;for guid,at in pairs(self.knownOnline)do if at<=presenceCutoff then self.knownOnline[guid]=nil end end
  for guid,entry in pairs(self.knownVersions)do if not entry.localPlayer and(not validPresenceVersion(entry.version)or(tonumber(entry.receivedAt)or 0)<=presenceCutoff)then clearKnownVersion(self,guid,entry,validPresenceVersion(entry.version)and"PRESENCE_EXPIRED"or"INVALID_PRESENCE_VERSION")end end
@@ -725,21 +802,22 @@ function Sync:Receive(payload,sender,channel,transport)
 	if type(envelope)~="table"or envelope.protocol~=self.protocol or type(envelope.kind)~="string"or envelope.sender==UnitGUID("player")then return false end
 	transport=type(transport)=="table"and transport or{}
 	local data=type(envelope.data)=="table"and envelope.data or{}
-	local meta=type(data.metadata)=="table"and data.metadata or type(data.offers)=="table"and type(data.offers[1])=="table"and data.offers[1]or{}
+	local meta=type(data.metadata)=="table"and data.metadata or type(data.offers)=="table"and type(data.offers[1])=="table"and data.offers[1]or type(data.currentMetadata)=="table"and data.currentMetadata or{}
 	local correlationId=transport.correlationId or transport.transmissionId
 	local objectId=data.objectId or meta.objectId
 	local characterUUID,blockType
 	if type(objectId)=="string"then characterUUID,blockType=objectId:match("^(.-)\031([^\031]+)$")end
 	local destination=receiver(channel)
 	local resolved,identityReason=senderGuid(sender,envelope.sender)
-	log("DEBUG",string.lower(envelope.kind),"Sync envelope received",{direction="RECEIVE",sender=sender,receiver=destination,target=destination,from=sender,to=destination,channel=channel,domain=envelope.domain,logicalObject=blockType or objectId,blockType=blockType,block=blockType,characterUUID=characterUUID,objectId=objectId,messageKind=envelope.kind,messageClass=messageClasses[envelope.kind]or"control",version=meta.version or data.version,revision=meta.revisionID or data.revisionID,reason=data.reason,requestId=data.requestId,selectedSource=sender,senderGuid=resolved,claimedGuid=envelope.sender,identityReason=identityReason,transmissionId=transport.transmissionId,packetTotal=transport.packetTotal,bytes=transport.bytes,serializedBytes=transport.bytes,correlationId=correlationId,originalOwner=meta.owner,relay=meta.owner and meta.owner~=envelope.sender or false,retry=false},correlationId)
+	log("DEBUG",string.lower(envelope.kind),"Sync envelope received",{direction="RECEIVE",sender=sender,receiver=destination,target=destination,from=sender,to=destination,channel=channel,domain=envelope.domain,logicalObject=blockType or objectId,blockType=blockType,block=blockType,characterUUID=characterUUID,objectId=objectId,messageKind=envelope.kind,messageClass=messageClasses[envelope.kind]or"control",version=meta.version or data.version,revision=meta.revisionID or data.revisionID,reason=data.reason or data.result,requestId=data.requestId,selectedSource=sender,senderGuid=resolved,claimedGuid=envelope.sender,identityReason=identityReason,transmissionId=transport.transmissionId,packetTotal=transport.packetTotal,bytes=transport.bytes,serializedBytes=transport.bytes,correlationId=correlationId,originalOwner=meta.owner,relay=meta.owner and meta.owner~=envelope.sender or false,retry=false},correlationId)
 	if resolved and envelope.sender~=resolved then
 		log("WARN","authority","Envelope sender identity mismatch",{direction="RECEIVE",from=sender,to=destination,channel=channel,sender=sender,claimed=envelope.sender,resolved=resolved,identityReason=identityReason,transmissionId=transport.transmissionId,correlationId=correlationId},correlationId)
 		return false
 	end
  if envelope.kind=="PRESENCE"then return self:OnPresence(data,sender,resolved,envelope.sender,identityReason)end
-  if not self.domains[envelope.domain]then return false end
-  if envelope.kind=="DISCOVER"then return self:OnDiscover(envelope.domain,envelope.data,sender,channel)elseif envelope.kind=="OFFER"or envelope.kind=="ANNOUNCE"then return self:RecordOffers(envelope.domain,envelope.data,sender,envelope.kind=="ANNOUNCE")elseif envelope.kind=="FETCH"then return self:OnFetch(envelope.domain,envelope.data,sender)elseif envelope.kind=="PAYLOAD"or envelope.kind=="LIVE"then return self:OnPayload(envelope.domain,envelope.data,sender,transport,envelope.kind)end;return false
+ if envelope.kind=="FETCH"and not self.domains[envelope.domain]then return self:OnFetch(envelope.domain,data,sender)end
+ if not self.domains[envelope.domain]then return false end
+ if envelope.kind=="DISCOVER"then return self:OnDiscover(envelope.domain,envelope.data,sender,channel)elseif envelope.kind=="OFFER"or envelope.kind=="ANNOUNCE"then return self:RecordOffers(envelope.domain,envelope.data,sender,envelope.kind=="ANNOUNCE")elseif envelope.kind=="FETCH"then return self:OnFetch(envelope.domain,envelope.data,sender)elseif envelope.kind=="FETCH_RESULT"then return self:OnFetchResult(envelope.domain,data,sender)elseif envelope.kind=="PAYLOAD"or envelope.kind=="LIVE"then return self:OnPayload(envelope.domain,envelope.data,sender,transport,envelope.kind)end;return false
 end
 function Sync:Initialize()
  self:ResetActivityState("INITIALIZE")
