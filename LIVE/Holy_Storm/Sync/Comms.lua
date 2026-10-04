@@ -1,6 +1,6 @@
 local addonVersion="2.3.0"
 local HolyStorm=LibStub("AceAddon-3.0"):GetAddon("Holy_Storm")
-local Comms={version=addonVersion,prefix="HolyStormSync",protocol="HSC1",chunkSize=220,maxQueue=300,incoming={},incomingCount=0,incomingBySender={},serial=0,pendingPackets=0,available=false,cleanupTimer=nil,cleanupDue=nil,cleanupTaskId=nil,eventFrame=nil}
+local Comms={version=addonVersion,prefix="HolyStormSync",protocol="HSC1",chunkSize=220,maxQueue=300,incoming={},incomingCount=0,incomingBySender={},serial=0,pendingPackets=0,activeSyncTransmissions={},available=false,cleanupTimer=nil,cleanupDue=nil,cleanupTaskId=nil,eventFrame=nil}
 Comms.receiveLimits={maxFragments=300,maxFragmentBytes=220,maxPayloadBytes=math.min(HolyStorm.Serializer.limits.bytes,300*220),maxIncomplete=64,maxPerSender=16,timeout=30}
 Comms.receiveCounters={rejectedFragments=0,oversizedFragments=0,oversizedTransfers=0,excessivePartCount=0,globalCapEvictions=0,senderCapEvictions=0,expiredTransfers=0,malformedFrames=0,duplicateFragments=0,completedTransfers=0,peakIncompleteTransfers=0}
 Comms.receiveNoticeAt={}
@@ -78,10 +78,18 @@ function Comms:IsSelfSender(sender)local senderName,senderRealm=normalizedName(s
 function Comms:Send(payload,preferred,target,priority,diagnostics,onComplete,onProgress)
  if not self.available or type(payload)~="string"or#payload>HolyStorm.Serializer.limits.bytes then return false end;local channel,resolved=self:ResolveChannel(preferred,target);if not channel then return false end;self.serial=self.serial+1;local id=tostring(HolyStorm.Utils.Now()).."-"..self.serial;local total=math.max(1,math.ceil(#payload/self.chunkSize));if total>self.receiveLimits.maxFragments or self.pendingPackets+total>self.maxQueue then return false end
  id=self.protocol.."-"..id;local base=compact(diagnostics);base.direction="SEND";base.from=playerName();base.to=audience(channel,resolved);base.channel=channel;base.transmissionId=id;base.packetTotal=total;base.serializedBytes=#payload;base.correlationId=base.correlationId or id
+ if onComplete then self.activeSyncTransmissions[id]={startedAt=HolyStorm.Utils.Now(),requestId=base.requestId,domain=base.domain,objectId=base.objectId}end
  if total>=48 then HolyStorm.Logger:Write("WARN","Comms","send","Large logical sync transfer is using HSC1 fragments",{direction="SEND",from=base.from,to=base.to,channel=channel,transmissionId=id,packetTotal=total,serializedBytes=#payload,domain=base.domain,objectId=base.objectId,requestId=base.requestId,reason="LARGE_ATOMIC_TRANSFER"},base.correlationId)end
  local queueing,queuedParts,completedParts=true,0,0;local anyFailed=false;local finalReason;local finalCalled=false
  local function finishIfReady()
-  if not queueing and completedParts>=queuedParts and onComplete and not finalCalled then finalCalled=true;onComplete(not anyFailed,id,#payload,finalReason)end
+  if not queueing and completedParts>=queuedParts and not finalCalled then
+   finalCalled=true;Comms.activeSyncTransmissions[id]=nil
+   if onComplete then
+    local result=not anyFailed;local ok,err=pcall(onComplete,result,id,#payload,finalReason)
+    if not ok then HolyStorm.Logger:Write("ERROR","Comms","send","Sync transfer completion handler failed",{transmissionId=id,reason="COMPLETION_HANDLER_ERROR",error=tostring(err),domain=base.domain,objectId=base.objectId,requestId=base.requestId},base.correlationId)end
+    HolyStorm.Events:Emit("HS_COMMS_TRANSMISSION_COMPLETED",id,result,#payload,finalReason)
+   end
+  end
  end
  for part=1,total do
   local chunk=payload:sub((part-1)*self.chunkSize+1,part*self.chunkSize);local packetDiagnostics=compact(base);for field,value in pairs(base)do packetDiagnostics[field]=value end;packetDiagnostics.packetPart=part;packetDiagnostics.bytes=#chunk
@@ -91,13 +99,14 @@ function Comms:Send(payload,preferred,target,priority,diagnostics,onComplete,onP
    if completed then return end;completed=true;Comms.pendingPackets=math.max(0,Comms.pendingPackets-1);completedParts=completedParts+1
    if result==false or(reason and reason~="suppressed")then anyFailed=true;finalReason=reason or"SEND_REFUSED";HolyStorm.Logger:Write("WARN","Comms","send","Queued addon message failed",{direction="SEND",from=playerName(),to=audience(channel,resolved),channel=channel,transmissionId=id,packetPart=part,packetTotal=total,reason=finalReason,bytes=#message},packetDiagnostics.correlationId)
    elseif reason~="suppressed"then HolyStorm.Logger:Write("DEBUG","Comms","send","Packet sent",packetDiagnostics,packetDiagnostics.correlationId)end
-   if onProgress then onProgress(completedParts,total)end;finishIfReady()
+   if onProgress then pcall(onProgress,completedParts,total)end;finishIfReady()
   end
   local queued,reason;if channel=="WHISPER"then queued,reason=HolyStorm.SyncTransport:SendWhisper(self.prefix,message,resolved,priority,packetComplete,nil,packetDiagnostics)elseif channel=="GUILD"then queued,reason=HolyStorm.SyncTransport:SendGuild(self.prefix,message,priority,packetComplete,nil,packetDiagnostics)else queued,reason=HolyStorm.SyncTransport:Send(self.prefix,message,channel,resolved,priority,packetComplete,nil,packetDiagnostics)end
   if not queued and not completed then completed=true;self.pendingPackets=math.max(0,self.pendingPackets-1);queuedParts=queuedParts-1;anyFailed=true;finalReason=reason or"QUEUE_REJECTED";HolyStorm.Logger:Write("WARN","Comms","send","Addon message was not queued",{direction="SEND",from=playerName(),to=audience(channel,resolved),channel=channel,transmissionId=id,packetPart=part,packetTotal=total,reason=finalReason,bytes=#message},packetDiagnostics.correlationId);break end
  end
  queueing=false;finishIfReady();return queuedParts>0 or not anyFailed,id
 end
+function Comms:IsTransmissionActive(transmissionId)return type(transmissionId)=="string"and self.activeSyncTransmissions[transmissionId]~=nil end
 function Comms:OnMessage(prefix,message,channel,sender)
  if prefix~=self.prefix then return false end
  if type(message)~="string"then return self:RejectFragment("malformedFrames","NON_STRING_FRAME",{})end
@@ -136,6 +145,6 @@ function Comms:OnMessage(prefix,message,channel,sender)
  self.receiveCounters.completedTransfers=self.receiveCounters.completedTransfers+1;HolyStorm.Events:Emit("HS_COMMS_MESSAGE",completePayload,sender,channel,{direction="RECEIVE",from=sender,to=receiver(channel),channel=channel,transmissionId=id,packetTotal=total,bytes=#completePayload,correlationId=id});return true
 end
 function Comms:Cleanup()self:ExpireIncoming(HolyStorm.Utils.Now());self:ScheduleCleanup();return true end
-function Comms:GetDiagnostics()local fragments=0;for _,packet in pairs(self.incoming)do fragments=fragments+(packet.receivedParts or 0)end;local result={incomingTransmissions=self.incomingCount,incomingFragments=fragments,activeIncompleteTransfers=self.incomingCount,pendingPackets=self.pendingPackets,cleanupScheduled=self.cleanupTimer~=nil or self.cleanupTaskId~=nil,receiveLimits=self.receiveLimits,transport=HolyStorm.SyncTransport:GetDiagnostics()};for name,value in pairs(self.receiveCounters)do result[name]=value end;return result end
+function Comms:GetDiagnostics()local fragments=0;for _,packet in pairs(self.incoming)do fragments=fragments+(packet.receivedParts or 0)end;local result={incomingTransmissions=self.incomingCount,incomingFragments=fragments,activeIncompleteTransfers=self.incomingCount,pendingPackets=self.pendingPackets,activeSyncTransmissions=HolyStorm.Utils.TableCount(self.activeSyncTransmissions),cleanupScheduled=self.cleanupTimer~=nil or self.cleanupTaskId~=nil,receiveLimits=self.receiveLimits,transport=HolyStorm.SyncTransport:GetDiagnostics()};for name,value in pairs(self.receiveCounters)do result[name]=value end;return result end
 function Comms:Shutdown()self.available=false;HolyStorm.SyncTransport.available=false;if self.eventFrame then self.eventFrame:UnregisterEvent("CHAT_MSG_ADDON");self.eventFrame:SetScript("OnEvent",nil)end;self:CancelCleanupTimer();if self.cleanupTaskId then HolyStorm.Tasks:Cancel(self.cleanupTaskId,"COMMS_SHUTDOWN");self.cleanupTaskId=nil end;HolyStorm.Events:UnregisterOwner("comms-task");self.pendingPackets=0;self.incoming={};self.incomingCount=0;self.incomingBySender={} end
 HolyStorm.Comms=Comms

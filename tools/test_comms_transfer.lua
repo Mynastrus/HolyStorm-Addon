@@ -1,6 +1,7 @@
 local root=(arg[0]:gsub("tools[/\\]test_comms_transfer.lua$","")).."LIVE/Holy_Storm/"
 local now=100
 local HolyStorm={Serializer={limits={bytes=66000}},Events={emitted={}},Logger={history={}},Tasks={},Utils={}}
+function HolyStorm.Utils.TableCount(value)local count=0;for _ in pairs(value or{})do count=count+1 end;return count end
 function HolyStorm:GetAddon()return self end
 function HolyStorm.Utils.Now()return now end
 function HolyStorm.Events:Emit(event,...)self.emitted[#self.emitted+1]={event=event,args={...}}end
@@ -28,9 +29,11 @@ local progress,completed={},{}
 local payload=string.rep("p",500)
 local accepted,id=Comms:Send(payload,"GUILD",nil,90,{domain="character",objectId="Character-1\031equipment",requestId="aggregate-test"},function(ok,transmissionId,bytes,reason)completed[#completed+1]={ok=ok,id=transmissionId,bytes=bytes,reason=reason}end,function(sent,total)progress[#progress+1]={sent=sent,total=total}end)
 assert(accepted and id and#queued==3 and Comms.pendingPackets==3,"a logical message queues one bounded HSC1 frame per chunk")
+assert(Comms:IsTransmissionActive(id)and Comms:GetDiagnostics().activeSyncTransmissions==1,"an owned sync transmission remains authoritative until every frame completes")
 assert(#completed==0,"logical completion waits for all transport callbacks")
 for index,entry in ipairs(queued)do entry.callback(entry.arg,1,1,true,nil)end
 assert(#completed==1 and completed[1].ok and completed[1].bytes==#payload,"the aggregate callback fires once after all frames complete")
+assert(not Comms:IsTransmissionActive(id)and Comms:GetDiagnostics().activeSyncTransmissions==0,"completed sync transmission is removed from the authoritative send state")
 assert(#progress==3 and progress[3].sent==3 and progress[3].total==3 and Comms.pendingPackets==0,"fragment progress and pending-frame accounting are aggregated")
 
 local assembledCount,fragmentProgress=0,0

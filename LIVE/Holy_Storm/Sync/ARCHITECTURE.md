@@ -154,6 +154,22 @@ the queued job count. `HS_SYNC_ACTIVITY_UPDATED` announces active phase and
 fragment-progress changes. MainWindow and Character Overview use only this
 model; they do not infer Sync state from transport internals.
 
+The activity model registers each qualifying operation with an activity ID and
+ends it by that ID, so a late completion cannot end a newer operation. A fetch
+counts while its response timeout is live or its matching payload is being
+committed; a send counts while its own Comms transmission is outstanding.
+Presence heartbeats, metadata request history, queued work, debounce delays and
+maintenance tasks do not count. Fetch request IDs rotate on each attempt, and
+recent terminal IDs are ignored so a late reply cannot start receive work again.
+Activity reads and normal terminal events reconcile registrations against those
+runtime owners and release stale entries without polling. Transient activity,
+catch-up and receive state is cleared on initialization and shutdown.
+
+Sync diagnostics expose active activity IDs/count, transfer/request/job details,
+queue length, domain, phase, age and an event-driven mismatch flag. A stale
+published active state is released and logged once when reconciliation finds no
+authoritative runtime operation.
+
 The MainWindow footer's center stays hidden while no logical transfer is
 active. During an active transfer it shows only localized “Sync running” / “Sync
 läuft” with a rotating indicator. Its tooltip contains localized labels for

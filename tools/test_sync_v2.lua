@@ -167,17 +167,17 @@ assert(Sync:GetKnownVersion("Player-RelayOne")=="DEV","Presence remains independ
 
 -- Receive only imports a complete object on the TaskManager worker; failure keeps cache.
 local payload={objectId=userObject,snapshot={new=true}}
-assert(Sync:OnPayload("character",{objectId=userObject,requestId="older-request",metadata={owner=userGuid,version=2,revisionID="r2",updatedAt=clock},payload=payload},userOwner,{bytes=4096,packetTotal=19}))
-assert(Sync:RunReceivePayload()and commits==0 and Sync.activeTransfer.phase=="REQUEST","a payload from another request does not finalize the active fetch")
-assert(Sync:OnPayload("character",{objectId=userObject,requestId="interactive-500",metadata={owner=userGuid,version=2,revisionID="r2",updatedAt=clock},payload=payload},userOwner,{bytes=4096,packetTotal=19}))
+assert(not Sync:OnPayload("character",{objectId=userObject,requestId="older-request",metadata={owner=userGuid,version=2,revisionID="r2",updatedAt=clock},payload=payload},userOwner,{bytes=4096,packetTotal=19}))
+assert(Sync:RunReceivePayload()and commits==0 and Sync.activeTransfer.phase=="REQUEST"and#Sync.pendingPayloadOrder==0,"a payload from another request is discarded without affecting the active fetch")
+assert(Sync:OnPayload("character",{objectId=userObject,requestId=Sync.activeTransfer.requestId,metadata={owner=userGuid,version=2,revisionID="r2",updatedAt=clock},payload=payload},userOwner,{bytes=4096,packetTotal=19}))
 assert(commits==0 and cached[userObject].cached==true,"uncommitted data is not visible before validation/import")
 assert(Sync:RunReceivePayload() and commits==1 and cached[userObject].new==true,"complete revision atomically replaces its cached snapshot")
-assert(not Sync:GetActivity(userGuid).active and#Sync.pendingPayloadOrder==1,"only the matching response finalizes the fetch and leaves the unrelated response queued")
-assert(Sync:RunReceivePayload()and commits==1 and#Sync.pendingPayloadOrder==0,"the unrelated response drains independently after the active fetch closes")
+assert(not Sync:GetActivity(userGuid).active and#Sync.pendingPayloadOrder==0,"only the matching response finalizes the fetch")
+assert(Sync:RunReceivePayload()and commits==1 and#Sync.pendingPayloadOrder==0,"no stale response remains to reactivate after the fetch closes")
 
 local stalePayload={objectId=userObject,snapshot={stale=true}}
-assert(Sync:OnPayload("character",{objectId=userObject,metadata={owner=userGuid,version=1,revisionID="r1",updatedAt=clock+100},payload=stalePayload},"Relay-One-Realm"))
-Sync:RunReceivePayload();assert(commits==1 and cached[userObject].new==true,"stale relay cannot replace the committed snapshot")
+assert(not Sync:OnPayload("character",{objectId=userObject,metadata={owner=userGuid,version=1,revisionID="r1",updatedAt=clock+100},payload=stalePayload},"Relay-One-Realm"))
+Sync:RunReceivePayload();assert(commits==1 and cached[userObject].new==true,"stale or uncorrelated relay cannot replace the committed snapshot")
 
 -- Live domains coalesce queued receipts to their latest object version and do not advance durable watermarks.
 local liveGuid,liveOwner="Character-Live","Live-Owner-Realm";names[liveOwner]=liveGuid
@@ -253,17 +253,16 @@ local timeoutKey=assert(Sync:QueueFetch("character","timeout-poi-object","Timeou
 local timeoutJob=Sync.catchUpIndex[timeoutKey]
 assert(Sync:QueueFetch("character","timeout-poi-object","Timeout-Source-Two-Realm",-1,"LOGIN_CATCHUP",nil,"poi-timeout-request",timeoutMeta)==timeoutKey and #timeoutJob.sourceCandidates==2,"additional peers merge into the same catch-up fetch")
 timeoutJob.notBefore=clock;assert(Sync:RunQueuePump()and Sync.activeTransfer.selectedSource=="Timeout-Source-One-Realm","the first eligible peer receives the background request")
-for attempt=1,4 do
- local transfer=Sync.activeTransfer;assert(transfer and transfer.selectedSource=="Timeout-Source-One-Realm"and transfer.phase=="REQUEST"and transfer.fragments==0,"the first source remains selected during its bounded timeout retries")
- local expire=transfer.timeoutTimer.callback;clock=clock+30;expire()
- if attempt<=3 then
-  assert(timeoutJob.retryCount==attempt and timeoutJob.state=="QUEUED","each unanswered request advances the retry counter")
-  clock=timeoutJob.notBefore;assert(Sync:RunQueuePump()and Sync.activeTransfer.selectedSource=="Timeout-Source-One-Realm","retry reuses the current source until its configured limit")
- else
-  assert(timeoutJob.retryCount==0 and timeoutJob.state=="QUEUED"and #timeoutJob.sourceCandidates==1,"exhausted peer is removed and retry allowance resets for failover")
-  clock=timeoutJob.notBefore;assert(Sync:RunQueuePump()and Sync.activeTransfer.selectedSource=="Timeout-Source-Two-Realm","an alternate source takes over after maxRetries")
+ for attempt=1,4 do
+  local transfer=Sync.activeTransfer;assert(transfer and transfer.selectedSource=="Timeout-Source-One-Realm"and transfer.phase=="REQUEST"and transfer.fragments==0,"the first source remains selected during its bounded timeout retries")
+  local expire=transfer.timeoutTimer.callback;clock=clock+30;expire()
+  if attempt<=3 then
+   assert(timeoutJob.retryCount==attempt and timeoutJob.state=="QUEUED","each unanswered request advances the retry counter")
+   clock=timeoutJob.notBefore;assert(Sync:RunQueuePump()and Sync.activeTransfer.selectedSource=="Timeout-Source-One-Realm","retry reuses the current source until its configured limit")
+  else
+   assert(timeoutJob.retryCount==0 and timeoutJob.state=="RUNNING"and #timeoutJob.sourceCandidates==1 and Sync.activeTransfer.selectedSource=="Timeout-Source-Two-Realm"and Sync.activeTransfer.activityId==transfer.activityId,"exhausted peer is removed and the same activity immediately hands off to the alternate source")
+  end
  end
-end
 assert(Sync:ReleaseTransfer(true,"TEST_COMMIT")and timeoutJob.state=="COMPLETED"and Sync.catchUpIndex[timeoutKey]==nil,"a successful alternate-source response releases the catch-up entry")
 
 -- A job with no alternate source is skipped after its retry limit and the
