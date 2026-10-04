@@ -46,6 +46,7 @@ assert(loadfile(root.."Core/Workflows/WorkflowManager.lua"))()
 assert(loadfile(root.."Core/Tasks/CharacterScanManager.lua"))()
 assert(loadfile(featureRoot.."Equipment.lua"))()
 HolyStorm.Tasks:Initialize();HolyStorm.Workflows:Initialize();HolyStorm.CharacterScans:Initialize();HolyStorm.Equipment:OnInitialize()
+for _,taskType in ipairs({"Equipment.Scan","Equipment.Validate","Equipment.Compare","Equipment.ConfirmScan","Equipment.ConfirmValidate","Equipment.StabilityCompare","Equipment.Store"})do assert(HolyStorm.Tasks:GetTaskType(taskType).timeoutSeconds==30,taskType.." declares a bounded ASYNC timeout")end
 local slots={};for slot=1,16 do slots[slot]=false end
 local function snapshot(itemId)
  local value={slots=deepCopy(slots),updatedAt=100,snapshotVersion=4,equippedCount=1,overallItemLevel=700,equippedItemLevel=700,itemLevel=700}
@@ -91,7 +92,7 @@ assert(unstable.status=="FAILED"and# writes==1 and record.equipment.slots[INVSLO
 assert(scanCalls==12,"unstable candidate retries are bounded at five retries after the initial attempt")
 local unstableFailure=unstable.failureContext;assert(unstableFailure and unstableFailure.reason=="EQUIPMENT_CHANGED_DURING_CONFIRMATION"and unstableFailure.workflowType=="EQUIPMENT_UPDATE","unstable workflow failure has a concrete reason")
 assert(unstableFailure.currentStepId=="stability-compare"and unstableFailure.failedTask=="Equipment.StabilityCompare"and unstableFailure.candidateState=="SCAN_UNSTABLE"and unstableFailure.candidateReason=="EQUIPMENT_CHANGED_DURING_CONFIRMATION","failure diagnostics identify the final stage and candidate")
-assert(unstableFailure.workflowId==unstable.workflowId and unstableFailure.attempt==6 and unstableFailure.elapsed>=0 and unstableFailure.timeout=="NOT_CONFIGURED"and unstableFailure.errorType=="WORKFLOW_RETRY_EXHAUSTED","failure diagnostics include workflow ID, attempt, elapsed, timeout, and error type")
+assert(unstableFailure.workflowId==unstable.workflowId and unstableFailure.attempt==6 and unstableFailure.elapsed>=0 and unstableFailure.timeout==30 and unstableFailure.errorType=="WORKFLOW_RETRY_EXHAUSTED","failure diagnostics include workflow ID, attempt, elapsed, configured ASYNC timeout, and error type")
 assert(unstableFailure.characterScanOwned and unstableFailure.characterScanBlock=="equipment"and unstableFailure.lastSuccessfulStage=="confirm-validate"and unstableFailure.dependency=="NONE","failure diagnostics include scan ownership, dependency, and last successful stage")
 assert(releases[3].status=="FAILED"and HolyStorm.CharacterScans.active==nil,"failed workflow releases CharacterScan once")
 
@@ -103,6 +104,7 @@ assert(releases[4].status=="FAILED"and HolyStorm.CharacterScans.active==nil,"inv
 
 local definition=HolyStorm.Workflows.registry.EQUIPMENT_UPDATE;definition.steps[1].timeoutSeconds=.5
 scanSource=constant(A);scanCalls=0;record={guid="Player-Test",equipment=deepCopy(A),itemLevel=A.itemLevel};workflowQueued=nil
+local originalScanExecute=HolyStorm.Tasks.registry["Equipment.Scan"].execute
 HolyStorm.Tasks.registry["Equipment.Scan"].execute=function()return HolyStorm.Tasks.ASYNC end
 assert(HolyStorm.CharacterScans:Request("equipment","TEST_ASYNC_TIMEOUT",true,{order=10}));processAll();local timedOut=HolyStorm.Workflows.workflows[workflowQueued]
 assert(timedOut and timedOut.status=="WAITING_ASYNC"and HolyStorm.Tasks.tasks[HolyStorm.Tasks.runningTaskId].status=="WAITING_ASYNC","the test producer remains asynchronously active until its execution timeout")
@@ -111,9 +113,20 @@ monotonic=running.timeoutTimer.due;running.timeoutTimer.callback();processAll()
 timedOut=HolyStorm.Workflows.workflows[workflowQueued]
 assert(timedOut.status=="FAILED"and timedOut.failureContext.errorType=="TASK_TIMEOUT"and timedOut.failureContext.failedTask=="Equipment.Scan"and timedOut.failureContext.timeout==.5,"task timeout becomes an explicit workflow failure")
 assert(releases[5].status=="FAILED"and HolyStorm.CharacterScans.active==nil,"timeout releases CharacterScan instead of blocking later producers")
+HolyStorm.Tasks.registry["Equipment.Scan"].execute=originalScanExecute
 local releaseCount=#releases;assert(not HolyStorm.CharacterScans:Finish({workflowId=workflowQueued},"FAILED")and#releases==releaseCount,"duplicate terminal notification cannot release CharacterScan twice")
 
 local otherStarts=0;HolyStorm.CharacterScans:RegisterProvider("OtherProducer",{block="other",capability="character.scan.other",order=20,request=function()otherStarts=otherStarts+1;return"other-scan-1"end})
 assert(HolyStorm.CharacterScans:Request("other","AFTER_EQUIPMENT_FAILURE",true,{order=20}));processAll();assert(otherStarts==1 and HolyStorm.CharacterScans.active and HolyStorm.CharacterScans.active.workflowId=="other-scan-1","a different producer acquires CharacterScan after equipment failure")
 HolyStorm.Events:Emit("HS_WORKFLOW_COMPLETED",{workflowId="other-scan-1"});processAll();assert(HolyStorm.CharacterScans.active==nil,"the next producer also releases normally")
+
+record={guid="Player-Test",equipment=deepCopy(A),itemLevel=A.itemLevel};scanSource=constant(A);scanCalls=0;workflowQueued=nil
+assert(HolyStorm.CharacterScans:Request("equipment","PLAYER_EQUIPMENT_CHANGED",true,{order=10})and HolyStorm.CharacterScans:Advance(),"the first equipment event queues one debounced workflow")
+local debouncedWorkflow=HolyStorm.CharacterScans.active.workflowId;local scanTask
+for _,task in pairs(HolyStorm.Tasks.tasks)do if task.workflowId==debouncedWorkflow and task.registryId=="Equipment.Scan"then scanTask=task;break end end
+local firstNotBefore=scanTask and scanTask.notBefore;monotonic=monotonic+.4
+assert(HolyStorm.CharacterScans:Request("equipment","UNIT_INVENTORY_CHANGED",true,{order=10})and HolyStorm.CharacterScans.active.workflowId==debouncedWorkflow,"a second equipment event before first task start merges into the queued workflow")
+local mergedTask;for _,task in pairs(HolyStorm.Tasks.tasks)do if task.workflowId==debouncedWorkflow and task.registryId=="Equipment.Scan"then mergedTask=task;break end end
+assert(mergedTask and firstNotBefore and mergedTask.notBefore>firstNotBefore and mergedTask.triggerCount>=2,"the merged equipment event resets the pending debounce window")
+processAll();assert(scanCalls==1 and workflowQueued==debouncedWorkflow and HolyStorm.CharacterScans.active==nil,"an equipment burst during debounce produces one actual scan and one workflow (scans="..tostring(scanCalls)..",queued="..tostring(workflowQueued)..",expected="..tostring(debouncedWorkflow)..",active="..tostring(HolyStorm.CharacterScans.active and HolyStorm.CharacterScans.active.workflowId)..",task="..tostring(mergedTask and mergedTask.status)..",notBefore="..tostring(mergedTask and mergedTask.notBefore)..",clock="..tostring(monotonic)..",queue="..tostring(#HolyStorm.Tasks.queue)..",workflowStatus="..tostring(HolyStorm.Workflows.workflows[debouncedWorkflow]and HolyStorm.Workflows.workflows[debouncedWorkflow].status)..")")
 print("Equipment workflow, snapshot atomicity, diagnostics, timeout, and CharacterScan tests passed")

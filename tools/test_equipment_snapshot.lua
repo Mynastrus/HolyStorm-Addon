@@ -3,6 +3,7 @@ local featureRoot=root.."LIVE/Holy_Storm_Equipment/"
 local oldCharacter=nil
 local equipmentIds,equipmentLinks={},{}
 local equipmentBlock
+local itemInfoCalls=0
 local HolyStorm={Utils={Now=function()return 100 end,DeepCopy=function(value)return value end},Data={CharacterStore={Get=function()return oldCharacter end,GetBlock=function()return nil end}},PlayerData={RegisterBlock=function(_,id,definition)if id=="equipment"then equipmentBlock=definition end;return true end,FingerprintSnapshot=function(_,value)return tostring(value[INVSLOT_HEAD])end},Workflows={workflows={}},Serializer={Serialize=function()return"snapshot"end}}
 function LibStub(name)if name=="AceAddon-3.0"then return{GetAddon=function()return HolyStorm end}end;return{GetLocale=function()return setmetatable({},{__index=function(_,key)return key end})end}end
 function HolyStorm:RegisterModule(_,factory)local module={};factory(module);self.Equipment=module end
@@ -19,7 +20,7 @@ function strsplit(separator,text)local result={};for field in(text..separator):g
 Item={CreateFromEquipmentSlot=function(_,slot)return{IsItemEmpty=function()return equipmentIds[slot]==nil end,GetItemID=function()return equipmentIds[slot]end,GetItemLink=function()return equipmentLinks[slot]end}end}
 C_Item={
  GetDetailedItemLevelInfo=function()return 710,false,710 end,
- GetItemInfo=function(value)if value==1001 or tostring(value):find("item:1001",1,true)then return"Quick Ruby","|cffa335ee|Hitem:1001|h[Quick Ruby]|h|r",4,nil,nil,nil,nil,nil,nil,901 end;return"Tier Helm",itemLink,4,nil,nil,nil,nil,nil,nil,900,nil,nil,nil,nil,nil,77 end,
+ GetItemInfo=function(value)itemInfoCalls=itemInfoCalls+1;if value==1001 or tostring(value):find("item:1001",1,true)then return"Quick Ruby","|cffa335ee|Hitem:1001|h[Quick Ruby]|h|r",4,nil,nil,nil,nil,nil,nil,901 end;return"Tier Helm",itemLink,4,nil,nil,nil,nil,nil,nil,900,nil,nil,nil,nil,nil,77 end,
  GetItemNumSockets=function()return 1 end,
  GetItemGem=function()return"Quick Ruby","|cffa335ee|Hitem:1001|h[Quick Ruby]|h|r"end,
  GetItemGemID=function()return 1001 end,
@@ -30,7 +31,7 @@ C_TooltipInfo={GetInventoryItem=function()return{lines={{type=15,leftText="Sophi
 assert(loadfile(featureRoot.."Equipment.lua"))()
 local module=HolyStorm.Equipment
 local snapshot=module:Collect();local item=snapshot.slots[INVSLOT_HEAD]
-assert(snapshot.snapshotVersion==4 and item.state=="EQUIPPED"and item.itemId==111,"equipped slot has an explicit state and item identity")
+assert(snapshot.snapshotVersion==4 and item.state=="EQUIPPED"and item.itemId==111 and itemInfoCalls==2,"equipped slot has an explicit state and item identity with one item-info read for each equipped item")
 assert(item.link==itemLink,"original full item link is preserved verbatim")
 assert(snapshot.equippedItemLevel==705 and snapshot.itemLevel==705 and snapshot.overallItemLevel==700,"Blizzard equipped and overall item levels have distinct fields")
 assert(item.itemLevel==710 and item.quality==4 and item.icon==900,"effective item level, quality and icon are captured")

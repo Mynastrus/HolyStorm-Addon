@@ -6,12 +6,13 @@ local L=LibStub("AceLocale-3.0"):GetLocale("Holy_Storm")
 -- enqueue producer work; cached freshness is read by the shared CharacterUI API.
 local function emptyMetrics()
  local byBlock={}
- for _,block in ipairs({"equipment","mythicPlus","raid","delves","stats"})do byBlock[block]={requested=0,automatic=0,manual=0,started=0,completed=0,failed=0,failedAfterStart=0,startFailed=0,startFailure=0,admissionFailure=0,cancelled=0,retryCount=0,triggers={}}end
+ for _,block in ipairs({"equipment","mythicPlus","raid","delves","stats"})do byBlock[block]={requested=0,automatic=0,manual=0,started=0,logicalScans=0,completed=0,failed=0,failedAfterStart=0,startFailed=0,startFailure=0,admissionFailure=0,cancelled=0,retryCount=0,taskLifecycles=0,commits=0,noOpScans=0,lastDuration=0,totalDuration=0,maxDuration=0,lastLuaMs=0,totalLuaMs=0,maxLuaMs=0,maxTaskMs=0,lastQueueWait=0,totalQueueWait=0,maxQueueWait=0,triggers={}}end
  return{byBlock=byBlock,loginProducerScans=0}
 end
 local CharacterScans={version=addonVersion,providers={},pending={},queue={},active=nil,runtimeStates={},initialized=false,loginSession=0,releaseDelay=1.25,loginWindowSeconds=4,metricsGeneration=0,metrics=emptyMetrics()}
 local function copy(value)return HolyStorm.Utils.DeepCopy(value)end
 local function valid(value)return type(value)=="string"and value~=""end
+local function scanClock()if type(GetTime)=="function"then local ok,value=pcall(GetTime);if ok and type(value)=="number"then return value end end;return HolyStorm.Utils.Now()end
 local function failureDetail(details)
  details=details or{}
  if details.validationReason then return tostring(details.validationReason):sub(1,160)end
@@ -24,7 +25,7 @@ local function scanMetric(block)
  block=tostring(block or"UNKNOWN");if#block>96 then block=block:sub(1,96)end
  local metrics=CharacterScans.metrics.byBlock;local item=metrics[block]
  if not item then local count=0;for _ in pairs(metrics)do count=count+1 end;if count>=64 then block="OTHER";item=metrics[block]end end
- if not item then item={requested=0,automatic=0,manual=0,started=0,completed=0,failed=0,failedAfterStart=0,startFailed=0,startFailure=0,admissionFailure=0,cancelled=0,retryCount=0,triggers={}};metrics[block]=item end
+ if not item then item={requested=0,automatic=0,manual=0,started=0,logicalScans=0,completed=0,failed=0,failedAfterStart=0,startFailed=0,startFailure=0,admissionFailure=0,cancelled=0,retryCount=0,taskLifecycles=0,commits=0,noOpScans=0,lastDuration=0,totalDuration=0,maxDuration=0,lastLuaMs=0,totalLuaMs=0,maxLuaMs=0,maxTaskMs=0,lastQueueWait=0,totalQueueWait=0,maxQueueWait=0,triggers={}};metrics[block]=item end
  return item
 end
 local function recordStartFailure(item)
@@ -39,7 +40,7 @@ end
 
 function CharacterScans:RegisterProvider(owner,definition)
  if not valid(owner)or type(definition)~="table"or not valid(definition.block)or not valid(definition.capability)or type(definition.request)~="function"or definition.status~=nil and type(definition.status)~="function"then return false,"INVALID_CHARACTER_SCAN_PROVIDER"end
- self.providers[definition.block]={owner=owner,block=definition.block,capability=definition.capability,addonId=definition.addonId,order=tonumber(definition.order)or 100,request=definition.request,status=definition.status}
+ self.providers[definition.block]={owner=owner,block=definition.block,capability=definition.capability,addonId=definition.addonId,order=tonumber(definition.order)or 100,request=definition.request,status=definition.status,mergeBeforeStart=definition.mergeBeforeStart==true}
  if HolyStorm.Events then HolyStorm.Events:Emit("HS_CHARACTER_SCAN_PROVIDER_REGISTERED",definition.block,owner)end
  return true
 end
@@ -70,14 +71,49 @@ function CharacterScans:SetRuntimeState(block,state,reason,errorText,diagnostics
 end
 
 function CharacterScans:RecordRetry(block,retryCount,reason,stage,details)
- local item=scanMetric(block);item.retryCount=(item.retryCount or 0)+1
  details=details or{};local state=self.runtimeStates[block]or{};state.lastError=reason or state.lastError;state.lastFailureStage=stage or state.lastFailureStage;state.lastFailureAPI=details.api or state.lastFailureAPI;state.lastFailureDetail=failureDetail(details)or state.lastFailureDetail;state.retryCount=retryCount~=nil and(tonumber(retryCount)or 0)+1 or((state.retryCount or 0)+1);self.runtimeStates[block]=state
- return item.retryCount
+ -- Retry totals come from the retried TaskManager lifecycle. This method only
+ -- records the latest structured reason, avoiding a second count for one retry.
+ return state.retryCount
 end
 
 function CharacterScans:RecordFailure(block,reason,stage,retryCount,details)
  details=details or{};local state=self.runtimeStates[block]or{};state.lastError=reason or"SCAN_FAILED";state.lastFailureStage=stage or"WORKFLOW";state.lastFailureAPI=details.api or state.lastFailureAPI;state.lastFailureDetail=failureDetail(details)or state.lastFailureDetail;state.retryCount=tonumber(retryCount)or state.retryCount or 0;self.runtimeStates[block]=state
  return true
+end
+
+function CharacterScans:RecordSnapshotResult(block,result)
+ local active=self.active;if not active or active.block~=block or active.metricsGeneration~=self.metricsGeneration then return false end
+ local item=scanMetric(block)
+ if result=="COMMITTED"then item.commits=(item.commits or 0)+1;return true end
+ if result=="UNCHANGED"then item.noOpScans=(item.noOpScans or 0)+1;return true end
+ return false
+end
+
+function CharacterScans:WorkflowStarted(workflow)
+ local active=self.active;if not active or not workflow or workflow.workflowId~=active.workflowId or active.didStart then return false end
+ active.didStart=true;active.startedClock=scanClock();active.startedAt=HolyStorm.Utils.Now()
+ if active.metricsGeneration==self.metricsGeneration then
+  local item=scanMetric(active.block);item.started=item.started+1;item.logicalScans=(item.logicalScans or 0)+1
+  local queueWait=math.max(0,active.startedClock-(active.requestedClock or active.startedClock));item.lastQueueWait=queueWait;item.totalQueueWait=(item.totalQueueWait or 0)+queueWait;item.maxQueueWait=math.max(item.maxQueueWait or 0,queueWait)
+  if HolyStorm.Tasks and HolyStorm.Tasks.RecordStartupMetric then HolyStorm.Tasks:RecordStartupMetric("producerScansStarted")end
+  if HolyStorm.Tasks and HolyStorm.Tasks.IsStartupActive and HolyStorm.Tasks:IsStartupActive()and not active.manual then self.metrics.loginProducerScans=self.metrics.loginProducerScans+1 end
+ end
+ self:SetRuntimeState(active.block,"REFRESHING",active.reason)
+ return true
+end
+
+function CharacterScans:TaskStarted(task)
+ local active=self.active;if not active or type(task)~="table"or task.workflowId~=active.workflowId then return false end
+ if not active.didStart then self:WorkflowStarted({workflowId=active.workflowId})end
+ local taskId=task.uniqueId or task.taskId;if not taskId then return false end
+ active.taskIds=active.taskIds or{};local newLifecycle=not active.taskIds[taskId];if newLifecycle then active.taskIds[taskId]=true;if active.metricsGeneration==self.metricsGeneration then local item=scanMetric(active.block);item.taskLifecycles=(item.taskLifecycles or 0)+1 end end
+ local retryCount=math.max(0,tonumber(task.retryCount)or 0)
+ if retryCount>0 and active.metricsGeneration==self.metricsGeneration then
+  active.retryCounts=active.retryCounts or{};local retryKey=tostring(task.registryId or task.taskType or"TASK")..":"..tostring(task.workflowStep or task.metadata and task.metadata.stepId or"")
+  local previous=active.retryCounts[retryKey]or 0;if retryCount>previous then scanMetric(active.block).retryCount=scanMetric(active.block).retryCount+(retryCount-previous);active.retryCounts[retryKey]=retryCount end
+ end
+ return newLifecycle
 end
 
 function CharacterScans:GetRuntimeState(guid,block)
@@ -89,8 +125,15 @@ end
 function CharacterScans:Request(block,reason,sync,options)
  if not valid(block)then return false,"INVALID_CHARACTER_BLOCK"end;options=options or{};local queued=self.pending[block]
  if queued then queued.sync=queued.sync or sync==true;queued.reasons[reason or"UNKNOWN"]=true;queued.manual=queued.manual or manualRequest({manual=options.manual,reason=reason});queued.metricsGeneration=self.metricsGeneration;recordRequest({block=block,reason=reason,manual=options.manual,reasons={[reason or"UNKNOWN"]=true}});if self.initialized then local manual=manualRequest({manual=options.manual,reason=reason});HolyStorm.Tasks:Queue("CharacterScan.Advance",{delay=tonumber(options.delay)or 0,priority=manual and 15 or 30,triggerSource=reason or"CHARACTER_SCAN_REQUEST"})end;return true,"MERGED"end
+ local active=self.active
+ if active and active.block==block and not active.didStart and self.providers[block]and self.providers[block].mergeBeforeStart then
+  active.sync=active.sync or sync==true;active.reasons[reason or"UNKNOWN"]=true;active.manual=active.manual or manualRequest({manual=options.manual,reason=reason});recordRequest({block=block,reason=reason,manual=options.manual,reasons={[reason or"UNKNOWN"]=true}})
+  local provider=self.providers[block]
+  if provider then HolyStorm.Utils.SafeCall("character-scan-merge:"..block,provider.request,active.sync,reason,copy(active.reasons))end
+  return true,"MERGED"
+ end
  local order=tonumber(options.order)or(self.providers[block]and self.providers[block].order)or 100;if self.active and self.active.block==block then order=math.huge end
- local request={block=block,reason=reason or"UNKNOWN",reasons={[reason or"UNKNOWN"]=true},sync=sync==true,order=order,addonId=options.addonId,capability=options.capability,manual=options.manual==true,metricsGeneration=self.metricsGeneration};request.manual=manualRequest(request);recordRequest(request)
+ local request={block=block,reason=reason or"UNKNOWN",reasons={[reason or"UNKNOWN"]=true},sync=sync==true,order=order,addonId=options.addonId,capability=options.capability,manual=options.manual==true,metricsGeneration=self.metricsGeneration,requestedClock=scanClock()};request.manual=manualRequest(request);recordRequest(request)
  self.pending[block]=request;self.queue[#self.queue+1]=request;table.sort(self.queue,sortQueue)
  if not(self.active and self.active.block==block)then self:SetRuntimeState(block,"DIRTY",reason or"UNKNOWN")end
  if self.initialized then HolyStorm.Tasks:Queue("CharacterScan.Advance",{delay=tonumber(options.delay)or 0,priority=manualRequest(request)and 15 or 30,triggerSource=reason or"CHARACTER_SCAN_REQUEST"})end
@@ -136,11 +179,8 @@ function CharacterScans:Advance()
   HolyStorm.Logger:Write("WARN","CharacterScan","workflow","Character scan did not start",{block=request.block,capability=provider.capability,reason=request.reason,error=not ok and tostring(workflowId)or tostring(state)})
   self:SetRuntimeState(request.block,"ERROR",request.reason,not ok and tostring(workflowId)or tostring(state),{lastFailureStage="WORKFLOW_START"});HolyStorm.Tasks:Queue("CharacterScan.Advance",{delay=self.releaseDelay,priority=30,triggerSource="CHARACTER_SCAN_START_FAILED"});return false
  end
- if recordMetrics then local item=scanMetric(request.block);item.started=item.started+1 end
- if HolyStorm.Tasks and HolyStorm.Tasks.RecordStartupMetric then HolyStorm.Tasks:RecordStartupMetric("producerScansStarted")end
- if HolyStorm.Tasks and HolyStorm.Tasks.IsStartupActive and HolyStorm.Tasks:IsStartupActive()and not manualRequest(request)then self.metrics.loginProducerScans=self.metrics.loginProducerScans+1 end
- self.active={block=request.block,workflowId=workflowId,reason=request.reason,reasons=request.reasons,sync=request.sync,startedAt=HolyStorm.Utils.Now(),metricsGeneration=request.metricsGeneration}
- self:SetRuntimeState(request.block,"REFRESHING",request.reason)
+ self.active={block=request.block,workflowId=workflowId,reason=request.reason,reasons=request.reasons,sync=request.sync,startedAt=nil,requestedClock=request.requestedClock,manual=request.manual,didStart=false,taskIds={},retryCounts={},metricsGeneration=request.metricsGeneration}
+ self:SetRuntimeState(request.block,"DIRTY",request.reason)
  HolyStorm.Logger:Write("DEBUG","CharacterScan","workflow","Character scan started",{block=request.block,workflowId=workflowId,reason=request.reason,resource="CHARACTER_SCAN"},workflowId)
  return true
 end
@@ -148,8 +188,17 @@ end
 function CharacterScans:Finish(workflow,status)
  local active=self.active;if not active or not workflow or workflow.workflowId~=active.workflowId then return false end
  self.active=nil;local queuedAgain=self.pending[active.block]~=nil;local recordMetrics=active.metricsGeneration==self.metricsGeneration
+ if recordMetrics and active.didStart and active.startedClock then
+  local item=scanMetric(active.block);local duration=math.max(0,scanClock()-active.startedClock);item.lastDuration=duration;item.totalDuration=(item.totalDuration or 0)+duration;item.maxDuration=math.max(item.maxDuration or 0,duration)
+  local totalLuaMs,maxTaskMs=0,0
+  for taskId in pairs(active.taskIds or{})do local task=HolyStorm.Tasks and HolyStorm.Tasks.tasks and HolyStorm.Tasks.tasks[taskId];local taskMs=task and math.max(0,tonumber(task.executionDuration)or 0)*1000 or 0;totalLuaMs=totalLuaMs+taskMs;maxTaskMs=math.max(maxTaskMs,taskMs)end
+  item.lastLuaMs=totalLuaMs;item.totalLuaMs=(item.totalLuaMs or 0)+totalLuaMs;item.maxLuaMs=math.max(item.maxLuaMs or 0,totalLuaMs);item.maxTaskMs=math.max(item.maxTaskMs or 0,maxTaskMs)
+ end
  if status=="COMPLETED"then if recordMetrics then local item=scanMetric(active.block);item.completed=item.completed+1 end;if HolyStorm.Tasks and HolyStorm.Tasks.RecordStartupMetric then HolyStorm.Tasks:RecordStartupMetric("producerScansCompleted")end;self:SetRuntimeState(active.block,queuedAgain and"DIRTY"or"CURRENT",queuedAgain and"EVENT_QUEUED"or active.reason)
- elseif status=="FAILED"then if recordMetrics then local item=scanMetric(active.block);item.failedAfterStart=(item.failedAfterStart or item.failed or 0)+1;item.failed=item.failedAfterStart end;if HolyStorm.Tasks and HolyStorm.Tasks.RecordStartupMetric then HolyStorm.Tasks:RecordStartupMetric("producerScansFailed")end;local previous=self.runtimeStates[active.block]or{};self:SetRuntimeState(active.block,"ERROR",active.reason,workflow and workflow.lastError or previous.lastError or"WORKFLOW_FAILED",{lastFailureStage=previous.lastFailureStage or"WORKFLOW",retryCount=previous.retryCount})
+ elseif status=="FAILED"then
+  if recordMetrics then if active.didStart then local item=scanMetric(active.block);item.failedAfterStart=(item.failedAfterStart or item.failed or 0)+1;item.failed=item.failedAfterStart else local item=scanMetric(active.block);recordStartFailure(item)end end
+  if active.didStart and HolyStorm.Tasks and HolyStorm.Tasks.RecordStartupMetric then HolyStorm.Tasks:RecordStartupMetric("producerScansFailed")elseif not active.didStart and HolyStorm.Tasks and HolyStorm.Tasks.RecordStartupMetric then HolyStorm.Tasks:RecordStartupMetric("producerScanStartFailures")end
+  local previous=self.runtimeStates[active.block]or{};local failure=type(workflow.failureContext)=="table"and workflow.failureContext or{};self:SetRuntimeState(active.block,"ERROR",active.reason,workflow and workflow.lastError or previous.lastError or"WORKFLOW_FAILED",{lastFailureStage=previous.lastFailureStage or failure.currentStepId or failure.failedTask or(not active.didStart and"WORKFLOW_START"or"WORKFLOW"),lastFailureAPI=previous.lastFailureAPI or failure.api,lastFailureDetail=previous.lastFailureDetail or failure.candidateReason or failure.reason,retryCount=previous.retryCount or failure.retryCount})
  elseif status=="CANCELLED"then if recordMetrics then local item=scanMetric(active.block);item.cancelled=(item.cancelled or 0)+1 end;if not queuedAgain then self:SetRuntimeState(active.block,"STALE",active.reason,"WORKFLOW_CANCELLED")end
  elseif not queuedAgain then self:SetRuntimeState(active.block,"STALE",active.reason,"WORKFLOW_CANCELLED")end
  HolyStorm.Logger:Write(status=="FAILED"and"WARN"or"DEBUG","CharacterScan","workflow","Character scan released",{block=active.block,workflowId=active.workflowId,status=status,reason=active.reason,resource="CHARACTER_SCAN"},active.workflowId)
@@ -166,6 +215,8 @@ function CharacterScans:Initialize()
  if self.initialized then return true end;self.initialized=true
  HolyStorm.Tasks:RegisterTaskType("CharacterScan.Advance",{name=L["TASK_CHARACTER_SCAN_ADVANCE"],localizedNameKey="TASK_CHARACTER_SCAN_ADVANCE",module="CharacterScan",priority=30,executionMode="UNIQUE",conditions={"PLAYER_LOGGED_IN","PLAYER_READY","NOT_LOADING","NOT_ZONING"},execute=function()return CharacterScans:Advance()end})
  HolyStorm.Events:Register("PLAYER_LOGIN","character-scan",function()CharacterScans:BeginLogin()end)
+ HolyStorm.Events:Register("HS_WORKFLOW_STARTED","character-scan-start",function(_,workflow)CharacterScans:WorkflowStarted(workflow)end)
+ HolyStorm.Events:Register("HS_TASK_STARTED","character-scan-task",function(_,task)CharacterScans:TaskStarted(task)end)
  HolyStorm.Events:Register("HS_WORKFLOW_COMPLETED","character-scan",function(_,workflow)CharacterScans:Finish(workflow,"COMPLETED")end)
  HolyStorm.Events:Register("HS_WORKFLOW_FAILED","character-scan",function(_,workflow)CharacterScans:Finish(workflow,"FAILED")end)
  HolyStorm.Events:Register("HS_WORKFLOW_CANCELLED","character-scan",function(_,workflow)CharacterScans:Finish(workflow,"CANCELLED")end)

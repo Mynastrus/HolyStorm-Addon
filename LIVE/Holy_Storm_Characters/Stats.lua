@@ -73,17 +73,18 @@ local function readLive()
  local armorCall,_,effectiveArmor=callValues(_G.UnitArmor,"player")
  live.armor={effective=armorCall and safeNumber(effectiveArmor)or nil}
  local crit,critRating=critValue()
+ local mastery,masteryCoefficient=masteryValue()
  for _,definition in ipairs(secondaryStats)do
   local ratingType=definition.key=="criticalStrike"and critRating or ratingId(definition.rating)
   local rating=ratingType and callNumber("GetCombatRating",ratingType)or nil
   local effective
   if definition.key=="criticalStrike"then effective=crit
   elseif definition.key=="versatility"then effective=versatilityValue()
-  elseif definition.key=="mastery"then effective=masteryValue()
+   elseif definition.key=="mastery"then effective=mastery
   else effective=callNumber(definition.effective)end
   live.secondary[definition.key]={rating=rating,effective=effective}
  end
- local _,coefficient=masteryValue();live.secondary.mastery.coefficient=coefficient
+  live.secondary.mastery.coefficient=masteryCoefficient
  local index=type(GetSpecialization)=="function"and callNumber("GetSpecialization")or nil;if index then
   local ok,id,name,_,icon,role=callValues(GetSpecializationInfo,index)
   if ok then live.spec={index=index,id=safeNumber(id),name=safeString(name),icon=safeNumber(icon),role=safeString(role)}end
@@ -158,6 +159,7 @@ HolyStorm:RegisterModule(metadata,function(Module)
   local partial=type(snapshot)=="table"and type(snapshot.capture)=="table"and snapshot.capture.partial==true
   local allowed,reason=baselineSafety();if not allowed and not partial then self.baselineDirty=true;return false,reason end
   local guid=UnitGUID("player");local ok,writeReason=HolyStorm.PlayerData:WriteOwnedBlock(guid,"stats",snapshot,"blizzard")
+  if HolyStorm.CharacterScans and HolyStorm.CharacterScans.RecordSnapshotResult then HolyStorm.CharacterScans:RecordSnapshotResult("stats",ok and"COMMITTED"or writeReason=="UNCHANGED"and"UNCHANGED"or"FAILED")end
   if partial then self.baselineDirty=true elseif ok or writeReason=="UNCHANGED"then self.baselineDirty=false end
   if not partial and(ok or writeReason=="UNCHANGED")then HolyStorm.Events:Emit("HS_STATS_BASELINE_UPDATED",guid,snapshot)end
   if ok or writeReason=="UNCHANGED"then self:CollectLive()end
@@ -180,7 +182,7 @@ HolyStorm:RegisterModule(metadata,function(Module)
   C_Timer.After(delay or .2,function()Module.liveTimer=false;Module:CollectLive();if Module.baselineDirty then local allowed=baselineSafety();if allowed then Module:ScheduleBaseline(.1)end end end)
  end
  function Module:OnInitialize()
-  HolyStorm.CharacterScans:RegisterProvider("CharacterStats",{block="stats",capability="character.scan.stats",addonId="characters",order=50,request=function(sync,reason)local _,workflowId=Module:Queue(sync);return workflowId end})
+  HolyStorm.CharacterScans:RegisterProvider("CharacterStats",{block="stats",capability="character.scan.stats",addonId="characters",order=50,mergeBeforeStart=true,request=function(sync,reason)local _,workflowId=Module:Queue(sync);return workflowId end})
   HolyStorm:RegisterCapability("CharacterStats","character.scan.stats",function(_,sync,reason)return HolyStorm.CharacterScans:Request("stats",reason or"CAPABILITY",sync,{order=50})end)
   HolyStorm:RegisterCapability("CharacterStats","character.scan.additional",function(_,sync,reason)return HolyStorm.CharacterScans:Request("stats",reason or"CAPABILITY",sync,{order=50})end)
  end
@@ -192,7 +194,7 @@ HolyStorm:RegisterModule(metadata,function(Module)
   local events={"PLAYER_EQUIPMENT_CHANGED","PLAYER_SPECIALIZATION_CHANGED","TRAIT_CONFIG_UPDATED","PLAYER_TALENT_UPDATE","PLAYER_LEVEL_UP"}
   for _,eventName in ipairs(events)do local event=eventName;HolyStorm.Events:Register(event,"character-stats",function(_,unit)
    if event=="PLAYER_SPECIALIZATION_CHANGED"and unit and unit~="player"then return end
-   if event~="PLAYER_LEVEL_UP"and HolyStorm.State and not HolyStorm.State:Is("playerReady")then return end
+    if HolyStorm.State and not HolyStorm.State:Is("playerReady")then return end
    Module.baselineDirty=true;if statsViewVisible()then Module:ScheduleLive(.25)end;Module:ScheduleBaseline(.5,event)
   end)end
   HolyStorm.Events:Register("UNIT_AURA","character-stats-live",function(_,unit)

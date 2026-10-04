@@ -1,5 +1,5 @@
 local root=(arg[0]:gsub("tools[/\\]test_delves.lua$","")).."LIVE/Holy_Storm_Delves/"
-local Module={};local events,providers,capabilities={}, {}, {};local blockDefinition;local commits={}
+local Module={};local events,providers,capabilities={}, {}, {};local blockDefinition;local commits={};local requests={}
 local playerReady=false;local HolyStorm={Utils={Now=function()return 100 end},Data={CharacterStore={}},Snapshots={},Events={},PlayerData={},CharacterScans={},State={Is=function(_,name)return name=="playerReady"and playerReady end}}
 function HolyStorm.PlayerData:RegisterBlock(id,definition)assert(id=="delves");blockDefinition=definition;return true end
 function HolyStorm.PlayerData:WriteOwnedBlock(_,block,snapshot)commits[#commits+1]={block=block,snapshot=snapshot};return true end
@@ -7,7 +7,7 @@ function HolyStorm.Data.CharacterStore:GetBlock()end
 function HolyStorm.Snapshots:Queue(_,scanner,validator,commit,options)self.scanner,self.validator,self.commit,self.options=scanner,validator,commit,options;return true,"delves-wf"end
 function HolyStorm.Snapshots:Cancel()end
 function HolyStorm.CharacterScans:RegisterProvider(owner,definition)providers[definition.block]={owner=owner,definition=definition};return true end
-function HolyStorm.CharacterScans:Request(block,reason,sync)self.lastRequest={block=block,reason=reason,sync=sync};return true,"QUEUED"end
+function HolyStorm.CharacterScans:Request(block,reason,sync)self.lastRequest={block=block,reason=reason,sync=sync};requests[#requests+1]=self.lastRequest;return true,"QUEUED"end
 function HolyStorm.Events:Register(event,owner,callback)events[event]={owner=owner,callback=callback}end
 function HolyStorm.Events:UnregisterOwner(owner)for event,entry in pairs(events)do if entry.owner==owner then events[event]=nil end end end
 function HolyStorm:RegisterModule(metadata,callback)self.metadata=metadata;callback(Module)end
@@ -79,4 +79,5 @@ assert(not HolyStorm.Snapshots.validator(invalid),"inconsistent completion list 
 local handler=capabilities["character.scan.additional"];assert(type(handler)=="function");handler(Module,true,"CAPABILITY");assert(HolyStorm.CharacterScans.lastRequest.block=="delves","capability requests use the central scan manager")
 Module:OnDisable();C_WeeklyRewards=nil;Module:OnEnable();assert(events.WEEKLY_REWARDS_UPDATE,"an unavailable optional Weekly Rewards namespace does not disable manual Delves scans or its event contract");Module:OnDisable();C_WeeklyRewards=savedWeekly;assert(not events.WEEKLY_REWARDS_UPDATE,"feature event handlers are removed on disable")
 playerReady=true;Module:OnEnable();events.WEEKLY_REWARDS_UPDATE.callback();assert(HolyStorm.CharacterScans.lastRequest.block=="delves","a Delves module loaded after login scans on its first actual weekly reward update");Module:OnDisable()
+playerReady=false;Module:OnEnable();playerReady=true;local beforeReadyBurst=#requests;events.WEEKLY_REWARDS_UPDATE.callback();assert(#requests==beforeReadyBurst,"playerReady alone does not release the initial Delves reward-event guard");events.WEEKLY_REWARDS_UPDATE.callback();assert(#requests==beforeReadyBurst+1,"the next weekly event after readiness is processed");Module:OnDisable()
 print("Delves API readiness, known-empty, reset identity, last-valid and lifecycle tests passed")

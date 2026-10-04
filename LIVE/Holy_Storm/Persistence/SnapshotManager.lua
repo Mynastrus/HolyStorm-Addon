@@ -9,16 +9,24 @@ local Snapshots={version=addonVersion,registered={}}
 -- queue; they are registered as three real workflow tasks.
 function Snapshots:Fingerprint(value)return HolyStorm.PlayerData:FingerprintSnapshot(value)end
 local function context(task)local w=HolyStorm.Workflows.workflows[task.workflowId];return w and w.context end
+local function recordValidationResult(id,task,reason,disposition,retryCount,diagnostics)
+ local scans=HolyStorm.CharacterScans;local active=scans and scans.active
+ if not active or active.workflowId~=task.workflowId then return end
+ local details=type(diagnostics)=="table"and diagnostics or{}
+ local stage=details.stage or details.lastFailureStage or(type(details.producer)=="string"and"COLLECT"or"VALIDATION")
+ if disposition=="RETRY"and scans.RecordRetry then scans:RecordRetry(active.block,retryCount,reason,stage,details)
+ elseif disposition=="FAIL"and scans.RecordFailure then scans:RecordFailure(active.block,reason,stage,retryCount,details)end
+end
 function Snapshots:Register(id)
  if self.registered[id]then return true end;local prefix="Snapshot."..id
-	HolyStorm.Tasks:RegisterTaskType(prefix..".Scan",{name=string.format(L["TASK_SNAPSHOT_SCAN"],id),localizedNameKey="TASK_SNAPSHOT_SCAN",module=id,priority=50,executionMode="MULTI",execute=function(task)
+	HolyStorm.Tasks:RegisterTaskType(prefix..".Scan",{name=string.format(L["TASK_SNAPSHOT_SCAN"],id),localizedNameKey="TASK_SNAPSHOT_SCAN",module=id,priority=50,executionMode="MULTI",timeoutSeconds=30,execute=function(task)
 		local c=context(task);if not c then error("missing workflow context")end
 		local result,reason,diagnostics=c.data.scanner(task)
 		if result==HolyStorm.Tasks.YIELD or result==HolyStorm.Tasks.ASYNC then return result end
 		if type(result)=="table"and result.workflowAction then return result end
 		return{snapshot=result,reason=reason,diagnostics=diagnostics}
 	end})
-	HolyStorm.Tasks:RegisterTaskType(prefix..".Validate",{name=string.format(L["TASK_SNAPSHOT_VALIDATE"],id),localizedNameKey="TASK_SNAPSHOT_VALIDATE",module=id,priority=50,executionMode="MULTI",execute=function(task)
+	HolyStorm.Tasks:RegisterTaskType(prefix..".Validate",{name=string.format(L["TASK_SNAPSHOT_VALIDATE"],id),localizedNameKey="TASK_SNAPSHOT_VALIDATE",module=id,priority=50,executionMode="MULTI",timeoutSeconds=30,execute=function(task)
 		local c=context(task);local scan=c and c.results.scan
 		if not c or not c.data or type(scan)~="table"then error("missing scan result")end
 		local maximum=tonumber(c.data.options.maxRetries)or 3
@@ -30,6 +38,7 @@ function Snapshots:Register(id)
 			reason=reason or"INVALID_SNAPSHOT"
 			local willRetry=retryable~=false and attempt<maximum
 			local disposition=willRetry and"RETRY"or"FAIL"
+			recordValidationResult(id,task,reason,disposition,attempt,scan.diagnostics)
 			if type(c.data.options.onValidationFailure)=="function"then
 				HolyStorm.Utils.SafeCall("snapshot-validation-diagnostic:"..id,c.data.options.onValidationFailure,reason,disposition,attempt,maximum,scan.diagnostics)
 			end
@@ -39,7 +48,7 @@ function Snapshots:Register(id)
 		local fp;if c.data.options.fingerprint~=false then fp=Snapshots:Fingerprint(scan.snapshot);if not fp then error("snapshot fingerprint failed")end end
 		c.data.fingerprint=fp;return{valid=true,status="VALID"}
 	end})
- HolyStorm.Tasks:RegisterTaskType(prefix..".Commit",{name=string.format(L["TASK_SNAPSHOT_COMMIT"],id),localizedNameKey="TASK_SNAPSHOT_COMMIT",module=id,priority=50,executionMode="MULTI",execute=function(task)local c=context(task);local scan=c and c.results.scan;if not c or not c.data or type(scan)~="table"then error("missing validated scan result")end;local committed,reason=c.data.commit(scan.snapshot,c.data.fingerprint);if type(committed)=="table"and committed.workflowAction then return committed end;if committed==false then if reason=="UNCHANGED"then return{workflowAction="COMPLETE",unchanged=true,status="UNCHANGED"}end;error("snapshot commit failed: "..tostring(reason or"UNKNOWN"))end;return{committed=true,status="COMMITTED"}end})
+	HolyStorm.Tasks:RegisterTaskType(prefix..".Commit",{name=string.format(L["TASK_SNAPSHOT_COMMIT"],id),localizedNameKey="TASK_SNAPSHOT_COMMIT",module=id,priority=50,executionMode="MULTI",timeoutSeconds=30,execute=function(task)local c=context(task);local scan=c and c.results.scan;if not c or not c.data or type(scan)~="table"then error("missing validated scan result")end;local committed,reason=c.data.commit(scan.snapshot,c.data.fingerprint);if type(committed)=="table"and committed.workflowAction then return committed end;if committed==false then if reason=="UNCHANGED"then return{workflowAction="COMPLETE",unchanged=true,status="UNCHANGED"}end;error("snapshot commit failed: "..tostring(reason or"UNKNOWN"))end;return{committed=true,status="COMMITTED"}end})
  HolyStorm.Workflows:Register("SNAPSHOT_"..string.upper(id),{name=string.format(L["WORKFLOW_SNAPSHOT"],id),localizedNameKey="WORKFLOW_SNAPSHOT",module=id,priority=50,allowParallel=false,steps={{id="scan",taskType=prefix..".Scan"},{id="validate",taskType=prefix..".Validate"},{id="commit",taskType=prefix..".Commit"}}})
  self.registered[id]=true;return true
 end

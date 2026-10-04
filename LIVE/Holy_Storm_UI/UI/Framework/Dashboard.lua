@@ -128,8 +128,8 @@ function UI:BuildDashboardModel()
  end
  local stats=summary and summary.stats;local statsCount=0
  if type(stats)=="table"then
-  for _,value in pairs(type(stats.primary)=="table"and stats.primary or{})do if type(value)=="table"and tonumber(value.effective)then statsCount=statsCount+1 end end
-  for _,value in pairs(type(stats.secondary)=="table"and stats.secondary or{})do if type(value)=="table"and(tonumber(value.rating)or tonumber(value.percent))then statsCount=statsCount+1 end end
+  for _,value in pairs(type(stats.primary)=="table"and stats.primary or{})do if type(value)=="table"and tonumber(value.baseline)then statsCount=statsCount+1 end end
+  for _,value in pairs(type(stats.secondary)=="table"and stats.secondary or{})do if type(value)=="table"and(tonumber(value.rating)or tonumber(value.baseline))then statsCount=statsCount+1 end end
  end
  local twinksCount
  if context and context.accountUUID and HolyStorm.TwinkCore and HolyStorm.TwinkCore.GetVisibleCharactersForViewer then local list=HolyStorm.TwinkCore:GetVisibleCharactersForViewer(context.accountUUID,context.guild);twinksCount=math.max(0,#(list or{})-1)end

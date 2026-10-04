@@ -1,6 +1,6 @@
 -- Character Stats API semantics, baseline protection and transient update contracts.
 local root=(arg[0]:gsub("tools[/\\]test_character_stats.lua$","")).."LIVE/Holy_Storm_Characters/"
-local now=1000;local runtime=10;local callbacks={};local emitted={};local listeners={};local writes={};local auraState={}
+local now=1000;local runtime=10;local callbacks={};local emitted={};local listeners={};local writes={};local auraState={};local playerReady=false;local masteryCalls=0
 unpack=unpack or table.unpack
 function GetTime()return runtime end;function UnitGUID()return"Player-Local"end
 function issecretvalue(value)return value=="SECRET"end
@@ -15,14 +15,14 @@ CR_CRIT_MELEE=1;CR_CRIT_RANGED=2;CR_CRIT_SPELL=3;CR_HASTE_MELEE=4;CR_MASTERY=5;C
 MAX_SPELL_SCHOOLS=7
 function GetSpellCritChance()return 25 end
 function GetRangedCritChance()return 23 end;function GetCritChance()return 22 end
-function GetHaste()return 20 end;function GetMasteryEffect()return 22,1.15 end
+function GetHaste()return 20 end;function GetMasteryEffect()masteryCalls=masteryCalls+1;return 22,1.15 end
 function GetCombatRating(rating)if rating==CR_CRIT_SPELL then return 936 elseif rating==CR_HASTE_MELEE then return 813 elseif rating==CR_MASTERY then return 690 elseif rating==CR_VERSATILITY_DAMAGE_DONE then return 148 elseif rating==CR_LIFESTEAL then return 0 else return 0 end end
 function GetCombatRatingBonus(rating)if rating==CR_CRIT_SPELL then return 20.3 elseif rating==CR_HASTE_MELEE then return 18.5 elseif rating==CR_MASTERY then return 15 elseif rating==CR_VERSATILITY_DAMAGE_DONE then return 2.7 else return 0 end end
 function GetVersatilityBonus()return .3 end;function GetLifesteal()return 0 end;function GetAvoidance()return 5 end;function GetSpeed()return 0 end
 function GetSpecialization()return 1 end;function GetSpecializationInfo()return 102, "Balance", nil, 55, "DAMAGER" end
 C_UnitAuras={GetAuraDataByIndex=function(_,index,filter)return auraState[filter]and auraState[filter][index]or nil end}
 C_Timer={After=function(delay,callback)callbacks[#callbacks+1]={delay=delay,callback=callback}end}
-local HolyStorm={Events={},Utils={Now=function()return now end},PlayerData={},Data={CharacterStore={}},Snapshots={},CharacterScans={},Serializer={Serialize=function(_,value)
+local HolyStorm={Events={},Utils={Now=function()return now end},PlayerData={},Data={CharacterStore={}},Snapshots={},CharacterScans={},State={Is=function(_,key)return key=="playerReady"and playerReady end},Serializer={Serialize=function(_,value)
  local function encode(v)if type(v)~="table"then return tostring(v)end;local keys={};for k in pairs(v)do keys[#keys+1]=k end;table.sort(keys,function(a,b)return tostring(a)<tostring(b)end);local out={};for _,k in ipairs(keys)do out[#out+1]=tostring(k)..":"..encode(v[k])end;return"{"..table.concat(out,",").."}"end;return encode(value)
 end}}
 HolyStorm.UI={visible=false,GetVisiblePage=function(self)return self.visible and"character"or nil end};HolyStorm.CharacterUI={activeTab="stats",context={characterUUID="Player-Local"}}
@@ -47,8 +47,11 @@ local Stats
 HolyStorm.RegisterModule=function(_,_,callback)Stats={};callback(Stats)end
 assert(loadfile(root.."Stats.lua"))()
 Stats:OnInitialize();Stats:OnEnable();assert(#callbacks==0,"Stats enable and missing baseline do not schedule login work");callbacks={};Stats.baselineTimer=false;Stats.liveTimer=false
+listeners.PLAYER_LEVEL_UP["character-stats"]("PLAYER_LEVEL_UP")
+assert(#callbacks==0 and(HolyStorm.CharacterScans.requests==nil or#HolyStorm.CharacterScans.requests==0),"a pre-ready level-up event does not queue a login producer scan")
+playerReady=true;listeners.PLAYER_LEVEL_UP["character-stats"]("PLAYER_LEVEL_UP");assert(#callbacks==1,"a post-ready level-up schedules the coalesced Stats baseline refresh");callbacks[1].callback();callbacks={};Stats.baselineTimer=false
 
-local clean=Stats:Collect();assert(clean.snapshotVersion==2 and clean.schemaVersion==2 and clean.capture.eligible)
+masteryCalls=0;local clean=Stats:Collect();assert(clean.snapshotVersion==2 and clean.schemaVersion==2 and clean.capture.eligible and masteryCalls==1,"one live capture reads mastery and its coefficient once")
 assert(clean.primary.strength.baseline==95 and clean.primary.strength.baseline~=110,"UnitStat positive buffs are excluded from the stored primary baseline")
 assert(clean.armor.baseline==2390,"effective equipped armor becomes the character baseline instead of UnitArmor's zero raw base")
 assert(clean.secondary.criticalStrike.rating==936 and clean.secondary.criticalStrike.baseline==25,"Blizzard-selected spell crit percentage and its matching rating are both kept")

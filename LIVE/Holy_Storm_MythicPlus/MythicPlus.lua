@@ -338,7 +338,9 @@ HolyStorm:RegisterModule(metadata, function(Module)
 
 	function Module:Commit(snapshot)
 		local guid = UnitGUID("player")
-		return HolyStorm.PlayerData:WriteOwnedBlock(guid, "mythicPlus", snapshot, "blizzard")
+		local committed, reason = HolyStorm.PlayerData:WriteOwnedBlock(guid, "mythicPlus", snapshot, "blizzard")
+		if HolyStorm.CharacterScans and HolyStorm.CharacterScans.RecordSnapshotResult then HolyStorm.CharacterScans:RecordSnapshotResult("mythicPlus", committed and "COMMITTED" or reason == "UNCHANGED" and "UNCHANGED" or "FAILED") end
+		return committed, reason
 	end
 
 	function Module:Queue(sync, delay)
@@ -365,7 +367,7 @@ HolyStorm:RegisterModule(metadata, function(Module)
 
 	function Module:OnInitialize()
 		HolyStorm.CharacterScans:RegisterProvider("MythicPlus", {
-			block = "mythicPlus", capability = "character.scan.mythicplus", addonId = "mythicPlus", order = 20,
+			block = "mythicPlus", capability = "character.scan.mythicplus", addonId = "mythicPlus", order = 20, mergeBeforeStart = true,
 			request = function(sync, reason, reasons)
 				local manual = reason == "MANUAL" or reason == "MANUAL_COMMAND" or reason == "DASHBOARD_MANUAL" or reason == "CAPABILITY"
 					or type(reasons) == "table" and (reasons.MANUAL == true or reasons.MANUAL_COMMAND == true or reasons.DASHBOARD_MANUAL == true or reasons.CAPABILITY == true)
@@ -384,18 +386,21 @@ HolyStorm:RegisterModule(metadata, function(Module)
 		if not C_MythicPlus or not C_ChallengeMode then self:Disable(); return end
 		self.initialDataRequested = false
 		self.ignoreInitialWeeklyRewardsUpdate = HolyStorm.State and not HolyStorm.State:Is("playerReady") or false
+		local function playerReady() return not HolyStorm.State or HolyStorm.State:Is("playerReady") end
 		for _, eventName in ipairs({ "CHALLENGE_MODE_COMPLETED", "MYTHIC_PLUS_NEW_WEEKLY_RECORD" }) do
 			local name = eventName
 			HolyStorm.Events:Register(name, "mythicplus", function()
+				if not playerReady() then return end
 				HolyStorm.CharacterScans:Request("mythicPlus", name, true, { order = 20 })
 			end)
 		end
 		HolyStorm.Events:Register("WEEKLY_REWARDS_UPDATE", "mythicplus-weekly-ready", function()
 			if self.ignoreInitialWeeklyRewardsUpdate then self.ignoreInitialWeeklyRewardsUpdate = false; return end
+			if not playerReady() then return end
 			HolyStorm.CharacterScans:Request("mythicPlus", "WEEKLY_REWARDS_UPDATE", true, { order = 20 })
 		end)
 		local context = self.loadContext
-		if context and context.reason == "event" then HolyStorm.CharacterScans:Request("mythicPlus", context.trigger, true, { order = 20 }) end
+		if context and context.reason == "event" and playerReady() then HolyStorm.CharacterScans:Request("mythicPlus", context.trigger, true, { order = 20 }) end
 	end
 
 	function Module:OnDisable()

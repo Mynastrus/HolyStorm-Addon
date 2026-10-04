@@ -70,7 +70,8 @@ assert(core:MergeOwnerSnapshot(klausAccount,payloadH,{owner=ka,version=2,updated
 local removed,reason,message=core:RemoveAdministrativeAssignment(klausAccount,da);assert(not removed and reason=="OWNER_CONFIRMED" and message=="TWINK_ERROR_OWNER_CONFIRMED")
 -- J: the central metadata comparator rejects an older owner version before import.
 local stale={accountUUID=klausAccount,characters={[ka]=ownerEntry(ka),[da]=ownerEntry(da)},visibility=core.visibility.ALL,ownerVersion=1,updatedAt=900,issuedBy=ka}
-assert(HolyStorm.Sync:OnPayload("twinks",{objectId=klausAccount,metadata={objectId=klausAccount,owner=ka,version=1,updatedAt=900},payload=stale},ka));assert(HolyStorm.Sync:RunReceivePayload());assert(core:GetAccount(klausAccount).ownerVersion==2)
+local currentOwnerMetadata=HolyStorm.Sync.domains.twinks.getMetadata(klausAccount);local decision,decisionReason=HolyStorm.PlayerData:CompareMetadata(currentOwnerMetadata,{objectId=klausAccount,owner=ka,version=1,updatedAt=900});assert(decision==-1 and decisionReason=="STALE_VERSION","the central metadata comparator rejects an older owner revision")
+local accepted,receiveReason=HolyStorm.Sync:OnPayload("twinks",{objectId=klausAccount,metadata={objectId=klausAccount,owner=ka,version=1,updatedAt=900},payload=stale},ka);assert(not accepted and receiveReason=="UNMATCHED_REQUEST"and core:GetAccount(klausAccount).ownerVersion==2,"an uncorrelated stale owner payload cannot bypass the active fetch contract")
 
 -- K2: relationship confirmation is idempotent across roster availability, guild identity, rank and level changes.
 local originalPublish=HolyStorm.Sync.Publish;local publishCount=0;HolyStorm.Sync.Publish=function(self,domain,id,reason)if domain=="twinks"then publishCount=publishCount+1 end;return originalPublish(self,domain,id,reason)end

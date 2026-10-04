@@ -170,13 +170,13 @@ HolyStorm.CharacterScans:Initialize();Module:OnInitialize()
 HolyStorm.Events:Emit("PLAYER_LOGIN");assert(not Module.activeRaidRun and#HolyStorm.CharacterScans.queue==0)
 HolyStorm.CharacterScans:SetRuntimeState("raid","MISSING");HolyStorm.CharacterScans:SetRuntimeState("raid","STALE")
 assert(not Module.activeRaidRun and#HolyStorm.CharacterScans.queue==0)
+local startedBefore=HolyStorm.CharacterScans.metrics.byBlock.raid.started
 HolyStorm.CharacterScans:Request("raid","MANUAL_COMMAND",false);pumpFrame()
 local ownedRun=Module.activeRaidRun;assert(ownedRun and HolyStorm.CharacterScans.active.workflowId==ownedRun.workflowId)
 function IsInInstance()return true,"raid"end
 HolyStorm.Events:Emit("UPDATE_INSTANCE_INFO")
 for _=1,12 do HolyStorm.Events:Emit("ENCOUNTER_END",9001,"Boss",16,20,1)end
-assert(#HolyStorm.CharacterScans.queue==1 and ownedRun.followUpQueued==1 and ownedRun.unexpectedRaidEvents==12 and ownedRun.expectedInstanceInfoEvents==1)
-local startedBefore=HolyStorm.CharacterScans.metrics.byBlock.raid.started
+assert(#HolyStorm.CharacterScans.queue==1 and ownedRun.followUpQueued==1 and ownedRun.unexpectedRaidEvents==12 and ownedRun.expectedInstanceInfoEvents==1,string.format("Raid storm state: queue=%d followUp=%d unexpected=%d expectedInfo=%d",#HolyStorm.CharacterScans.queue,ownedRun.followUpQueued,ownedRun.unexpectedRaidEvents,ownedRun.expectedInstanceInfoEvents))
 local responded={}
 for _=1,1000 do
  local run=Module.activeRaidRun
@@ -184,7 +184,7 @@ for _=1,1000 do
  if not run and not HolyStorm.CharacterScans.active and#HolyStorm.CharacterScans.queue==0 and#HolyStorm.Tasks.queue==0 then break end
  pumpFrame()
 end
-assert(HolyStorm.CharacterScans.metrics.byBlock.raid.started==startedBefore+1 and#HolyStorm.CharacterScans.queue==0 and not HolyStorm.CharacterScans.active,"exactly one follow-up scan completes")
+assert(HolyStorm.CharacterScans.metrics.byBlock.raid.started==startedBefore+2 and#HolyStorm.CharacterScans.queue==0 and not HolyStorm.CharacterScans.active,"the manual scan and exactly one coalesced follow-up reach an actual workflow start and complete")
 assert(summaries(ownedRun.workflowId)==1)
 
 -- A failed mapped value read retries through validation, but each retry still

@@ -125,17 +125,16 @@ HolyStorm:RegisterModule(metadata,function(Module)
   if type(snapshot)~="table"then return false,scanReason or"DELVES_REQUIRED_DATA_MISSING",type(diagnostics)=="table"and diagnostics.retryable==true end
   local valid,reason=validSnapshot(snapshot);return valid,reason,false
  end
- function Module:Commit(snapshot)local guid=UnitGUID("player");return HolyStorm.PlayerData:WriteOwnedBlock(guid,"delves",snapshot,"blizzard")end
+ function Module:Commit(snapshot)local guid=UnitGUID("player");local committed,reason=HolyStorm.PlayerData:WriteOwnedBlock(guid,"delves",snapshot,"blizzard");if HolyStorm.CharacterScans and HolyStorm.CharacterScans.RecordSnapshotResult then HolyStorm.CharacterScans:RecordSnapshotResult("delves",committed and"COMMITTED"or reason=="UNCHANGED"and"UNCHANGED"or"FAILED")end;return committed,reason end
  function Module:Queue(sync)return HolyStorm.Snapshots:Queue("delves",function()return Module:Collect()end,function(snapshot,scanReason,diagnostics,attempt,maximum)return Module:Validate(snapshot,scanReason,diagnostics,attempt,maximum)end,function(snapshot,force)return Module:Commit(snapshot,force,sync)end,{source="Delves",delay=1,retryDelay=2.5,priority=6,onValidationFailure=function(reason,disposition,retryCount,_,diagnostics)
   local details=type(diagnostics)=="table"and diagnostics or{};local stage=details.stage
   if not stage then stage=reason and(tostring(reason):find("INVALID_DELVES",1,true)or tostring(reason):find("DUPLICATE_DELVES",1,true))and"VALIDATION"or"COLLECT"end
   if HolyStorm.CharacterScans then
-   if disposition=="RETRY"and HolyStorm.CharacterScans.RecordRetry then HolyStorm.CharacterScans:RecordRetry("delves",retryCount,reason,stage,details)
-   elseif disposition=="FAIL"and HolyStorm.CharacterScans.RecordFailure then HolyStorm.CharacterScans:RecordFailure("delves",reason,stage,retryCount,details)end
+   if disposition=="FAIL"and HolyStorm.CharacterScans.RecordFailure then HolyStorm.CharacterScans:RecordFailure("delves",reason,stage,retryCount,details)end
   end
  end})end
  function Module:OnInitialize()
-  HolyStorm.CharacterScans:RegisterProvider("Delves",{block="delves",capability="character.scan.delves",addonId="delves",order=40,request=function(sync)local queued,workflowId=Module:Queue(sync);if not queued then return nil end;return workflowId end})
+  HolyStorm.CharacterScans:RegisterProvider("Delves",{block="delves",capability="character.scan.delves",addonId="delves",order=40,mergeBeforeStart=true,request=function(sync)local queued,workflowId=Module:Queue(sync);if not queued then return nil end;return workflowId end})
   HolyStorm:RegisterCapability("Delves","character.scan.delves",function(_,sync,reason)return HolyStorm.CharacterScans:Request("delves",reason or"CAPABILITY",sync,{order=40})end)
   HolyStorm:RegisterCapability("Delves","character.scan.additional",function(_,sync,reason)return HolyStorm.CharacterScans:Request("delves",reason or"CAPABILITY",sync,{order=40})end)
  end
