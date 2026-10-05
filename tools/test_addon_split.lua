@@ -4,7 +4,7 @@ local workspace=script:match("^(.*)/tools/[^/]+$")or"."
 local live=workspace.."/LIVE/"
 local features={
  {folder="Holy_Storm_Chat",title="Chat",module="Chat.lua"},
- {folder="Holy_Storm_Characters",title="Characters",module="Characters.lua"},
+ {folder="Holy_Storm_Characters",title="Player Profile",module="Characters.lua"},
  {folder="Holy_Storm_Equipment",title="Equipment",module="Equipment.lua",block="equipment"},
  {folder="Holy_Storm_Raids",title="Raids",module="Raids.lua",block="raid"},
  {folder="Holy_Storm_MythicPlus",title="Mythic+",module="MythicPlus.lua",block="mythicPlus"},

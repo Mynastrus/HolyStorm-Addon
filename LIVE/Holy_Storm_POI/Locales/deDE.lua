@@ -1,6 +1,7 @@
 local addonVersion="1.0.0"
 local L=LibStub("AceLocale-3.0"):NewLocale("Holy_Storm_POI","deDE")
 if not L then return end
+L["SCOPE_LABEL"]="Einstellung speichern für";L["SCOPE_CHARACTER"]="Dieser Charakter";L["SCOPE_ACCOUNT"]="Account / global";L["SCOPE_GUILD"]="Diese Gilde";L["SCOPE_ALL_GUILDS"]="Alle Gilden";L["OPTION_SCOPES"]="Lokale Einstellungsbereiche"
 L["RICH_POI_UNAVAILABLE"]="POI nicht verfügbar."
 L["RULE_FIELD_TARGET"]="POI-Ziel";L["RULE_FIELD_TARGET_DESC"]="Das Freigabeziel des gefilterten POI.";L["RULE_FIELD_CATEGORY"]="POI-Kategorie";L["RULE_FIELD_CATEGORY_DESC"]="Die Kategorie des gefilterten POI.";L["RULE_FIELD_CREATOR"]="POI-Ersteller";L["RULE_FIELD_CREATOR_DESC"]="Die Charakterkennung des POI-Erstellers.";L["RULE_FIELD_MAPID"]="POI-Karten-ID";L["RULE_FIELD_MAPID_DESC"]="Die Karten-ID des gefilterten POI.";L["RULE_FIELD_TEMPORARY"]="Temporärer POI";L["RULE_FIELD_TEMPORARY_DESC"]="Ob der POI temporär ist."
 L["TITLE"]="Orte von Interesse";L["DESCRIPTION"]="Kartenmarkierungen erstellen, verwalten, filtern und teilen.";L["CREATE"]="POI erstellen";L["BACK"]="Zurück";L["CANCEL"]="Abbrechen";L["SAVE"]="Speichern";L["EDIT"]="Bearbeiten";L["DETAILS"]="Details";L["SETTINGS"]="Einstellungen";L["DIAGNOSTICS"]="Diagnose";L["SHOW_MAP"]="Auf Karte anzeigen";L["SHARE"]="Chatlink einfügen";L["GUIDE_COORDINATE"]="Guide-Koordinate";L["HIDE_LOCAL"]="Lokal ausblenden";L["UNHIDE"]="Wieder einblenden";L["DELETE_LOCAL"]="Persönlichen POI löschen";L["DELETE_GLOBAL"]="Global löschen"

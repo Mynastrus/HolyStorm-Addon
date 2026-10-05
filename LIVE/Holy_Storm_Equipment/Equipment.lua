@@ -149,15 +149,61 @@ if HolyStorm.PlayerData then HolyStorm.PlayerData:RegisterBlock("equipment",{fie
   local workflowId,state=HolyStorm.Workflows:Request(WORKFLOW,{triggerSource=triggerSource or"MANUAL",debounce=debounce or 1,context={sync=sync==true}})
   HolyStorm.Tasks:RecordEvent(triggerSource or"MANUAL","Equipment",{workflowId=workflowId,triggeredTask="Equipment.Scan"});return workflowId,state
  end
+ function Module:RequestManualScan()
+  if not HolyStorm.CharacterScans or not UnitGUID or not UnitGUID("player")then return false,"SCAN_UNAVAILABLE"end
+  return HolyStorm.CharacterScans:Request("equipment","MANUAL_OPTIONS",true,{order=10,manual=true})
+ end
+ function Module:GetScanStatus()
+  local guid=UnitGUID and UnitGUID("player");local meta=guid and HolyStorm.Data.CharacterStore:GetBlockMetadata(guid,"equipment")or nil
+  local runtime=guid and HolyStorm.CharacterScans:GetRuntimeState(guid,"equipment")or nil
+  local activeId=HolyStorm.Workflows.activeByType[WORKFLOW];local workflow=activeId and HolyStorm.Workflows.workflows[activeId]
+  return{lastSuccess=meta and meta.updatedAt or runtime and runtime.lastSuccessfulSnapshot,revision=meta and meta.version,schema=meta and meta.schemaVersion,snapshot=meta and meta.snapshotVersion,status=workflow and workflow.status or runtime and runtime.state or(meta and"CURRENT"or"MISSING"),error=runtime and runtime.lastError,retry=runtime and runtime.retryCount or 0,active=workflow~=nil}
+ end
+ function Module:BuildOptions()
+  local function setting(id)return HolyStorm.Settings:Get(id)end
+  local function toggle(id,key,order)return{type="toggle",name=L[key],order=order,get=function()return setting(id)end,set=function(_,value)return HolyStorm.Options:SetSetting(id,value)end}end
+  local function statusText()
+   local status=Module:GetScanStatus();local stamp=status.lastSuccess and date(L["SCAN_TIME_FORMAT"],status.lastSuccess)or L["SCAN_NEVER"]
+   return string.format(L["SCAN_STATUS_FORMAT"],stamp,status.revision or"-",status.schema or"-",status.snapshot or"-",L["SCAN_STATUS_"..tostring(status.status):upper()]or tostring(status.status),status.error or"-",status.retry)
+  end
+  local scopeLabels={label=L["SCOPE_LABEL"],character=L["SCOPE_CHARACTER"],account=L["SCOPE_ACCOUNT"],guild=L["SCOPE_GUILD"],allGuilds=L["SCOPE_ALL_GUILDS"]}
+  return {
+   type="group",name=L["OPTIONS_TITLE"],order=50,args={
+    required={type="group",name=L["SCAN_TRIGGERS"],inline=true,order=1,args={
+     equipmentChanged={type="toggle",name=L["SCAN_ON_EQUIPMENT_CHANGE"],order=1,get=function()return true end,set=function()end,disabled=true},
+     enchantChanges=toggle("equipment.scanOnEnchantChange","SCAN_ON_ENCHANT_CHANGE",2),
+     enchantScope=HolyStorm.Options:CreateScopeSelector("equipment.scanOnEnchantChange",scopeLabels,3),
+     socketChanges=toggle("equipment.scanOnSocketChange","SCAN_ON_SOCKET_CHANGE",4),
+     socketScope=HolyStorm.Options:CreateScopeSelector("equipment.scanOnSocketChange",scopeLabels,5),
+    }},
+    status={type="group",name=L["SCAN_STATUS_TITLE"],inline=true,order=2,args={
+     status={type="description",name=statusText,order=1,fontSize="medium"},
+     scan={type="execute",name=L["SCAN_NOW"],order=2,func=function()return Module:RequestManualScan()end,disabled=function()return HolyStorm.Workflows.activeByType[WORKFLOW]~=nil end},
+    }},
+   },
+  }
+ end
+ function Module:RegisterOptions()
+  local definitions={{id="equipment.scanOnEnchantChange",key="OPTION_SCAN_ENCHANT",name="SCAN_ON_ENCHANT_CHANGE",slash={path={"equipment","scan-enchant"}}},{id="equipment.scanOnSocketChange",key="OPTION_SCAN_SOCKET",name="SCAN_ON_SOCKET_CHANGE",slash={path={"equipment","scan-sockets"}}}}
+  for index,entry in ipairs(definitions)do HolyStorm.Options:RegisterSetting({id=entry.id,module="Equipment",type="toggle",default=true,scope="account",scopes={"character","account","guild","allGuilds"},nameKey=entry.name,descriptionKey="SCAN_TRIGGER_DESC",uiOrder=index,name=L[entry.name],description=L["SCAN_TRIGGER_DESC"],group="Equipment",slash=entry.slash})end
+  HolyStorm.Options:RegisterOptionsTab("equipment",self:BuildOptions())
+  HolyStorm.Commands:RegisterSlashCommand({id="equipment.scan",path={"equipment","scan"},group="Equipment",owner="Equipment",syntax="/hs equipment scan",description=L["COMMAND_SCAN_DESC"],execute=function()return Module:RequestManualScan()end})
+ end
  function Module:OnInitialize()
   self:RegisterWorkflow()
+  self:RegisterOptions()
   HolyStorm.CharacterScans:RegisterProvider("Equipment",{block="equipment",capability="character.scan.equipment",addonId="equipment",order=10,mergeBeforeStart=true,request=function(sync,reason)return Module:Request(sync,reason or"CHARACTER_SCAN",1)end})
   HolyStorm:RegisterCapability("Equipment","character.scan.equipment",function(_,sync,reason)return HolyStorm.CharacterScans:Request("equipment",reason or"CAPABILITY",sync,{order=10})end)
  end
  function Module:OnEnable()
-  for _,event in ipairs({"PLAYER_EQUIPMENT_CHANGED","UNIT_INVENTORY_CHANGED","SOCKET_INFO_UPDATE"})do local eventName=event;HolyStorm.Events:Register(eventName,"equipment",function(_,firstArgument)
+  for _,event in ipairs({"PLAYER_EQUIPMENT_CHANGED","UNIT_INVENTORY_CHANGED"})do local eventName=event;HolyStorm.Events:Register(eventName,"equipment",function(_,firstArgument)
    if HolyStorm.State and not HolyStorm.State:Is("playerReady")then return end
    if eventName~="UNIT_INVENTORY_CHANGED"or firstArgument=="player"then HolyStorm.CharacterScans:Request("equipment",eventName,true,{order=10})end
+  end)end
+  local extraEvents={WEAPON_ENCHANT_CHANGED="equipment.scanOnEnchantChange",SOCKET_INFO_SUCCESS="equipment.scanOnSocketChange",SOCKET_INFO_UPDATE="equipment.scanOnSocketChange"}
+  for event,settingId in pairs(extraEvents)do local eventName,id=event,settingId;HolyStorm.Events:Register(eventName,"equipment",function()
+   if not HolyStorm.Settings:Get(id)or HolyStorm.State and not HolyStorm.State:Is("playerReady")then return end
+   HolyStorm.CharacterScans:Request("equipment",eventName,true,{order=10})
   end)end
   local context=self.loadContext;if context and context.reason=="event"and context.trigger=="PLAYER_EQUIPMENT_CHANGED"and(not HolyStorm.State or HolyStorm.State:Is("playerReady"))then HolyStorm.CharacterScans:Request("equipment",context.trigger,true,{order=10})end
  end

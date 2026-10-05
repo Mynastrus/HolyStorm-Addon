@@ -6,6 +6,7 @@ local PlayerData = {
     version = addonVersion,
     schemaVersion = 2,
     blocks = {},
+    exportSanitizers = {},
     fieldToBlock = {},
     identityFields = {},
 }
@@ -161,6 +162,41 @@ function PlayerData:GetBlock(guid,blockId)
     if #definition.fields==1 then return record[definition.fields[1]],record.blockMeta and copy(record.blockMeta[blockId])end
     local data={};for _,field in ipairs(definition.fields)do data[field]=copy(record[field])end;return data,record.blockMeta and copy(record.blockMeta[blockId])
 end
+local function sanitizeProfileExport(data)
+    local result=copy(type(data)=="table"and data or{})
+    local fields=type(result.profileFields)=="table"and copy(result.profileFields)or{}
+    local aliases={preferredRole="preferredRole",alternateRoles="alternateRoles",raidInterest="raidInterest",mythicInterest="mythicInterest",delveInterest="delveInterest",preferredSpecs="preferredSpecs"}
+    for key,id in pairs(aliases)do
+        if type(fields[id])~="table"and result[key]~=nil then fields[id]={value=copy(result[key]),visibility="GUILD"}end
+        result[key]=nil
+    end
+    for id,entry in pairs(fields)do
+        result[id]=nil
+        entry=type(entry)=="table"and entry or{value=entry}
+        local visibility="GUILD"
+        if entry.visibility=="PRIVATE"or entry.visibility=="GUILD"or entry.visibility=="PUBLIC"then visibility=entry.visibility end
+        local value=entry.value
+        local empty=value==nil or value==""or type(value)=="table"and next(value)==nil
+        if entry.state=="WITHHELD"then
+            fields[id]={visibility=visibility,state="WITHHELD"}
+        elseif visibility=="PRIVATE"then
+            fields[id]={visibility=visibility,state=empty and"EMPTY"or"WITHHELD"}
+        elseif empty then
+            fields[id]={visibility=visibility,state="EMPTY"}
+        else
+            fields[id]={visibility=visibility,state="SET",value=copy(value)}
+            result[id]=copy(value)
+        end
+    end
+    result.profileFields=fields
+    return result
+end
+function PlayerData:GetBlockForExport(guid,blockId)
+    local data=self:GetBlock(guid,blockId);if data==nil then return nil end
+    if blockId=="profile"then data=sanitizeProfileExport(data)end
+    for owner,sanitizer in pairs(self.exportSanitizers[blockId]or{})do local ok,result=HolyStorm.Utils.SafeCall("playerdata.export:"..blockId..":"..owner,sanitizer,data,guid);if not ok or type(result)~="table"then return nil end;data=result end
+    return data
+end
 function PlayerData:GetMetadata(guid,blockId)
     local record=self:GetCharacter(guid);local meta=record and record.blockMeta and record.blockMeta[blockId];if not meta then return nil end
     local result=copy(meta);local definition=self.blocks[blockId];local header=self:GetBlockHeader(guid,blockId)
@@ -277,6 +313,13 @@ function PlayerData:GetBlockFreshness(guid,blockId)
     local freshness={metadata=meta,metadataExists=meta~=nil,stale=state~="CURRENT",state=state,clockDomain=localOwner and"LOCAL_COMMIT"or"LOCAL_RECEIVE",updatedAt=tonumber(meta and(meta.originCreatedAt or meta.updatedAt)),freshnessAt=updatedAt,staleAfter=staleAfter,age=age,domainManaged=domainManaged}
     if domainManaged then freshness.staleAfter=nil end
     return freshness
+end
+function PlayerData:RegisterBlockExportSanitizer(id,owner,sanitizer)
+    if type(id)~="string"or type(owner)~="string"or type(sanitizer)~="function"then return false,"INVALID_EXPORT_SANITIZER"end
+    self.exportSanitizers[id]=self.exportSanitizers[id]or{};self.exportSanitizers[id][owner]=sanitizer;return true
+end
+function PlayerData:UnregisterBlockExportSanitizer(id,owner)
+    local bucket=self.exportSanitizers[id];if not bucket or not bucket[owner]then return false end;bucket[owner]=nil;if not next(bucket)then self.exportSanitizers[id]=nil end;return true
 end
 function PlayerData:IsStale(guid,blockId)return self:GetBlockFreshness(guid,blockId).stale end
 function PlayerData:RequestRefresh(guid,blocks,options)

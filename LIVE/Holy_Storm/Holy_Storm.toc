@@ -45,6 +45,7 @@ Core\Permissions\RuleEngine.lua
 Persistence\Schema.lua
 Persistence\Migrations.lua
 Persistence\Database.lua
+Core\Settings\Settings.lua
 Persistence\PlayerDataStore.lua
 Persistence\CharacterStore.lua
 Persistence\PlayerStore.lua

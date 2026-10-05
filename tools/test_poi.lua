@@ -12,6 +12,23 @@ local function setAt(value,path,child)for index=1,#path-1 do value[path[index]]=
 local clock=1000;local currentGuid="Player-A";local currentGuild={id="realm:guild"};local currentRoster={};local moduleEnabled=true;local permissions={};local groupMode=nil
 local locale=setmetatable({TASK_POI_EXPIRE="Expire POIs",TASK_POI_MAP_REFRESH="Refresh POIs",TASK_POI_CONTEXT="POI context",TASK_POI_STARTUP="POI startup",POI_LINK_LABEL="POI: %s"},{__index=function(_,key)return key end})
 local HolyStorm={db={global={installId="poi-test",poi={schemaVersion=1,personal={},guilds={},sessions={}}},profile={poi={}}},Data={GuildStore={},PlayerStore={},POIStore=nil},DataManager={},MapLinks={},Utils={},Policy={},Tasks={registered={},queued={}},Sync={domains={},published={},requested={},discovered={}},Events={handlers={},emitted={}},TwinkCore={},Logger={rows={}},Rules={fields={}},RichLinks={},capabilities={},Serializer={}}
+local localSettings,settingDefinitions,registeredTabs={},{},{}
+HolyStorm.Settings={
+ definitions=settingDefinitions,
+ Register=function(_,definition)settingDefinitions[definition.id]=copy(definition);return true end,
+ GetDefinition=function(_,id)return settingDefinitions[id]end,
+ Get=function(_,id)local definition=settingDefinitions[id];if not definition then return nil end;local value=localSettings[id];return value==nil and copy(definition.default)or copy(value)end,
+ Set=function(_,id,value)if not settingDefinitions[id]then return false,"UNKNOWN_SETTING"end;localSettings[id]=copy(value);return true end,
+ ImportLegacy=function(self,id,value)if value==nil or localSettings[id]~=nil then return false end;return self:Set(id,value)end,
+}
+HolyStorm.Options={
+ RegisterSetting=function(_,definition)local ok=HolyStorm.Settings:Register(definition);return ok end,
+ SetSetting=function(_,id,value)local definition=settingDefinitions[id];if definition and definition.setter then return definition.setter(value)end;return HolyStorm.Settings:Set(id,value)end,
+ RegisterOptionsTab=function(_,id,options)registeredTabs[id]=options;return true end,
+ CreateScopeSelector=function()return{type="select"}end,
+ Open=function()return true end,
+}
+HolyStorm.Commands={RegisterOption=function()return true end}
 function LibStub(name)if name=="AceAddon-3.0"then return{GetAddon=function()return HolyStorm end}elseif name=="AceLocale-3.0"then return{GetLocale=function()return locale end}end end
 function HolyStorm.Utils.DeepCopy(value)return copy(value)end;function HolyStorm.Utils.Now()return clock end;function HolyStorm.Utils.Trim(value)return tostring(value):match("^%s*(.-)%s*$")end;function HolyStorm.Utils.TableCount(value)local n=0;for _ in pairs(value or{})do n=n+1 end;return n end;function HolyStorm.Utils.ApplyDefaults(target,defaults)target=type(target)=="table"and target or{};for key,value in pairs(defaults)do if target[key]==nil then target[key]=copy(value)end end;return target end;function HolyStorm.Utils.SafeCall(_,fn,...)local results={pcall(fn,...)};local ok=table.remove(results,1);return ok,(table.unpack or unpack)(results)end
 function HolyStorm.Serializer:Serialize(value)return serialize(value)end
@@ -51,6 +68,7 @@ C_Map={GetMapInfo=function(id)return tonumber(id)and tonumber(id)>0 and{id=id,na
 -- The v1 root mirrors the persisted shape left by earlier POI versions.
 HolyStorm.db.global.poi.personal.legacy={poiID="legacy",target="PERSONAL",mapID=84,x=.2,y=.3,name="Legacy",description="",category="note",customCategory="",color={r=1,g=.8,b=0,a=1},status="ACTIVE",revision=2,creatorGuid="Player-A",creatorName="Alpha",createdAt=900,updatedAt=950,modifiedBy="Player-A",source="sync",receivedFrom="relay",syncedAt=950}
 assert(loadfile(featureRoot.."Persistence/POIStore.lua"))();assert(loadfile(root.."Core/Content/MapLinks.lua"))();assert(loadfile(featureRoot.."POIService.lua"))();assert(HolyStorm.POI:Initialize());local POI=HolyStorm.POI;local domain=HolyStorm.Sync.domains.poi
+for _,id in ipairs({"poi.worldMapEnabled","poi.minimapEnabled","poi.worldMapSize","poi.minimapSize","poi.maxSynced","poi.categoryVisible.note","poi.targetVisible.PERSONAL"})do assert(settingDefinitions[id],"POI local setting was not registered centrally: "..id)end
 assert(domain.catchUp==false and type(domain.canShare)=="function"and type(domain.getRecipients)=="function","POI catch-up is scoped by POI lifecycle and offers use a source-serving contract")
 assert(HolyStorm.db.global.poi.schemaVersion==2 and POI:Get("legacy").schemaVersion==2 and POI:Get("legacy").scope=="PERSONAL"and POI:Get("legacy").provenance.kind=="MANUAL"and POI:Get("legacy").source==nil,"v1 persisted POIs migrate in place to schema v2 and discard transport source")
 assert(POI:GetIcon({icon="removed-old-icon"}).id=="marker"and POI:Normalize({icon="removed-old-icon"}).icon=="marker","unknown saved icon falls back to the stable default marker")
@@ -107,6 +125,24 @@ local overflow=makeRemote("bulk-overflow");assert(not domain.import(overflow.poi
 local offers=domain.listMetadata(0,{scope="GUILD"});assert(#offers>=50 and offers[1].mapID==nil and offers[1].x==nil,"large guild discovery exports compact metadata without coordinates")
 POI:SetSetting("maxSynced",maxBefore)
 currentGuild={id="realm:other"};assert(POI:Get(guild.poiID)==nil,"guild data is isolated by guild identity");currentGuild={id="realm:guild"}
+
+local poiModule
+function HolyStorm:ApplyModuleMetadata()end
+function HolyStorm:RegisterModule(metadata,factory)poiModule={};factory(poiModule);self.poiModule=poiModule;return poiModule end
+function HolyStorm:RegisterUIExtension()return true end
+local ui={content={}}
+function ui:RegisterPage()return true end;function ui:AddNavigation()return true end;function ui:ShowPage()return true end
+HolyStorm.UI=ui
+function HolyStorm:GetModule(id)if id=="Options"then return self.Options elseif id=="UI"then return ui end end
+local function widget()
+ local frame={}
+ return setmetatable(frame,{__index=function(target,key)if key=="CreateFontString"then return function()return widget()end end;return function()return target end end})
+end
+function CreateFrame()return widget()end
+assert(loadfile(featureRoot.."POI.lua"))();poiModule.BuildList=function()return{}end;poiModule.BuildDetail=function()return{}end;poiModule.BuildEditor=function()return{}end;poiModule.BuildDiagnostics=function()return{}end
+poiModule:InitializeUI();assert(registeredTabs.poi,"POI configuration is registered in the central options page")
+assert(registeredTabs.poi.args.worldMapEnabled and registeredTabs.poi.args.categoryFilters and registeredTabs.poi.args.targetFilters and registeredTabs.poi.args.scopes,"central POI options retain map, category, target, and scope controls")
+registeredTabs.poi.args.worldMapEnabled.set(nil,false);assert(registeredTabs.poi.args.worldMapEnabled.get()==false,"central POI option writes through the shared local settings registry")
 
 local moduleFile=assert(io.open(featureRoot.."POI.lua","r"));local moduleSource=moduleFile:read("*a");moduleFile:close()
 assert(moduleSource:find('InputScrollFrameTemplate',1,true)and not moduleSource:find('description:GetStringHeight()',1,true),"POI editor uses Blizzard's scrolling EditBox contract")

@@ -1,6 +1,7 @@
 local addonVersion="1.0.0"
 local L=LibStub("AceLocale-3.0"):NewLocale("Holy_Storm_POI","enUS",true)
 if not L then return end
+L["SCOPE_LABEL"]="Save setting for";L["SCOPE_CHARACTER"]="This character";L["SCOPE_ACCOUNT"]="Account / global";L["SCOPE_GUILD"]="This guild";L["SCOPE_ALL_GUILDS"]="All guilds";L["OPTION_SCOPES"]="Local setting scopes"
 L["RICH_POI_UNAVAILABLE"]="POI unavailable."
 L["RULE_FIELD_TARGET"]="POI target";L["RULE_FIELD_TARGET_DESC"]="The sharing target of the POI being filtered.";L["RULE_FIELD_CATEGORY"]="POI category";L["RULE_FIELD_CATEGORY_DESC"]="The category of the POI being filtered.";L["RULE_FIELD_CREATOR"]="POI creator";L["RULE_FIELD_CREATOR_DESC"]="The character identifier of the POI creator.";L["RULE_FIELD_MAPID"]="POI map ID";L["RULE_FIELD_MAPID_DESC"]="The map ID of the POI being filtered.";L["RULE_FIELD_TEMPORARY"]="Temporary POI";L["RULE_FIELD_TEMPORARY_DESC"]="Whether the POI is temporary."
 L["TITLE"]="Points of Interest";L["DESCRIPTION"]="Create, manage, filter and share map markers.";L["CREATE"]="Create POI";L["BACK"]="Back";L["CANCEL"]="Cancel";L["SAVE"]="Save";L["EDIT"]="Edit";L["DETAILS"]="Details";L["SETTINGS"]="Settings";L["DIAGNOSTICS"]="Diagnostics";L["SHOW_MAP"]="Show on map";L["SHARE"]="Insert chat link";L["GUIDE_COORDINATE"]="Guide coordinate";L["HIDE_LOCAL"]="Hide locally";L["UNHIDE"]="Show again";L["DELETE_LOCAL"]="Delete personal POI";L["DELETE_GLOBAL"]="Delete globally"

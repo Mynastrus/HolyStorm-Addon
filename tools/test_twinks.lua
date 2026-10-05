@@ -41,6 +41,7 @@ currentGuid="Daniel";assert(core:ConfirmLocalCharacter("Daniel"));currentGuid="K
 -- B: manual main changes while account identity remains stable.
 assert(core:SetAccountMain("Maristi"));local stable=core:GetLocalAccountUUID();assert(core:SetAccountMain("Marithiel"));assert(core:GetLocalAccountUUID()==stable and core:GetAccount(stable).mainCharacterUUID=="Marithiel")
 assert(core:SetAccountMain("Maristi"))
+local localMainCount=0;for guid in pairs(core:GetAccount(stable).characters)do if core:GetAccountMain(stable)==guid then localMainCount=localMainCount+1 end end;assert(localMainCount==1,"the account main uses one exclusive TwinkCore character pointer")
 -- C: out-of-guild account main produces deterministic highest-rank shadow main.
 guild.roster={Marithiel={rankIndex=4},Daniel={rankIndex=2}};local guildMain,shadow=core:GetGuildMain(accountUUID,guild);assert(guildMain=="Daniel" and shadow==true);assert(core:GetAccountMain(accountUUID)=="Maristi")
 -- D: account main entering the guild immediately becomes guild main.

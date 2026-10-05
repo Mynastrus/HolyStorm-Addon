@@ -56,6 +56,7 @@ UI\Framework\Components\HolyStormTabGroup.lua
 UI\Pages\OptionsLocales\enUS.lua
 UI\Pages\OptionsLocales\deDE.lua
 UI\Pages\Options.lua
+UI\Pages\SystemPages.lua
 UI\Pages\SavedVariablesLocales\enUS.lua
 UI\Pages\SavedVariablesLocales\deDE.lua
 UI\Pages\SavedVariables.lua

@@ -1,7 +1,7 @@
 local addonVersion="1.1.0"
 local HolyStorm=LibStub("AceAddon-3.0"):GetAddon("Holy_Storm")
 local L=LibStub("AceLocale-3.0"):GetLocale("Holy_Storm")
-local Commands={version=addonVersion,handlers={}}
+local Commands={version=addonVersion,handlers={},registry={},aliases={}}
 local function printMessage(message) print(L["ADDON_PREFIX"]..message) end
 function Commands:PrintUserMessage(message)if type(message)~="string"or message==""then return false end;printMessage(message);return true end
 local scanTargets={
@@ -79,9 +79,99 @@ end
 function Commands:RegisterSubcommand(id,definition)
     if type(id)~="string"or not id:match("^[a-z][a-z0-9%-]*$")or type(definition)~="table"or type(definition.execute)~="function"then return false,"INVALID_SUBCOMMAND"end
     self.handlers[id]=definition
+    self:RegisterSlashCommand({id="core."..id,path={id},group="Core",description=type(definition.help)=="function"and definition.help()or definition.help,execute=function(arguments)return definition.execute(arguments)end})
     return true
 end
 function Commands:UnregisterSubcommand(id)if not self.handlers[id]then return false end;self.handlers[id]=nil;return true end
+function Commands:RegisterSlashCommand(definition)
+    if type(definition)~="table"or type(definition.id)~="string"or type(definition.execute)~="function"then return false,"INVALID_COMMAND"end
+    local path=definition.path
+    if type(path)=="string"then local parts={};for token in path:gmatch("[^%s]+")do parts[#parts+1]=token end;path=parts end
+    if type(path)~="table"or #path==0 then return false,"INVALID_COMMAND_PATH"end
+    local tokens={};for _,token in ipairs(path)do if type(token)~="string"or not token:match("^[a-z][a-z0-9%-]*$")then return false,"INVALID_COMMAND_PATH"end;tokens[#tokens+1]=token end
+    local key=table.concat(tokens," ")
+    for commandId,registered in pairs(self.registry)do
+        if commandId~=definition.id and registered.key==key then return false,"COMMAND_PATH_EXISTS"end
+    end
+    local aliasPaths={}
+    for _,alias in ipairs(definition.aliases or{})do
+        local aliasPath=type(alias)=="table"and table.concat(alias," ")or tostring(alias)
+        aliasPath=HolyStorm.Utils.Trim(aliasPath):lower()
+        if aliasPath==""or self.aliases[aliasPath]and self.aliases[aliasPath]~=definition.id then return false,"COMMAND_ALIAS_EXISTS"end
+        for commandId,registered in pairs(self.registry)do
+            if commandId~=definition.id and registered.key==aliasPath then return false,"COMMAND_ALIAS_EXISTS"end
+        end
+        aliasPaths[#aliasPaths+1]=aliasPath
+    end
+    self:UnregisterSlashCommand(definition.id)
+    self.registry[definition.id]={id=definition.id,path=tokens,key=key,group=definition.group or"Other",description=definition.description,execute=definition.execute,owner=definition.owner or"Core",syntax=definition.syntax or("/hs "..key),aliases=aliasPaths}
+    for _,aliasPath in ipairs(aliasPaths)do self.aliases[aliasPath]=definition.id end
+    return true
+end
+function Commands:UnregisterSlashCommand(id)
+    local definition=self.registry[id];if not definition then return false end;self.registry[id]=nil
+    for alias,target in pairs(self.aliases)do if target==id then self.aliases[alias]=nil end end
+    return true
+end
+function Commands:GetRegisteredCommands()
+    local result={};for _,definition in pairs(self.registry)do local item={id=definition.id,path=HolyStorm.Utils.DeepCopy(definition.path),key=definition.key,group=definition.group,description=definition.description,owner=definition.owner,syntax=definition.syntax,aliases=HolyStorm.Utils.DeepCopy(definition.aliases or{})};result[#result+1]=item end
+    table.sort(result,function(a,b)if a.group~=b.group then return a.group<b.group end;if a.key~=b.key then return a.key<b.key end;return a.id<b.id end);return result
+end
+function Commands:RegisterOption(definition)
+    local slash=definition and definition.slash;if type(slash)~="table"or slash.enabled==false then return false,"SLASH_UNAVAILABLE"end
+    local path=slash.path;local argsType=definition.type
+    local commandId="option."..definition.id
+    return self:RegisterSlashCommand({id=commandId,path=path,aliases=slash.aliases,group=definition.group or definition.module,owner=definition.module,syntax=slash.syntax,description=definition.description,execute=function(arguments)
+        local setting=HolyStorm.Settings;local valueText=HolyStorm.Utils.Trim(arguments or"")
+        if valueText==""then local current=setting:Get(definition.id);local rendered=type(current)=="boolean"and(current and L["COMMAND_VALUE_ON"]or L["COMMAND_VALUE_OFF"])or tostring(current);return Commands:PrintUserMessage(string.format(L["COMMAND_OPTION_VALUE"],definition.name or definition.id,rendered))end
+        local value
+        if argsType=="toggle"then value=({["on"]=true,["true"]=true,["off"]=false,["false"]=false,["1"]=true,["0"]=false})[valueText:lower()]
+        elseif argsType=="range"or argsType=="number"then value=tonumber(valueText)
+        elseif argsType=="select"then for key,label in pairs(definition.values or{})do if valueText:lower()==tostring(key):lower()or valueText:lower()==tostring(label):lower()then value=key;break end end
+        else return Commands:PrintUserMessage(L["COMMAND_OPTION_READ_ONLY"])end
+        if value==nil then return Commands:PrintUserMessage(L["COMMAND_OPTION_INVALID"])end
+        local options=HolyStorm.Options
+        local ok,reason
+        if options and options.SetSetting then ok,reason=options:SetSetting(definition.id,value)
+        else ok,reason=setting:Set(definition.id,value)end
+        if not ok then return Commands:PrintUserMessage(L["COMMAND_OPTION_INVALID"])end
+        local rendered=type(value)=="boolean"and(value and L["COMMAND_VALUE_ON"]or L["COMMAND_VALUE_OFF"])or tostring(value)
+        Commands:PrintUserMessage(string.format(L["COMMAND_OPTION_SET"],definition.name or definition.id,rendered));return true
+    end})
+end
+local function openPage(page)
+    local ui=HolyStorm.UI;if not ui then return false end
+    ui:Open();if ui.ShowPage then return ui:ShowPage(page)end;return false
+end
+local function openMain()
+    if HolyStorm.UI then HolyStorm.UI:Open();return true end
+    printMessage(L["COMMAND_UI_UNAVAILABLE"]);return false
+end
+local function addonInformation()
+    local names={}
+    if HolyStorm.GetModuleEntries and HolyStorm.GetLoadedModuleById then
+        for _,entry in ipairs(HolyStorm:GetModuleEntries())do
+            if HolyStorm:GetLoadedModuleById(entry.id)then names[#names+1]=entry.displayName or entry.id end
+        end
+        table.sort(names)
+    else
+        names=HolyStorm.GetLoadedAddonNames and HolyStorm:GetLoadedAddonNames()or{}
+    end
+    local profile=HolyStorm.Database and HolyStorm.Database:GetHandle();profile=profile and profile:GetCurrentProfile()or"-"
+    local guild=HolyStorm.Data and HolyStorm.Data.GuildStore and HolyStorm.Data.GuildStore:GetCurrent()
+    local channel=HolyStorm.metadata and HolyStorm.metadata.channel
+    return{version=HolyStorm.version or"-",channel=channel,modules=names,profile=profile,guild=guild and(guild.name or guild.id)or nil}
+end
+function Commands:GetInfo()return addonInformation()end
+local function registerCoreCommands()
+    Commands:RegisterSlashCommand({id="core.open",path={"open"},group="Core",syntax="/hs",description=L["COMMAND_OPEN_DESC"],execute=openMain})
+    Commands:RegisterSlashCommand({id="core.help",path={"help"},aliases={{"?"}},group="Core",description=L["COMMAND_HELP_DESC"],execute=function()return openPage("system-help")end})
+    Commands:RegisterSlashCommand({id="core.info",path={"info"},group="Core",description=L["COMMAND_INFO_DESC"],execute=function()return openPage("system-info")end})
+    Commands:RegisterSlashCommand({id="core.status",path={"status"},group="Core",description=L["COMMAND_STATUS_DESC"],execute=function()return openPage("system-status")end})
+    Commands:RegisterSlashCommand({id="core.reload",path={"reload"},group="Core",description=L["COMMAND_RELOAD_DESC"],execute=function()if type(ReloadUI)=="function"then ReloadUI();return true end;return false end})
+    Commands:RegisterSlashCommand({id="core.options",path={"options"},aliases={{"o"}},group="Core",description=L["COMMAND_OPTIONS_DESC"],execute=function()local options=HolyStorm:GetModule("Options",true);if options then options:Open();return true end;return false end})
+    Commands:RegisterSlashCommand({id="core.addons",path={"addons"},group="Core",description=L["COMMAND_ADDONS_DESC"],execute=function()local addons=HolyStorm:GetLoadedAddonNames();Commands:PrintUserMessage(string.format(L["COMMAND_LOADED_ADDONS"],#addons,table.concat(addons,", ")));return true end})
+end
 function Commands:OnCharacterScanCompleted(block,status,reasons)
     local key=scanCompleted[block]
     if key and status=="COMPLETED"and type(reasons)=="table"and reasons.MANUAL_COMMAND then Commands:PrintUserMessage(L[key]);return true end
@@ -89,12 +179,21 @@ function Commands:OnCharacterScanCompleted(block,status,reasons)
 end
 function Commands:Execute(input)
     local value=HolyStorm.Utils.Trim(input or "")
-    if value=="?" then printMessage(L["COMMAND_HELP_TITLE"]);printMessage(L["COMMAND_HELP_OPEN"]);printMessage(L["COMMAND_HELP_OPTIONS"]);printMessage(L["COMMAND_HELP_ADDONS"]);local ids={};for id in pairs(self.handlers)do ids[#ids+1]=id end;table.sort(ids);for _,id in ipairs(ids)do local help=self.handlers[id].help;if type(help)=="function"then help=help()end;if help then printMessage(help)end end;printMessage(L["COMMAND_HELP_HELP"])
-    elseif value=="" then if HolyStorm.UI then HolyStorm.UI:Open()else printMessage(L["COMMAND_UI_UNAVAILABLE"]or"UI addon is not loaded.")end
-    elseif value=="options" or value=="o" then local module=HolyStorm:GetModule("Options",true);if module then module:Open()end
-    elseif value=="addons" then local addons=HolyStorm:GetLoadedAddonNames();printMessage(string.format(L["COMMAND_LOADED_ADDONS"],#addons,table.concat(addons,", ")))
-    else local id,args=value:match("^([^%s]+)%s*(.*)$");local handler=id and self.handlers[id];if handler then local ok,err=HolyStorm.Utils.SafeCall("command:"..id,handler.execute,args);if not ok and HolyStorm.Logger then HolyStorm.Logger:ERROR("Commands","Subcommand %s failed: %s",id,tostring(err))end else printMessage(string.format(L["CORE_STATUS"],L[HolyStorm.Database:Get("enabled","profile")and"STATUS_ENABLED"or"STATUS_DISABLED"]))end end
+    if value=="" then local definition=self.registry["core.open"];if definition then local ok,result=HolyStorm.Utils.SafeCall("command:core.open",definition.execute,"");return ok,result end;return openMain() end
+    local id=self.aliases[value:lower()]
+    local tokens={};for token in value:lower():gmatch("[^%s]+")do tokens[#tokens+1]=token end
+    if not id then
+        for length=#tokens,1,-1 do local key=table.concat(tokens," ",1,length);local candidate=self.aliases[key]
+            if not candidate then for commandId,definition in pairs(self.registry)do if definition.key==key then candidate=commandId;break end end end
+            if candidate then id=candidate;local definition=self.registry[id];local consumed=length;local args=table.concat(tokens," ",consumed+1);local ok,result=HolyStorm.Utils.SafeCall("command:"..id,definition.execute,args);if not ok and HolyStorm.Logger then HolyStorm.Logger:ERROR("Commands","Command %s failed: %s",id,tostring(result))end;return ok,result
+            end
+        end
+    else local definition=self.registry[id];if definition then local ok,result=HolyStorm.Utils.SafeCall("command:"..id,definition.execute,"");return ok,result end end
+    local idToken,args=value:match("^([^%s]+)%s*(.*)$");local handler=idToken and self.handlers[idToken]
+    if handler then local ok,err=HolyStorm.Utils.SafeCall("command:"..idToken,handler.execute,args);if not ok and HolyStorm.Logger then HolyStorm.Logger:ERROR("Commands","Subcommand %s failed: %s",idToken,tostring(err))end;return ok,err end
+    printMessage(string.format(L["CORE_STATUS"],L[HolyStorm.Database:Get("enabled","profile")and"STATUS_ENABLED"or"STATUS_DISABLED"]));return false
 end
 function Commands:AnnounceLoaded()printMessage(string.format(L["CORE_LOADED"],HolyStorm.metadata.displayName,HolyStorm.version));printMessage(string.format(L["CORE_LOADED_HELP"],commandLink("/hs","open"),commandLink("/hs ?","help")))end
 registerScanCommand()
+registerCoreCommands()
 HolyStorm.Commands=Commands

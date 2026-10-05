@@ -2,7 +2,7 @@ local addonVersion = "2.4.0"
 local HolyStorm = LibStub("AceAddon-3.0"):GetAddon("Holy_Storm")
 HolyStorm.Data.Schema = {
     fileVersion = addonVersion,
-    version = 13,
+    version = 14,
     defaults = {
         profile = {
             enabled = true, debug = false,
@@ -22,6 +22,7 @@ HolyStorm.Data.Schema = {
             filters = { global = {}, templates = {}, version = 1, demands = { quests = {}, achievements = {} } },
             policy = { version = 1, tombstones = { groups = {}, rules = {}, filters = {} } },
             permissionStates = {},
+            localSettings = { schemaVersion = 1, character = {}, account = {}, guild = {}, allGuilds = {}, selectedScopes = {} },
             logs = { entries = {} },
         },
         char = { characters = {} },

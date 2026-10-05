@@ -23,9 +23,11 @@ function HolyStorm:RegisterCapability(owner,id,handler)self.capabilities[id]={ow
 function HolyStorm:UnregisterCapability(owner,id)local entry=self.capabilities[id];if not entry or entry.owner~=owner then return false end;self.capabilities[id]=nil;return true end
 function HolyStorm:IsCapabilityAvailable(id)return self.capabilities[id]~=nil end
 function HolyStorm:CallCapability(id,...)local entry=self.capabilities[id];if not entry then return{}end;local result=entry.handler(nil,...);return result~=nil and{[entry.owner]=result}or{}end
+local realNameVisibility="GUILD"
 function HolyStorm.TwinkCore:GetAccountUUIDForCharacter(id)return id=="A"and"account-A"or nil end
 function HolyStorm.TwinkCore:GetVisibleCharactersForViewer(id)return id=="account-A"and{{characterUUID="A"}}or{}end
 function HolyStorm.TwinkCore:GetAccount(id)return id=="account-A"and{metadata={realName="Daniel"}}or nil end
+function HolyStorm.TwinkCore:GetProfileField(id,field,guildId,ownerView)if id~="account-A"or field~="realName"then return{state="NOT_ENTERED",visibility="GUILD"}end;if ownerView==false and realNameVisibility=="PRIVATE"then return{state="HIDDEN",visibility="PRIVATE"}end;if realNameVisibility=="GUILD"and guildId~="guild"then return{state="HIDDEN",visibility="GUILD"}end;return{state="VISIBLE",value="Daniel",visibility=realNameVisibility}end
 function HolyStorm.TwinkCore:GetRosterIdentity(id)return id=="T"and{accountMain="A"}or nil end
 function HolyStorm.CharacterUI:ShowTooltip(_,id)opens.tooltip=id;return true end
 function HolyStorm.CharacterActions:CreateContextMenu(_,id)opens.menu=id;return true end

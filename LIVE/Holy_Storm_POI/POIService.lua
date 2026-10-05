@@ -65,7 +65,13 @@ end
 function POI:GetSettings()
  local settings=DataManager:Get("poi-settings")
  if type(settings)~="table"then return defaultSettings()end
- return HolyStorm.Utils.ApplyDefaults(settings,defaults)
+ settings=HolyStorm.Utils.ApplyDefaults(settings,defaults)
+ if HolyStorm.Settings then
+  for _,key in ipairs({"worldMapEnabled","minimapEnabled","worldMapSize","minimapSize","maxSynced"})do local value=HolyStorm.Settings:Get("poi."..key);if value~=nil then settings[key]=value end end
+  for key in pairs(self.categories)do local value=HolyStorm.Settings:Get("poi.categoryVisible."..key);if value~=nil then settings.categoryVisible[key]=value end end
+  for key in pairs(self.targets)do local value=HolyStorm.Settings:Get("poi.targetVisible."..key);if value~=nil then settings.targetVisible[key]=value end end
+ end
+ return settings
 end
 function POI:UpdateSettings(mutator)
  if self.settingsAvailable==false then return false,"SETTINGS_UNAVAILABLE"end
@@ -82,18 +88,30 @@ function POI:SetSetting(key,value)
  elseif key=="minimapSize"then value=math.max(10,math.min(36,tonumber(value)or 18))
  elseif key=="maxSynced"then value=math.max(50,math.min(1000,math.floor(tonumber(value)or 500)))
  elseif key=="worldMapEnabled"or key=="minimapEnabled"then value=value==true else return false,"INVALID_SETTING"end
- local ok,reason=self:UpdateSettings(function(settings)settings[key]=value;return true end)
+ local ok,reason=HolyStorm.Settings:Set("poi."..key,value)
  if ok then self:Refresh("SETTING")end;return ok,reason
 end
 function POI:SetCategoryVisible(id,visible)
  if not self.categories[id]then return false end
- local ok=self:UpdateSettings(function(settings)settings.categoryVisible[id]=visible~=false;return true end)
+ local ok=HolyStorm.Settings:Set("poi.categoryVisible."..id,visible~=false)
  if ok then HolyStorm.Events:Emit("HS_POI_FILTER_CHANGED","category",id,visible~=false);self:Refresh("CATEGORY_FILTER")end;return ok
 end
 function POI:SetTargetVisible(id,visible)
  if not self.targets[id]then return false end
- local ok=self:UpdateSettings(function(settings)settings.targetVisible[id]=visible~=false;return true end)
+ local ok=HolyStorm.Settings:Set("poi.targetVisible."..id,visible~=false)
  if ok then HolyStorm.Events:Emit("HS_POI_FILTER_CHANGED","target",id,visible~=false);self:Refresh("TARGET_FILTER")end;return ok
+end
+function POI:RegisterLocalSettings()
+ local legacy=self:GetSettings();local definitions={
+  {id="poi.worldMapEnabled",key="worldMapEnabled",type="toggle",default=true,nameKey="WORLD_ENABLED",order=1,slash={path={"poi","world-map"}}},
+  {id="poi.minimapEnabled",key="minimapEnabled",type="toggle",default=true,nameKey="MINIMAP_ENABLED",order=2,slash={path={"poi","minimap"}}},
+  {id="poi.worldMapSize",key="worldMapSize",type="range",default=22,nameKey="WORLD_SIZE",order=3,min=12,max=48,step=1},
+  {id="poi.minimapSize",key="minimapSize",type="range",default=18,nameKey="MINIMAP_SIZE",order=4,min=10,max=36,step=1},
+  {id="poi.maxSynced",key="maxSynced",type="range",default=500,nameKey="MAX_SYNCED",order=5,min=50,max=1000,step=50},
+ }
+ for _,definition in ipairs(definitions)do local entry=definition;local expected=type(entry.default);HolyStorm.Options:RegisterSetting({id=entry.id,module="POI",type=entry.type,default=entry.default,scope="account",scopes={"character","account","guild","allGuilds"},nameKey=entry.nameKey,descriptionKey="DESCRIPTION",uiOrder=entry.order,name=L[entry.nameKey],description=L["DESCRIPTION"],group="POI",slash=entry.slash,setter=function(value)return POI:SetSetting(entry.key,value)end,validate=function(value)return type(value)==expected and(expected~="number"or value>=entry.min and value<=entry.max and value%1==0)end});HolyStorm.Settings:ImportLegacy(entry.id,legacy[entry.key],"account")end
+ for id in pairs(self.categories)do local categoryId=id;local definitionId="poi.categoryVisible."..categoryId;local nameKey="CATEGORY_"..categoryId:gsub("%-","_"):upper();HolyStorm.Options:RegisterSetting({id=definitionId,module="POI",type="toggle",default=true,scope="account",scopes={"character","account","guild","allGuilds"},nameKey=nameKey,descriptionKey="DESCRIPTION",uiOrder=20,name=L[nameKey],description=L["DESCRIPTION"],group="POI",slash={path={"poi","category",categoryId}},setter=function(value)return POI:SetCategoryVisible(categoryId,value)end});HolyStorm.Settings:ImportLegacy(definitionId,legacy.categoryVisible[categoryId],"account")end
+ for id in pairs(self.targets)do local targetId=id;local definitionId="poi.targetVisible."..targetId;local default=legacy.targetVisible[targetId]~=false;HolyStorm.Options:RegisterSetting({id=definitionId,module="POI",type="toggle",default=default,scope="account",scopes={"character","account","guild","allGuilds"},nameKey="TARGET_"..targetId,name=L["TARGET_"..targetId],descriptionKey="DESCRIPTION",description=L["DESCRIPTION"],uiOrder=30,group="POI",slash={path={"poi","target",targetId}},setter=function(value)return POI:SetTargetVisible(targetId,value)end});HolyStorm.Settings:ImportLegacy(definitionId,legacy.targetVisible[targetId],"account")end
 end
 function POI:IsModuleEnabled(target)return target=="PERSONAL"or not HolyStorm.Policy or HolyStorm.Policy:IsGuildModuleEnabled("poi")end
 function POI:IsMapValid(mapID)
@@ -369,6 +387,7 @@ function POI:Initialize()
  local stored,storeError=HolyStorm.Data.POIStore:Initialize();if not stored then log("ERROR","POI store unavailable",{reason=storeError});return false,storeError end
  local settings,settingsError=self:InitializeSettings();if not settings then log("WARN","POI settings unavailable",{reason=settingsError})end
  self:RegisterCategory("quest",{nameKey="POI_CATEGORY_QUEST"});self:RegisterCategory("achievement",{nameKey="POI_CATEGORY_ACHIEVEMENT"});self:RegisterCategory("raid-entrance",{nameKey="POI_CATEGORY_RAID_ENTRANCE"});self:RegisterCategory("note",{nameKey="POI_CATEGORY_NOTE"});self:RegisterCategory("custom",{nameKey="POI_CATEGORY_CUSTOM"})
+ self:RegisterLocalSettings()
  local icons={marker="Interface\\Icons\\INV_Misc_Map_01",circle="Interface\\TargetingFrame\\UI-RaidTargetingIcon_2",dot="Interface\\TargetingFrame\\UI-RaidTargetingIcon_2",star="Interface\\TargetingFrame\\UI-RaidTargetingIcon_1",skull="Interface\\TargetingFrame\\UI-RaidTargetingIcon_8",diamond="Interface\\TargetingFrame\\UI-RaidTargetingIcon_3",triangle="Interface\\TargetingFrame\\UI-RaidTargetingIcon_4",moon="Interface\\TargetingFrame\\UI-RaidTargetingIcon_5",square="Interface\\TargetingFrame\\UI-RaidTargetingIcon_6",cross="Interface\\TargetingFrame\\UI-RaidTargetingIcon_7",exclamation="Interface\\GossipFrame\\AvailableQuestIcon",quest="Interface\\GossipFrame\\AvailableQuestIcon",question="Interface\\GossipFrame\\ActiveQuestIcon",treasure="Interface\\Icons\\INV_Misc_Coin_01",portal="Interface\\Icons\\Spell_Arcane_TeleportStormWind",flag="Interface\\Icons\\INV_BannerPVP_02",note="Interface\\Icons\\INV_Misc_Note_01"}
  for id,texture in pairs(icons)do self:RegisterIcon(id,{texture=texture,nameKey="POI_ICON_"..string.upper(id)})end
  HolyStorm.Tasks:RegisterTaskType("POI.Expire",{name=L["TASK_POI_EXPIRE"],localizedNameKey="TASK_POI_EXPIRE",module="POI",priority=90,executionMode="MERGE_BY_KEY",execute=function()return POI:CleanupExpired()end})

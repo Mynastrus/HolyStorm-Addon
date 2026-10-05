@@ -51,9 +51,28 @@ function Positions:GetSettings()
             minimapSize = 18,
             markerStyle = "CLASS",
         })
+        local legacy = HolyStorm.DataManager:GetArea("positions")
+        local definitions = {
+            {key="share",default=true,scopes={"guild","allGuilds"},scope="guild",type="toggle",nameKey="SHARE",descriptionKey="SHARE_DESC",uiOrder=1,slash={path={"positions","share"}}},
+            {key="display",default=true,type="toggle",nameKey="DISPLAY_MEMBERS",descriptionKey="DESCRIPTION",uiOrder=2,slash={path={"positions","display"}}},
+            {key="worldMapEnabled",default=true,type="toggle",nameKey="WORLD_MAP",descriptionKey="DESCRIPTION",uiOrder=3,slash={path={"positions","world-map"}}},
+            {key="minimapEnabled",default=true,type="toggle",nameKey="MINIMAP",descriptionKey="DESCRIPTION",uiOrder=4,slash={path={"positions","minimap"}}},
+            {key="currentMapOnly",default=false,type="toggle",nameKey="CURRENT_MAP_ONLY",descriptionKey="DESCRIPTION",uiOrder=5,slash={path={"positions","current-map-only"}}},
+            {key="worldMapSize",default=24,type="range",nameKey="WORLD_SIZE",descriptionKey="DESCRIPTION",uiOrder=6},
+            {key="minimapSize",default=18,type="range",nameKey="MINIMAP_SIZE",descriptionKey="DESCRIPTION",uiOrder=7},
+            {key="markerStyle",default="CLASS",type="select",nameKey="MARKER_STYLE",descriptionKey="DESCRIPTION",uiOrder=8},
+        }
+        for _, definition in ipairs(definitions) do
+            local entry=definition
+            local id="positions."..entry.key
+            HolyStorm.Options:RegisterSetting({id=id,module="Positions",type=entry.type,default=entry.default,scope=entry.scope or"account",scopes=entry.scopes or{"account"},nameKey=entry.nameKey,descriptionKey=entry.descriptionKey,uiOrder=entry.uiOrder,name=L[entry.nameKey],description=L[entry.descriptionKey],group="Positions",slash=entry.slash,setter=function(value)return HolyStorm.GuildPositions:SetSetting(entry.key,value)end,validate=entry.key=="worldMapSize"and function(v)return type(v)=="number"and v>=14 and v<=48 and v%1==0 end or entry.key=="minimapSize"and function(v)return type(v)=="number"and v>=12 and v<=36 and v%1==0 end or nil})
+            HolyStorm.Settings:ImportLegacy(id,legacy[entry.key],entry.key=="share"and"allGuilds"or"account")
+        end
         self.settingsRegistered = true
     end
-    return HolyStorm.DataManager:GetArea("positions")
+    local settings=HolyStorm.DataManager:GetArea("positions")
+    for key in pairs(settings)do if key~="schemaVersion"then local value=HolyStorm.Settings:Get("positions."..key);if value~=nil then settings[key]=value end end end
+    return settings
 end
 
 function Positions:IsEnabled()
@@ -96,8 +115,11 @@ function Positions:SetSetting(key, value)
     end
 
     local oldValue = settings[key]
-    if oldValue == value then return true end
-    HolyStorm.DataManager:Set("positions", key, value)
+    local stored,reason = HolyStorm.Settings:Set("positions."..key,value)
+    if not stored then return false,reason end
+    local newValue=self:GetSettings()[key]
+    if oldValue == newValue then return true end
+    value=newValue
 
     if key == "share" and not value then
         local previouslyShared = self.ownState ~= nil or self.pendingSnapshot ~= nil

@@ -8,15 +8,16 @@ assert(loadfile(root.."Persistence/Schema.lua"))();assert(loadfile(root.."Persis
 HolyStormDB={global={schemaVersion=12,data={guilds={keep={name="Guild"}},characters={Legacy={raid={snapshotVersion=3,lifetime={bosses={one={kills=7}}}}}},players={account={characters={Legacy=true}}},characterOwners={Legacy="account"}},playerProfiles={profile={roles={officer=true}}},characterOwners={Other="profile"},twinks={Twink={identity={name="Alt"}}}}}
 HS_Player_DB={schemaVersion=2,characters={Current={identity={name="Current"}}},players={canonical={characters={Current=true}}},characterOwners={Current="canonical"}}
 local global=HolyStormDB.global
-assert(HolyStorm.Data.Migrations:Run(global,12));assert(global.schemaVersion==13 and HS_Player_DB.schemaVersion==2,"database schema advances independently to v13")
+assert(HolyStorm.Data.Migrations:Run(global,12));assert(global.schemaVersion==14 and HS_Player_DB.schemaVersion==2,"database schema advances independently to v14")
+assert(global.localSettings and global.localSettings.schemaVersion==1 and global.localSettings.character and global.localSettings.account and global.localSettings.guild and global.localSettings.allGuilds,"local scope buckets are created without replacing existing saved data")
 assert(HS_Player_DB.characters.Legacy.raid.lifetime.bosses.one.kills==7 and HS_Player_DB.characters.Twink.identity.name=="Alt","character and raid history are preserved while aliases consolidate")
 assert(HS_Player_DB.players.account.characters.Legacy and HS_Player_DB.players.profile.roles.officer and HS_Player_DB.characterOwners.Other=="profile","account and owner mappings are preserved")
 assert(global.data.guilds.keep.name=="Guild"and global.data.characters==nil and global.data.players==nil and global.data.characterOwners==nil,"guild data remains while obsolete character aliases are removed")
 assert(global.playerProfiles==nil and global.characterOwners==nil and global.twinks==nil,"one-time compatibility roots are cleaned after migration")
 local migrationLog=logs[#logs];assert(migrationLog.context.migrationId=="database.12-to-13.player-alias-cleanup"and migrationLog.context.cleanup==true,"migration logs identify domain, transition and cleanup")
-assert(HolyStorm.Data.Migrations:Run(global,13));assert(global.data.characters==nil and HS_Player_DB.characters.Legacy.raid.lifetime.bosses.one.kills==7,"repeat migration is idempotent and does not recreate aliases")
+assert(HolyStorm.Data.Migrations:Run(global,14));assert(global.data.characters==nil and HS_Player_DB.characters.Legacy.raid.lifetime.bosses.one.kills==7,"repeat migration is idempotent and does not recreate aliases")
 
-local future={schemaVersion=14,data={retained=true}};local before=copy(future);local ok,reason=HolyStorm.Data.Migrations:Run(future,14);assert(not ok and reason=="SCHEMA_VERSION_NEWER"and future.schemaVersion==before.schemaVersion and future.data.retained,"future schemas remain untouched")
+local future={schemaVersion=15,data={retained=true}};local before=copy(future);local ok,reason=HolyStorm.Data.Migrations:Run(future,15);assert(not ok and reason=="SCHEMA_VERSION_NEWER"and future.schemaVersion==before.schemaVersion and future.data.retained,"future schemas remain untouched")
 local malformed={schemaVersion=12,data={characters={broken="not a record"}}};local malformedBefore=copy(malformed);local accepted=HolyStorm.Data.Migrations:Run(malformed,12);assert(not accepted and malformed.schemaVersion==malformedBefore.schemaVersion and malformed.data.characters.broken=="not a record","malformed legacy records are retained for recovery")
 
 HolyStorm.db={global=global};HolyStorm.State={};HolyStorm.Utils.TableCount=function(value)local n=0;for _ in pairs(value or{})do n=n+1 end;return n end

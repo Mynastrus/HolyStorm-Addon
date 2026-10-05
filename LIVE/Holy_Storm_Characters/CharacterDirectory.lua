@@ -28,8 +28,8 @@ function Directory:Describe(characterUUID)
  local visible=false
  for _,entry in ipairs(HolyStorm.TwinkCore:GetVisibleCharactersForViewer(accountUUID,guild))do if entry.characterUUID==characterUUID then visible=true;break end end
  if visible then
-  local account=HolyStorm.TwinkCore:GetAccount(accountUUID)
-  local realName=account and account.metadata and account.metadata.realName
+  local profileField=HolyStorm.TwinkCore:GetProfileField(accountUUID,"realName",guild and guild.id,false)
+  local realName=profileField and profileField.state=="VISIBLE"and profileField.value
   if type(realName)=="string"and HolyStorm.Utils.Trim(realName)~=""then description.realName=HolyStorm.Utils.Trim(realName)end
  end
  return description

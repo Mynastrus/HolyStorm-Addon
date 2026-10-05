@@ -151,6 +151,16 @@ Migrations.steps[13] = function(global)
     global.playerProfiles=nil;global.characterOwners=nil;global.twinks=nil
     if HolyStorm.Logger and HolyStorm.Logger.Write then HolyStorm.Logger:Write("INFO","Database","migration","Legacy character aliases consolidated",{domain="player-data",oldSchema=12,newSchema=13,migrationId="database.12-to-13.player-alias-cleanup",cleanup=true,charactersCopied=counts.characters,playersCopied=counts.players,ownersCopied=counts.owners})end
 end
+Migrations.steps[14] = function(global)
+    local settings = type(global.localSettings) == "table" and global.localSettings or {}
+    settings.schemaVersion = 1
+    settings.character = type(settings.character) == "table" and settings.character or {}
+    settings.account = type(settings.account) == "table" and settings.account or {}
+    settings.guild = type(settings.guild) == "table" and settings.guild or {}
+    settings.allGuilds = type(settings.allGuilds) == "table" and settings.allGuilds or {}
+    settings.selectedScopes = type(settings.selectedScopes) == "table" and settings.selectedScopes or {}
+    global.localSettings = settings
+end
 function Migrations:Run(global, fromVersion, legacy)
     local target = HolyStorm.Data.Schema.version
     fromVersion=tonumber(fromVersion)or 0

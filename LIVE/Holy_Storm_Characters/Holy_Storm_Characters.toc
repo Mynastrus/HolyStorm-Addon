@@ -1,6 +1,7 @@
 ## Interface: 120100
-## Title: Holy Storm: |cff24a7deCharacters|r
-## Notes: Character identities, profiles, statistics and character overview for Holy Storm.
+## Title: Holy Storm: |cff24a7dePlayer Profile|r
+## Title-deDE: Holy Storm: |cff24a7deSpielerprofil|r
+## Notes: Player profiles, character identities, statistics and account roster for Holy Storm.
 ## Notes-deDE: Charakteridentitäten, Profile, Werte und Charakterübersicht für Holy Storm.
 ## Author: Mynastrus - Norgannon - EU
 ## Category: Holy Storm

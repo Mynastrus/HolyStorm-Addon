@@ -13,6 +13,10 @@ local listeners={}
 local record={guid="Player-Test"}
 local writes,syncs,workflowQueued,releases={},0,nil,{}
 local HolyStorm={db={profile={taskManager={}}},Data={CharacterStore={}},Logger={history={}},Events={},State={values={playerLoggedIn=true,playerReady=true,guildAvailable=true}},Utils={}}
+local settingDefinitions,settingValues,optionsTabs,slashCommands={},{},{},{}
+HolyStorm.Settings={Register=function(_,definition)settingDefinitions[definition.id]=definition;return true end,Get=function(_,id)local value=settingValues[id];if value~=nil then return value end;local definition=settingDefinitions[id];return definition and definition.default end,GetDefinition=function(_,id)return settingDefinitions[id]end,Set=function(_,id,value)if not settingDefinitions[id]then return false end;settingValues[id]=value;return true end}
+HolyStorm.Options={RegisterSetting=function(_,definition)return HolyStorm.Settings:Register(definition)end,RegisterOptionsTab=function(_,id,value)optionsTabs[id]=value;return true end,CreateScopeSelector=function()return{type="select"}end,SetSetting=function(_,id,value)return HolyStorm.Settings:Set(id,value)end}
+HolyStorm.Commands={RegisterSlashCommand=function(_,definition)slashCommands[definition.id]=definition;return true end}
 function HolyStorm:GetAddon()return self end
 function HolyStorm:GetLocale()return setmetatable({},{__index=function(_,key)return key end})end
 function HolyStorm.Utils.DeepCopy(value)return deepCopy(value)end
@@ -46,6 +50,9 @@ assert(loadfile(root.."Core/Workflows/WorkflowManager.lua"))()
 assert(loadfile(root.."Core/Tasks/CharacterScanManager.lua"))()
 assert(loadfile(featureRoot.."Equipment.lua"))()
 HolyStorm.Tasks:Initialize();HolyStorm.Workflows:Initialize();HolyStorm.CharacterScans:Initialize();HolyStorm.Equipment:OnInitialize()
+local optionArgs=optionsTabs.equipment.args
+assert(optionArgs.required.args.equipmentChanged.get()==true and optionArgs.required.args.equipmentChanged.disabled==true,"the required equipment-change trigger is always on and disabled")
+assert(optionArgs.required.args.enchantChanges.get()==true and optionArgs.required.args.socketChanges.get()==true,"optional enchant and socket triggers default on")
 for _,taskType in ipairs({"Equipment.Scan","Equipment.Validate","Equipment.Compare","Equipment.ConfirmScan","Equipment.ConfirmValidate","Equipment.StabilityCompare","Equipment.Store"})do assert(HolyStorm.Tasks:GetTaskType(taskType).timeoutSeconds==30,taskType.." declares a bounded ASYNC timeout")end
 local slots={};for slot=1,16 do slots[slot]=false end
 local function snapshot(itemId)
@@ -119,6 +126,25 @@ local releaseCount=#releases;assert(not HolyStorm.CharacterScans:Finish({workflo
 local otherStarts=0;HolyStorm.CharacterScans:RegisterProvider("OtherProducer",{block="other",capability="character.scan.other",order=20,request=function()otherStarts=otherStarts+1;return"other-scan-1"end})
 assert(HolyStorm.CharacterScans:Request("other","AFTER_EQUIPMENT_FAILURE",true,{order=20}));processAll();assert(otherStarts==1 and HolyStorm.CharacterScans.active and HolyStorm.CharacterScans.active.workflowId=="other-scan-1","a different producer acquires CharacterScan after equipment failure")
 HolyStorm.Events:Emit("HS_WORKFLOW_COMPLETED",{workflowId="other-scan-1"});processAll();assert(HolyStorm.CharacterScans.active==nil,"the next producer also releases normally")
+
+record={guid="Player-Test",equipment=deepCopy(A),itemLevel=A.itemLevel};scanSource=constant(A);scanCalls=0;workflowQueued=nil
+local originalRequest=HolyStorm.CharacterScans.Request;local manualRequests={}
+HolyStorm.CharacterScans.Request=function(self,block,reason,sync,options)if reason=="MANUAL_OPTIONS"then manualRequests[#manualRequests+1]={block=block,reason=reason,sync=sync,options=deepCopy(options)}end;return originalRequest(self,block,reason,sync,options)end
+assert(optionArgs.status.args.scan.func()==true,"manual scan button accepts the official request")
+processAll();local equipmentCommand=assert(slashCommands["equipment.scan"]);assert(equipmentCommand.execute()==true,"equipment slash command accepts the official request")
+processAll();HolyStorm.CharacterScans.Request=originalRequest
+assert(#manualRequests==2 and manualRequests[1].block=="equipment"and manualRequests[2].block=="equipment"and manualRequests[1].reason==manualRequests[2].reason and manualRequests[1].reason=="MANUAL_OPTIONS","button and slash use the same CharacterScan request path")
+assert(scanCalls==2,"manual button and slash each run the existing debounced equipment workflow")
+
+HolyStorm.Equipment:OnEnable();local extraCalls={};local requestExtra=HolyStorm.CharacterScans.Request;HolyStorm.CharacterScans.Request=function(self,block,reason,sync,options)extraCalls[#extraCalls+1]=reason;return requestExtra(self,block,reason,sync,options)end;HolyStorm.Settings:Set("equipment.scanOnEnchantChange",false)
+workflowQueued=nil;scanCalls=0;record={guid="Player-Test",equipment=deepCopy(A),itemLevel=A.itemLevel};scanSource=constant(A)
+HolyStorm.Events:Emit("WEAPON_ENCHANT_CHANGED");assert(HolyStorm.CharacterScans.active==nil,"disabled optional enchant trigger does not request a workflow")
+HolyStorm.Settings:Set("equipment.scanOnEnchantChange",true)
+HolyStorm.Events:Emit("WEAPON_ENCHANT_CHANGED");HolyStorm.Events:Emit("SOCKET_INFO_SUCCESS");HolyStorm.Events:Emit("SOCKET_INFO_UPDATE")
+assert(HolyStorm.CharacterScans:Advance(),"queued optional triggers can advance through the official scan manager")
+local mergedExtras=HolyStorm.CharacterScans.active and HolyStorm.CharacterScans.active.workflowId;assert(mergedExtras,"enabled extra triggers request the official CharacterScan workflow ("..table.concat(extraCalls,",")..","..tostring(HolyStorm.Settings:Get("equipment.scanOnSocketChange"))..")")
+processAll();assert(scanCalls==1 and workflowQueued==mergedExtras and HolyStorm.CharacterScans.active==nil,"enchant and socket triggers merge into one debounced equipment workflow")
+HolyStorm.CharacterScans.Request=requestExtra
 
 record={guid="Player-Test",equipment=deepCopy(A),itemLevel=A.itemLevel};scanSource=constant(A);scanCalls=0;workflowQueued=nil
 assert(HolyStorm.CharacterScans:Request("equipment","PLAYER_EQUIPMENT_CHANGED",true,{order=10})and HolyStorm.CharacterScans:Advance(),"the first equipment event queues one debounced workflow")

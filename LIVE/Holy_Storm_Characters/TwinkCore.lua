@@ -8,6 +8,26 @@ local function validId(v)return type(v)=="string"and#v>0 and#v<=128 end
 local function log(level,message,context)HolyStorm.Logger:Write(level,"TwinkCore","identity",message,context)end
 local function syncObjectId(accountUUID,characterUUID)return accountUUID.."\031"..characterUUID end
 local function splitObjectId(value)if type(value)~="string"then return nil end;return value:match("^(.-)\031([^\031]+)$")end
+local legacyProfileAliases={realName={"realName","displayName"},birthDate={"birthDate","birthdate"},country={"country"},city={"city","location"},playerType={"playerType"},playDays={"playDays"},playTimes={"playTimes"}}
+local function profileVisibility(value)if value=="PRIVATE"or value=="PUBLIC"or value=="GUILD"then return value end;return"GUILD"end
+local function accountProfileFields(metadata)
+ metadata=type(metadata)=="table"and metadata or{};local fields=copy(metadata.profileFields or{})
+ for id,aliases in pairs(legacyProfileAliases)do if type(fields[id])~="table"then for _,key in ipairs(aliases)do if metadata[key]~=nil then fields[id]={value=copy(metadata[key]),visibility="GUILD"};break end end end end
+ return fields
+end
+local function exportProfileMetadata(metadata)
+ local result=copy(metadata or{});local source=accountProfileFields(result);local fields={}
+ for id,entry in pairs(source)do
+  entry=type(entry)=="table"and entry or{value=entry};local visibility=profileVisibility(entry.visibility);local value=entry.value
+  if entry.state=="WITHHELD"then fields[id]={visibility=visibility,state="WITHHELD"}
+  elseif visibility=="PRIVATE"then fields[id]={visibility=visibility,state=value~=nil and value~=""and"WITHHELD"or"EMPTY"}
+  elseif value==nil or value==""then fields[id]={visibility=visibility,state="EMPTY"}
+  else fields[id]={visibility=visibility,state="SET",value=copy(value)}end
+ end
+ result.profileFields=fields
+ for _,aliases in pairs(legacyProfileAliases)do for _,key in ipairs(aliases)do result[key]=nil end end
+ return result
+end
 
 function TwinkCore:CreateAccountUUID()
  local value=string.format("account-%08x-%08x-%08x",now()%0xFFFFFFFF,math.random(0,0x7FFFFFFF),math.random(0,0x7FFFFFFF));log("INFO","Account UUID generated",{accountUUID=value});return value
@@ -79,6 +99,19 @@ end
 function TwinkCore:SetAccountMetadata(metadata)
  local account=self:_GetAccount(self.localAccountUUID);if not account or type(metadata)~="table"then return false,"INVALID_METADATA"end;if HolyStorm.Serializer:Serialize(account.metadata or{})==HolyStorm.Serializer:Serialize(metadata)then return false,"UNCHANGED"end;account.metadata=copy(metadata);self:TouchOwner(account,"ACCOUNT_METADATA_CHANGED");return true
 end
+function TwinkCore:GetProfileField(accountUUID,fieldId,viewerGuildId,ownerView)
+ local account=self:_GetAccount(accountUUID);if not account then return{state="NOT_ENTERED",visibility="GUILD"}end
+ local entry=accountProfileFields(account.metadata)[fieldId];if type(entry)~="table"then return{state="NOT_ENTERED",visibility="GUILD"}end
+ local visibility=profileVisibility(entry.visibility);local value=entry.value
+ if accountUUID==self.localAccountUUID and ownerView~=false then return{state=value~=nil and value~=""and"VISIBLE"or"NOT_ENTERED",visibility=visibility,value=copy(value)}end
+ if entry.state=="WITHHELD"or visibility=="PRIVATE"then local state=(entry.state=="WITHHELD"or value~=nil)and"HIDDEN"or"NOT_ENTERED";return{state=state,visibility=visibility}end
+ if visibility=="GUILD"then
+  local guildId=viewerGuildId or(HolyStorm.Data.GuildStore:GetCurrent()or{}).id;local member=false
+  if guildId then for guid,character in pairs(account.characters or{})do if character.guildId==guildId then member=true;break end;local guild=HolyStorm.Data.GuildStore:Get(guildId);if guild and guild.roster and guild.roster[guid]then member=true;break end end end
+  if not member then return{state=value~=nil and"HIDDEN"or"NOT_ENTERED",visibility=visibility}end
+ end
+ return{state=value~=nil and"VISIBLE"or"NOT_ENTERED",visibility=visibility,value=copy(value)}
+end
 function TwinkCore:GetVisibleCharactersForViewer(accountUUID,guildContext)
  local account=self:_GetAccount(accountUUID);if not account then return{}end;local guild=guildContext or HolyStorm.Data.GuildStore:GetCurrentRosterSummary();local accountMain=self:GetAccountMain(accountUUID,guild);local out={};for guid,entry in pairs(account.characters)do if account.visibility==self.visibility.ALL or guid==accountMain or(guild and guild.roster and guild.roster[guid])then out[#out+1]=copy(entry)end end;table.sort(out,function(a,b)if a.characterUUID==accountMain then return true elseif b.characterUUID==accountMain then return false end;return candidateSort({characterUUID=a.characterUUID,rankIndex=a.guildRankIndex,normalizedFullName=a.normalizedFullName},{characterUUID=b.characterUUID,rankIndex=b.guildRankIndex,normalizedFullName=b.normalizedFullName})end);return out
 end
@@ -97,7 +130,7 @@ end
 function TwinkCore:ValidateOwnerSnapshot(payload)
  if type(payload)~="table"or not validId(payload.accountUUID)or type(payload.characters)~="table"or(payload.visibility~=self.visibility.ALL and payload.visibility~=self.visibility.GUILD_ONLY)then return false end;if payload.mainCharacterUUID and(not validId(payload.mainCharacterUUID)or not payload.characters[payload.mainCharacterUUID])then return false end;local count=0;for guid,entry in pairs(payload.characters)do count=count+1;if count>200 or not validId(guid)or type(entry)~="table"or entry.characterUUID~=guid or type(entry.relationship)~="table"or(entry.relationship.source~=self.sources.OWNER and entry.relationship.source~=self.sources.ADMIN)then return false end;if entry.relationship.source==self.sources.ADMIN and(not validId(entry.relationship.assignedBy)or not tonumber(entry.relationship.assignedAt))then return false end end;return true
 end
-function TwinkCore:ExportOwnerSnapshot(accountUUID)local account=self:_GetAccount(accountUUID);if not account or account.relayable==false then return nil end;local characters={};for guid,entry in pairs(account.characters)do if entry.relationship and entry.relationship.source==self.sources.OWNER then characters[guid]=copy(entry)end end;local main=account.mainCharacterUUID and characters[account.mainCharacterUUID]and account.mainCharacterUUID or nil;return{accountUUID=account.accountUUID,characters=characters,mainCharacterUUID=main,mainIsManual=account.mainIsManual==true and main~=nil,visibility=account.visibility,metadata=copy(account.metadata or{}),ownerVersion=account.ownerVersion,updatedAt=account.updatedAt,issuedBy=account.issuedBy}end
+function TwinkCore:ExportOwnerSnapshot(accountUUID)local account=self:_GetAccount(accountUUID);if not account or account.relayable==false then return nil end;local characters={};for guid,entry in pairs(account.characters)do if entry.relationship and entry.relationship.source==self.sources.OWNER then characters[guid]=copy(entry)end end;local main=account.mainCharacterUUID and characters[account.mainCharacterUUID]and account.mainCharacterUUID or nil;return{accountUUID=account.accountUUID,characters=characters,mainCharacterUUID=main,mainIsManual=account.mainIsManual==true and main~=nil,visibility=account.visibility,metadata=exportProfileMetadata(account.metadata),ownerVersion=account.ownerVersion,updatedAt=account.updatedAt,issuedBy=account.issuedBy}end
 function TwinkCore:GetOwnerMetadata(accountUUID)local account=self:_GetAccount(accountUUID);if not account or account.relayable==false or not validId(account.issuedBy)then return nil end;return{objectId=accountUUID,owner=account.issuedBy,version=tonumber(account.ownerVersion)or 0,updatedAt=tonumber(account.updatedAt)or 0,source="twinks-owner"}end
 function TwinkCore:MergeOwnerSnapshot(accountUUID,payload,meta)
  if accountUUID==self.localAccountUUID then return false,"LOCAL_OWNER_PROTECTED"end

@@ -37,6 +37,32 @@ local HolyStorm = {
     Logger = { rows = {} },
     MapLinks = {},
 }
+local localSettings, settingDefinitions = {}, {}
+HolyStorm.Settings = {
+    Register = function(_, definition) settingDefinitions[definition.id] = definition; return true end,
+    GetDefinition = function(_, id) return settingDefinitions[id] end,
+    Get = function(_, id)
+        local definition = settingDefinitions[id]
+        if not definition then return nil end
+        local value = localSettings[id]
+        return value == nil and copy(definition.default) or copy(value)
+    end,
+    Set = function(_, id, value)
+        if not settingDefinitions[id] then return false, "UNKNOWN_SETTING" end
+        localSettings[id] = copy(value)
+        return true
+    end,
+    ImportLegacy = function(self, id, value)
+        if value == nil or localSettings[id] ~= nil then return false end
+        return self:Set(id, value)
+    end,
+}
+HolyStorm.Options = {
+    RegisterSetting = function(_, definition) return HolyStorm.Settings:Register(definition) end,
+    RegisterOptionsTab = function() return true end,
+    CreateScopeSelector = function(_, id, labels) local definition = HolyStorm.Settings:GetDefinition(id); local values = {}; for key, item in pairs(definition and definition.scopes or {}) do local scope = type(key) == "number" and item or key; values[scope] = labels and labels[scope] or scope end; return { type = "select", values = values } end,
+}
+HolyStorm.Commands = { RegisterOption = function() return true end }
 
 function LibStub(name)
     if name == "AceAddon-3.0" then return { GetAddon = function() return HolyStorm end } end
@@ -237,6 +263,10 @@ assert(not settings.worldMapEnabled and settings.minimapEnabled and settings.wor
     and settings.minimapSize == 15 and settings.currentMapOnly and settings.markerStyle == "GUILD",
     "independent visual settings did not persist through DataManager")
 
+settingsArea.share = false; localSettings["positions.share"] = nil; positions.settingsRegistered = false
+settings = positions:GetSettings(); assert(settings.share == false, "legacy explicit share=false migrates without being replaced by the enabled default")
+assert(positions:SetSetting("share", true), "position sharing can be restored after legacy migration")
+
 moduleEnabled = false
 assert(not positions:CanShare() and not positions:CanDisplay(), "administrative module disable did not gate feature")
 moduleEnabled = true
@@ -246,8 +276,8 @@ assert(positions:Disable() and not positions.featureActive and not HolyStorm.Tas
 local permissionFile = assert(io.open(root .. "LIVE/Holy_Storm_Positions/Positions.lua", "rb"))
 local permissionRegistry = permissionFile:read("*a")
 permissionFile:close()
-local metadataCapture
-HolyStorm.RegisterModule = function(_, metadata, initialize) metadataCapture = metadata; initialize({}) end
+local metadataCapture, registeredPositionsModule
+HolyStorm.RegisterModule = function(_, metadata, initialize) metadataCapture = metadata; registeredPositionsModule = {}; initialize(registeredPositionsModule) end
 HolyStorm.RegisterUIExtension = function() end
 HolyStorm.GetModule = function() return nil end
 assert(loadfile(featureRoot .. "Positions.lua"))()
@@ -258,5 +288,10 @@ assert(dependencies.ui and dependencies.options and dependencies.synchronization
     "module contract is missing UI/options/sync dependencies")
 assert(metadataCapture.permissions == nil and not permissionRegistry:find("position%-view")
     and not permissionRegistry:find("position%-share"), "artificial view/share permissions remain")
+local positionOptions = registeredPositionsModule:BuildOptions()
+assert(positionOptions.args.privacy.args.share and positionOptions.args.privacy.args.shareScope.values.guild
+    and positionOptions.args.privacy.args.shareScope.values.allGuilds
+    and not positionOptions.args.privacy.args.shareScope.values.account,
+    "position sharing keeps its central control and offers only this-guild or all-guild scopes")
 
 print("Guild-position defaults, privacy, movement, coalescing, live sync, freshness, module and settings tests passed")
