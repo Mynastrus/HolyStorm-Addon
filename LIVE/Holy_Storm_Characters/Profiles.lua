@@ -151,8 +151,8 @@ function Profiles:BuildUI()
  end
  self.birthWarning=content:CreateFontString(nil,"OVERLAY","GameFontHighlightSmall");self.birthWarning:SetWidth(800);self.birthWarning:SetJustifyH("LEFT");self.birthWarning:SetText(L["PROFILE_BIRTHDATE_LEGACY_UNRESOLVED"]);self.birthWarning:SetTextColor(1,.65,.2);self.birthWarning:Hide()
  self.status=content:CreateFontString(nil,"OVERLAY","GameFontNormal");self.status:SetPoint("TOPLEFT",18,-712);self.saveButton=CreateFrame("Button",nil,content,"UIPanelButtonTemplate");self.saveButton:SetSize(190,28);self.saveButton:SetPoint("TOPLEFT",18,-740);self.saveButton:SetText(L["PROFILE_SAVE"]);self.saveButton:SetScript("OnClick",function()local ok,reason=Profiles:Save();self.status:SetText(ok and L["PROFILE_SAVED"]or reason=="INVALID_BIRTHDATE"and L["PROFILE_INVALID_DATE"]or L["PROFILE_SAVE_FAILED"]);if not ok then HolyStorm.Logger:Write("WARN","PlayerProfile","validation","Profile save failed",{reason=reason})end end)
- UI:RegisterPage("profiles",page,L["PROFILE_TITLE"],function()Profiles:Select(Profiles.selected or UnitGUID("player"));Profiles:RefreshCharacters()end,{"HS_PROFILE_UPDATED","HS_ACCOUNT_UPDATED","HS_ACCOUNT_MAIN_CHANGED"})
- UI:AddNavigation("profiles",4,"Interface\\Icons\\Achievement_Character_Human_Male",L["PROFILE_NAV"],L["PROFILE_DESC"],function()HolyStorm.UI:ShowPage("profiles")end)
+ HolyStorm.UI:RegisterPage("profiles",page,L["PROFILE_TITLE"],function()Profiles:Select(Profiles.selected or UnitGUID("player"));Profiles:RefreshCharacters()end,{"HS_PROFILE_UPDATED","HS_ACCOUNT_UPDATED","HS_ACCOUNT_MAIN_CHANGED"})
+ HolyStorm.UI:AddNavigation("profiles",4,"Interface\\Icons\\Achievement_Character_Human_Male",L["PROFILE_NAV"],L["PROFILE_DESC"],function()HolyStorm.UI:ShowPage("profiles")end)
 end
 function Profiles:UpdateCountryLabel()
  self.countrySelected:SetText(self:GetCountryName(self.countryCode))
