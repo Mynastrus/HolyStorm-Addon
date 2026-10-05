@@ -70,7 +70,7 @@ Map visibility, marker sizes, maximum synchronized entries, category filters, an
 
 The mandatory equipment-change trigger is displayed as checked and disabled. Optional enchant and socket triggers default on and request the same CharacterScans producer as equipment-change events. The options group displays the existing snapshot revision, schema and snapshot versions, successful timestamp, scan state, error, and retry information when available. Its Scan Now button and `/hs equipment scan` command both call `RequestManualScan`; neither writes a snapshot directly. There is no equipment-sync disable option.
 
-The event handlers are wired through the existing event bus and CharacterScans debounce/merge behavior. A live Retail client is needed to verify the availability and timing of optional enchant/socket events in the current client build.
+The optional triggers use `WEAPON_ENCHANT_CHANGED` and `SOCKET_INFO_SUCCESS` through the existing event bus and CharacterScans debounce/merge behavior. The socketing UI uses `SOCKET_INFO_UPDATE` to refresh its panel and tooltip while `SOCKET_INFO_SUCCESS` marks a completed socket operation, so the UI refresh event is deliberately excluded. Equipment workflow requests share a one-second debounce. The current 12.1 live UI/API source was checked; a Retail client is still needed to verify event timing against the collected snapshot and the in-game options/status UI.
 
 ## Module options audit
 

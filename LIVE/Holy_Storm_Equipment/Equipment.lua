@@ -200,7 +200,7 @@ if HolyStorm.PlayerData then HolyStorm.PlayerData:RegisterBlock("equipment",{fie
    if HolyStorm.State and not HolyStorm.State:Is("playerReady")then return end
    if eventName~="UNIT_INVENTORY_CHANGED"or firstArgument=="player"then HolyStorm.CharacterScans:Request("equipment",eventName,true,{order=10})end
   end)end
-  local extraEvents={WEAPON_ENCHANT_CHANGED="equipment.scanOnEnchantChange",SOCKET_INFO_SUCCESS="equipment.scanOnSocketChange",SOCKET_INFO_UPDATE="equipment.scanOnSocketChange"}
+  local extraEvents={WEAPON_ENCHANT_CHANGED="equipment.scanOnEnchantChange",SOCKET_INFO_SUCCESS="equipment.scanOnSocketChange"}
   for event,settingId in pairs(extraEvents)do local eventName,id=event,settingId;HolyStorm.Events:Register(eventName,"equipment",function()
    if not HolyStorm.Settings:Get(id)or HolyStorm.State and not HolyStorm.State:Is("playerReady")then return end
    HolyStorm.CharacterScans:Request("equipment",eventName,true,{order=10})
