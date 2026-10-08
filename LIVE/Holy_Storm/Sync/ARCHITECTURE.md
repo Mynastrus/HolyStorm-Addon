@@ -8,7 +8,7 @@ domain validation and persistence are still defined by their existing owners.
 ## Data path
 
 ```text
-Presence / DISCOVER
+Login Presence + bounded revision manifest / on-demand DISCOVER
         |
         v
 Metadata offers (at most 100 objects per page)
@@ -33,8 +33,9 @@ domain should be sent next.
 ## Discovery and metadata
 
 Discovery remains scoped by domain and object/scope. `activeRequests` merges
-repeated login, roster, module and on-demand triggers while a request is
-active. TaskManager retains trigger-source history for diagnostics.
+repeated roster, module and on-demand triggers while a request is active.
+Login no longer starts discovery. TaskManager retains trigger-source history
+for diagnostics.
 
 Responders take one sorted metadata snapshot per domain/request and share that
 index across recipients. Recipient-specific sharing checks are applied while
@@ -48,6 +49,63 @@ Metadata pages are sorted by entity key and revision. Character block IDs use
 `GUID + separator + block`, which keeps a character's block jobs together in
 the FIFO order when priorities match. GuildLog uses its event/entity IDs and
 the same bounded paging mechanism.
+
+## Login metadata and demand-driven payloads
+
+The former path was `PLAYER_LOGIN -> Presence -> RunCatchUp -> Discover` for
+every loaded domain whose `catchUp` flag was not false. The live opt-outs were
+`poi` and `guild-position`. Redundant startup discoveries also existed in the
+Achievements `PLAYER_ENTERING_WORLD` handler, POI startup, News and Guild
+Management `OnEnable`, and the Achievement guild-update handler. The character
+scan login hook only reset scan state; it did not queue producer scans.
+The separately enabled, privacy-gated `guild-position` feature still captures
+and discovers only live positions on its own login/roster lifecycle. Its domain
+has `catchUp=false`; this is not persistent catch-up across feature domains.
+POI retains only its current group-session resync, not an automatic Guild scan.
+
+The current path is `PLAYER_LOGIN -> Sync.LoginPresence -> PRESENCE`. Presence
+contains the resolved addon version, session ID, reply request and a schema-1
+manifest with at most 64 metadata entries. It never contains character blocks,
+equipment, raid, Mythic+, Delves, achievement records or other snapshots. The
+current core manifest provider advertises only enabled, locally owned character
+blocks. Optional domains can register a manifest provider without adding a
+hard dependency to core. Unknown domains are held in a 256-entry bounded list
+for up to the Presence TTL and considered if that module registers.
+
+The receiver compares each entry against its local domain metadata through
+`PlayerData:CompareMetadata`; an exact owner/version/revision match and any
+locally newer version cause no request. A missing or newer remote revision
+creates normal `QueueFetch` demand. Login does not call `RunCatchUp`; the legacy
+entry point logs `LOGIN_CATCHUP_SUPPRESSED` and returns without discovery.
+Passive healing remains available from newer offers, domain events and actual
+feature use.
+
+Outbound requests for the same domain, object, owner, version and revision are
+collected for 0.75 seconds in the existing bounded Sync job queue (up to 64
+recipients and four request IDs per recipient). One recipient gets a Whisper.
+Multiple recipients may share one Guild payload only if every requester is
+currently in the guild roster and the domain explicitly permits the audience,
+every online member passes `canShare`, or the domain declares its data safe for
+guild broadcast. If any privacy check fails, authorized requesters get targeted
+Whispers. Export occurs only after at least one authorized request survives
+revalidation. Owner/version/revision metadata is checked again before export,
+and the payload preserves the original owner through relays.
+
+Character Overview requests only the selected tab's declared blocks.
+Achievements, content, POI and Guild Management discovery runs on the matching
+page or feature being opened. No load-on-demand feature module must be present
+for core Presence or Sync to operate.
+
+The recurring 180-240 second Presence heartbeat was removed. Guild roster rows
+provide online status; login Presence and reply-requested peer Presence provide
+version detection, and the existing 300-second peer expiry remains. The
+one-shot `RunPresenceHeartbeat` compatibility method does not schedule itself or
+start discovery.
+
+Structured logs record manifest receipt, same/current/newer decisions, merged
+requests, recipient counts, Whisper/broadcast routing, privacy refusal, payload
+suppression and the deliberate login catch-up suppression without logging
+payload contents.
 
 ## Job planning, identity and deduplication
 
@@ -150,9 +208,10 @@ failed imports leave the last valid snapshot intact.
 Each selected data job has at most three retries with bounded exponential
 backoff. Fetch response timeout and transport/import failures release the
 active slot, record a structured result and let the queue continue. A terminal
-failure removes the active dedupe entry but retains the old cache. The next
-login/discovery can offer the object again. The queue is deliberately
-in-memory; metadata discovery reconstructs unfinished work after reload.
+failure removes the active dedupe entry but retains the old cache. A later
+event, manifest or on-demand discovery can offer the object again. The queue is
+deliberately in-memory; metadata discovery reconstructs unfinished work after
+reload.
 
 ## Presence and GuildLog
 
@@ -160,7 +219,11 @@ Presence is independent of the data transfer slot. Existing version semantics
 remain in Sync: local version is authoritative, versionless Presence refreshes
 peer liveness without erasing a known version, valid Presence refreshes peer
 version freshness, and expired peers are removed after the existing timeout.
-`DEV` and semantic release versions retain their existing validation.
+`DEV` and semantic release versions retain their existing validation. Login
+Presence includes the bounded schema-1 revision manifest described above. The
+Guild roster provides online status, so Sync registers no periodic Presence
+heartbeat; version changes are learned from login Presence and direct replies.
+Peer Presence data still expires after the existing 300-second TTL.
 
 GuildLog synchronization is by event ID, revision and metadata. Events are
 individual bounded entities, not a transfer of the full persisted log. The
@@ -179,8 +242,8 @@ The activity model registers each qualifying operation with an activity ID and
 ends it by that ID, so a late completion cannot end a newer operation. A fetch
 counts while its response timeout is live or its matching payload is being
 committed; a send counts while its own Comms transmission is outstanding.
-Presence heartbeats, metadata request history, queued work, debounce delays and
-maintenance tasks do not count. Fetch request IDs rotate on each attempt, and
+one-shot Presence refreshes, metadata request history, queued work, debounce
+delays and maintenance tasks do not count. Fetch request IDs rotate on each attempt, and
 recent terminal IDs are ignored so a late reply cannot start receive work again.
 Activity reads and normal terminal events reconcile registrations against those
 runtime owners and release stale entries without polling. Transient activity,

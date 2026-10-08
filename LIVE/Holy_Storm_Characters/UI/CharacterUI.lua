@@ -37,6 +37,16 @@ function CharacterUI:RegisterTab(definition)
 end
 function CharacterUI:GetTabs()local out={};for _,id in ipairs(self.tabOrder)do out[#out+1]=self.tabs[id]end;return out end
 function CharacterUI:GetTab(id)return self.tabs[id]end
+function CharacterUI:RequestTabData(characterUUID,tabId)
+ local definition=self:GetTab(tabId);local sync=HolyStorm.Sync
+ if not definition or not sync or not validId(characterUUID)then return false end
+ local requested=false
+ if characterUUID~=UnitGUID("player")and type(definition.blocks)=="table"and sync:GetDomain("character")then
+  for _,block in ipairs(definition.blocks)do if type(block)=="string"and block~=""then requested=sync:Discover("character",characterUUID.."\031"..block,{reason="CHARACTER_OPEN",priorityClass="USER_INTERACTIVE",priority=35})~=nil or requested end end
+ end
+ if definition.syncDomain and sync:GetDomain(definition.syncDomain)then requested=sync:Discover(definition.syncDomain,definition.syncObjectId,{scope=definition.syncScope,reason="CHARACTER_TAB_OPEN",priorityClass="USER_INTERACTIVE",priority=35})~=nil or requested end
+ return requested
+end
 function CharacterUI:RegisterSummarySection(definition)
  if type(definition)~="table"or not validId(definition.id)or type(definition.render)~="function"then return false,"INVALID_CHARACTER_SUMMARY_SECTION"end
  local isNew=self.summarySections[definition.id]==nil;self.summarySections[definition.id]=definition;if isNew then self.summaryOrder[#self.summaryOrder+1]=definition.id end

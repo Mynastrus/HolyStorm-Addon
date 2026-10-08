@@ -106,11 +106,12 @@ assert(sendTransfer and sendTransfer.kind=="SEND"and sendActivity.active and sen
 HolyStorm.Comms:FinishTransmission(sendTransfer.transmissionId,true)
 assert(not Sync:GetActivity().active and sendJob.state=="COMPLETED","successful payload send releases its activity owner")
 
--- Each accepted POI fetch gets a distinct outbound response job and request correlation.
+-- Same-revision POI retries share one bounded outbound response job and retain both correlations.
 reset();metadata["poi-serve"]={objectId="poi-serve",owner="Player-Local",version=3,revisionID="poi-serve-r3",updatedAt=clock}
 assert(Sync:OnFetch("poi",{objectId="poi-serve",knownVersion=1,revisionID="poi-serve-r3",requestId="serve-a"},"Requester-Realm"),"source with the exact POI revision accepts the fetch")
-assert(Sync:OnFetch("poi",{objectId="poi-serve",knownVersion=1,revisionID="poi-serve-r3",requestId="serve-b"},"Requester-Realm"),"a retry with a new request ID is not merged into a stale response job")
-assert(#Sync.catchUpJobs==2 and Sync.catchUpJobs[1].requestId=="serve-a"and Sync.catchUpJobs[2].requestId=="serve-b"and Sync.catchUpJobs[1].key~=Sync.catchUpJobs[2].key,"outbound response deduplication includes request correlation")
+assert(Sync:OnFetch("poi",{objectId="poi-serve",knownVersion=1,revisionID="poi-serve-r3",requestId="serve-b"},"Requester-Realm"),"a retry with a new request ID joins the same revision response window")
+local serveJob=assert(Sync.catchUpJobs[1]);local recipient=next(serveJob.recipients)and serveJob.recipients[next(serveJob.recipients)]
+assert(#Sync.catchUpJobs==1 and recipient and #recipient.requestIds==2 and recipient.requestIds[1]=="serve-a"and recipient.requestIds[2]=="serve-b"and serveJob.notBefore-clock==Sync.requestCoalesceWindow,"outbound response coalescing retains both request correlations inside its bounded window")
 
 -- A missing POI returns a correlated negative result immediately, without waiting for its request timeout.
 reset();local missingJob=makeJob("poi-missing-source",{"Owner-Missing-Realm"},3);local missingTransfer=start(missingJob);local missingTimer=missingTransfer.timeoutTimer

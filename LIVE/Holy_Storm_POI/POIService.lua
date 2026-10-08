@@ -381,7 +381,7 @@ function POI:RegisterSyncDomain()
   import=function(id,entry,meta,senderGuid,sender)return POI:Import(id,entry,meta,senderGuid,sender)end,updateEvent="HS_POI_SYNCED"})
 end
 function POI:RunStartup()
- self:CleanupExpired();for guildId in pairs(HolyStorm.Data.POIStore:GetRoot().guilds)do self:PruneTombstones(guildId)end;self:HandleGroupContext();if not self.guildDiscoveryStarted and self:IsModuleEnabled("GUILD")then local requestId=HolyStorm.Sync:Discover("poi",nil,{channel="GUILD",scope="GUILD",reason="POI_LOGIN",priority=94,startupPhase=4});self.guildDiscoveryStarted=requestId~=nil and requestId~=false end;return true
+ self:CleanupExpired();for guildId in pairs(HolyStorm.Data.POIStore:GetRoot().guilds)do self:PruneTombstones(guildId)end;self:HandleGroupContext();return true
 end
 function POI:Initialize()
  local stored,storeError=HolyStorm.Data.POIStore:Initialize();if not stored then log("ERROR","POI store unavailable",{reason=storeError});return false,storeError end

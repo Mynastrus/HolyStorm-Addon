@@ -136,7 +136,7 @@ local function refreshTwinks(view,context,definition)
 end
 
 local standardTabs={
- {id="summary",order=1,labelKey="TAB_SUMMARY",icon=tabVisuals.summary.icon,blocks={"identity"},events={"HS_CHARACTER_UPDATED","HS_ROSTER_UPDATED"},build=buildSummary,refresh=refreshSummary},
+ {id="summary",order=1,labelKey="TAB_SUMMARY",icon=tabVisuals.summary.icon,blocks={"identity","stats"},events={"HS_CHARACTER_UPDATED","HS_ROSTER_UPDATED"},build=buildSummary,refresh=refreshSummary},
  {id="stats",order=60,labelKey="TAB_STATS",icon=tabVisuals.stats.icon,blocks={"stats"},events={"HS_STATS_UPDATED"},build=buildStats,refresh=refreshStats},
  {id="twinks",order=70,labelKey="TAB_TWINKS",icon=tabVisuals.twinks.icon,blocks={"identity"},events={"HS_TWINKS_UPDATED","HS_ACCOUNT_MAIN_CHANGED","HS_GUILD_MAIN_CHANGED","HS_TWINK_VISIBILITY_CHANGED"},characterScopedEvents=false,build=buildTwinks,refresh=refreshTwinks},
 }
@@ -181,7 +181,7 @@ function C:SelectTab(id)
  if HolyStorm.Tooltips then HolyStorm.Tooltips:Release("raid-weekly")end
  if HolyStorm.Tooltips then HolyStorm.Tooltips:Release("mythicplus-best-run")end
  local definition=self.tabs[id]or self.tabs.summary;if not definition then return false end;id=definition.id;self.activeTab=id
- for tabId,view in pairs(Page.views)do view.frame:SetShown(tabId==id)end;Page:UpdateTabVisuals();if not Page.views[id]then self:RefreshTab(id)end;self:LayoutTabView(Page.views[id]);Page.views[id].frame:Show();if Page.dirty[id]then self:RefreshTab(id)end;self:RefreshHeader();if id=="stats"and self.context and self.context.characterUUID==UnitGUID("player")then HolyStorm.Events:Emit("HS_STATS_LIVE_REQUESTED",self.context.characterUUID)end;return true
+ for tabId,view in pairs(Page.views)do view.frame:SetShown(tabId==id)end;Page:UpdateTabVisuals();if not Page.views[id]then self:RefreshTab(id)end;self:LayoutTabView(Page.views[id]);Page.views[id].frame:Show();if Page.dirty[id]then self:RefreshTab(id)end;self:RefreshHeader();if self.context then self:RequestTabData(self.context.characterUUID,id)end;if id=="stats"and self.context and self.context.characterUUID==UnitGUID("player")then HolyStorm.Events:Emit("HS_STATS_LIVE_REQUESTED",self.context.characterUUID)end;return true
 end
 function C:OpenCharacter(characterUUID,optionalTab,addHistory)
  local context=self:SetContext(characterUUID,addHistory);if not context then return false end;for _,definition in ipairs(self:GetTabs())do Page.dirty[definition.id]=true end;if HolyStorm.UI.ShowView then HolyStorm.UI:ShowView("character")else HolyStorm.UI:ShowPage("character")end;self:RefreshHeader();Page:RefreshSyncSpinner();self:SelectTab(optionalTab or self.activeTab or"summary");return true

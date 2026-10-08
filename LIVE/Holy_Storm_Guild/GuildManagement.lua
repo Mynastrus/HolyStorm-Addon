@@ -50,7 +50,7 @@ HolyStorm:RegisterModule({
  end
  function Module:OnEnable()
   self:RegisterCharacterActions();GM.Activity:Enable();HolyStorm.Events:Register("HS_MODULE_AVAILABILITY_CHANGED","guild-management-actions",function()Module:RegisterCharacterActions()end)
-  if IsInGuild()then HolyStorm.Sync:Discover("guildNotes",nil,{reason="GUILD_MANAGEMENT_ENABLE",priority=96});HolyStorm.Sync:Discover("guildAbsences",nil,{reason="GUILD_MANAGEMENT_ENABLE",priority=96});HolyStorm.Sync:Discover("guildActivity",nil,{reason="GUILD_MANAGEMENT_ENABLE",priority=96})end
+
  end
  function Module:OnDisable()GM.Activity:Disable("MODULE_DISABLED");HolyStorm.Events:UnregisterOwner("guild-management-actions");if HolyStorm.CharacterActions then HolyStorm.CharacterActions:UnregisterProvider("guild-management")end;self.actionsRegistered=false end
 end)

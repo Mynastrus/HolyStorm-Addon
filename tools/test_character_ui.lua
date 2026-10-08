@@ -36,6 +36,12 @@ local dummy=function()end
 assert(C:RegisterTab({id="raid",order=40,labelKey="RAID",build=dummy,refresh=dummy}))
 assert(C:RegisterTab({id="summary",order=10,labelKey="SUMMARY",build=dummy,refresh=dummy}))
 assert(C:RegisterTab({id="equipment",order=20,labelKey="EQUIPMENT",build=dummy,refresh=dummy}))
+local syncRequests={};HolyStorm.Sync={GetDomain=function(_,domain)return domain=="character"or domain=="achievements"end,Discover=function(_,domain,objectId,options)syncRequests[#syncRequests+1]={domain=domain,objectId=objectId,options=options};return"request"end}
+assert(C:RegisterTab({id="remoteBlocks",labelKey="REMOTE_BLOCKS",blocks={"stats","equipment"},build=dummy,refresh=dummy}))
+local scansBeforeRemoteTab=#scanCalls;assert(C:RequestTabData("A","remoteBlocks")and#syncRequests==2,"opening a remote tab requests only its declared character blocks")
+assert(syncRequests[1].domain=="character"and syncRequests[1].objectId=="A\031stats"and syncRequests[2].domain=="character"and syncRequests[2].objectId=="A\031equipment"and#scanCalls==scansBeforeRemoteTab,"remote tab synchronization never starts local producer scans")
+assert(C:RegisterTab({id="remoteAchievements",labelKey="REMOTE_ACHIEVEMENTS",blocks={},syncDomain="achievements",syncScope="ACHIEVEMENT_UI",build=dummy,refresh=dummy}))
+assert(C:RequestTabData("A","remoteAchievements")and syncRequests[3].domain=="achievements"and syncRequests[3].options.scope=="ACHIEVEMENT_UI","optional tab demand remains scoped to its loaded feature domain")
 local tabs=C:GetTabs();assert(tabs[1].id=="summary"and tabs[2].id=="equipment"and tabs[3].id=="raid","tab registry order")
 
 local a=C:SetContext("A");assert(a.characterUUID=="A"and a.accountUUID=="account-A"and a.className=="Paladin"and a.member.rankIndex==1 and a.spec.name=="Retribution"and a.spec.icon==98765)

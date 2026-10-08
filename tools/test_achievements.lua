@@ -1,7 +1,7 @@
 local root=(arg[0]:gsub("tools[/\\]test_achievements.lua$","")).."LIVE/Holy_Storm/"
 local featureRoot=(arg[0]:gsub("tools[/\\]test_achievements.lua$","")).."LIVE/Holy_Storm_Achievements/"
 unpack=unpack or table.unpack
-local clock=1000;local allowed=true;local records={};local published={};local registeredDomain;local links={};local queued={};local listeners={}
+local clock=1000;local allowed=true;local records={};local published={};local registeredDomain;local links={};local queued={};local listeners={};local discoveryCalls=0
 function time()return clock end;function UnitGUID(unit)if unit==nil or unit=="player"then return"Player-Local"end end;function IsInGuild()return true end
 local guild={id="realm:guild",roster={}}
 local HolyStorm={db={global={achievements={guilds={},schemaVersion=1},rules={global={}},filters={global={},demands={}},permissions={groups={}}},profile={filters={localFilters={}},rules={localRules={}}}},Data={GuildStore={},CharacterStore={},PlayerStore={}},Logger={},Events={},Policy={},Sync={},Tasks={},RichLinks={},Database={},TwinkCore={}}
@@ -21,7 +21,7 @@ function HolyStorm.Policy:BuildContext(_,guid,target)return{accountUUID="Account
 function HolyStorm.Policy:ApplyFilter(filter,value)if filter=="eligible-only"then return records[value.guid]and records[value.guid].level==90 end;return true end
 function HolyStorm.Sync:RegisterDomain(_,definition)registeredDomain=definition;return true end
 function HolyStorm.Sync:Publish(_,objectId)published[#published+1]=objectId;return true end
-function HolyStorm.Sync:Discover()return true end
+function HolyStorm.Sync:Discover()discoveryCalls=discoveryCalls+1;return true end
 function HolyStorm.Tasks:RegisterTaskType(id,definition)self[id]=definition end
 function HolyStorm.Tasks:Queue(id,options)queued[#queued+1]={id=id,options=options};return"task"end
 function HolyStorm.RichLinks:RegisterType(definition)links[definition.type]=definition;return true end
@@ -54,6 +54,9 @@ local largeCandidates={};for i=1,65 do local guid="Player-Large-"..i;largeCandid
 local automaticObjectId=HolyStorm.Data.AchievementStore:ObjectId("E",automaticEvent.awardInstanceID);local automaticPayload=HolyStorm.Data.AchievementStore:Export(automaticObjectId);local automaticMeta=HolyStorm.Data.AchievementStore:GetMetadata(automaticObjectId);assert(A:AuthorizeSync(automaticPayload,automaticMeta,"Relay"),"owner-authored automatic event may be relayed");local forged=HolyStorm.Utils.DeepCopy(automaticPayload);forged.data.awards[2]=HolyStorm.Utils.DeepCopy(forged.data.awards[1]);assert(not A:AuthorizeSync(forged,automaticMeta,"Relay"),"automatic event cannot award another recipient")
 allowed=false;local denied,deniedReason=A:PreviewManual(feat.achievementID,"MANUAL",{},false);assert(not denied and deniedReason=="PERMISSION_DENIED","service permission enforcement");allowed=true
 assert(registeredDomain and links.achievement and links.achievement.onClick,"sync and central rich-link registration")
+assert(listeners.PLAYER_ENTERING_WORLD==nil,"Achievements no longer registers a login full-discovery handler")
+HolyStorm.Events:Emit("PLAYER_ENTERING_WORLD");HolyStorm.Events:Emit("HS_GUILD_UPDATED")
+assert(discoveryCalls==0,"login and guild roster changes rebuild local indexes without full achievement discovery")
 local portable={guildId="realm:guild",kind="D",id="achievement-new-client",data={achievementID="achievement-new-client",name="New provider",description="",icon=1,type="AUTOMATIC",category="Future",status="ACTIVE",scope="CHARACTER",createdBy="Player-Remote",createdAt=clock,updatedBy="Player-Remote",updatedAt=clock,revision=1,dependencies={"futureData"},rule={field="future.provider",operator="=",value="yes"}}};local portableObject=HolyStorm.Data.AchievementStore:ObjectId("D",portable.id);assert(A:ValidateSync(portable,{owner="Player-Remote",version=1,updatedAt=clock},portableObject),"unknown future provider remains portable");local portableResult=HolyStorm.Rules:EvaluateDetailed(portable.data.rule,HolyStorm.Policy:BuildContext(nil,"Player-Local"));assert(portableResult=="UNKNOWN","unknown provider never grants an award")
 local relayID="achievement-relay-provenance";local relayValue={achievementID=relayID,name="Relayed",description="",icon=1,type="MANUAL",category="Sync",status="DRAFT",scope="CHARACTER",createdBy="Player-Remote",createdAt=clock,updatedBy="Player-Remote",updatedAt=clock,revision=1};local relayOK,relayMeta=HolyStorm.Data.AchievementStore:Put("D",relayID,relayValue,"Player-Remote",{owner="Player-Remote",version=1,updatedAt=clock,direct=false},"realm:guild");assert(relayOK and relayMeta.direct==false,"indirect achievement provenance must remain indirect");assert(automaticMeta.direct==true,"locally created achievement provenance remains direct")
 A:QueueEvaluation("Player-Local","equipment");assert(queued[#queued].options.mergeKey==automatic.achievementID.."\031Player-Local","dependency-indexed coalescing key")

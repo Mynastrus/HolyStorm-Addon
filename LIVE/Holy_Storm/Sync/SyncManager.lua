@@ -1,7 +1,7 @@
 local addonVersion="3.5.0"
 local HolyStorm=LibStub("AceAddon-3.0"):GetAddon("Holy_Storm")
 local L=LibStub("AceLocale-3.0"):GetLocale("Holy_Storm")
-local Sync={version=addonVersion,protocol=3,domains={},requests={},activeRequests={},heard={},heardAt={},sequence=0,maxOffers=100,knownOnline={},knownVersions={},presenceResolutionDiagnostics={},publishedVersions={},requestTimeout=60,presenceTimeout=300,presenceRefreshMin=180,presenceRefreshJitter=60,cleanupTimer=nil,cleanupDue=nil,cleanupTaskId=nil,activityNotifyTimer=nil,activitySequence=0,activeActivities={},activityPublishedActive=false,activityStateMismatch=false,activityMismatchLogged=false,retiredRequestIds={},retiredRequestOrder={},maxRetiredRequests=256,terminalFetches={},terminalFetchOrder={},lastTerminalFetch=nil,terminalFetchRetention=600,maxTerminalFetches=512,loginSessionId=nil,presencePublished=false,peerVersionReceived=false,outdatedNotified=false,catchUpJobs={},catchUpIndex={},catchUpLimit=20000,activeTransfer=nil,pendingPayloads={},pendingPayloadOrder={},maxPendingPayloads=64,maxRetries=3,offerSnapshots={},runtimeMetrics={requested=0,started=0,completed=0,failed=0,retried=0,byDomain={},byReason={}}}
+local Sync={version=addonVersion,protocol=3,domains={},requests={},activeRequests={},heard={},heardAt={},sequence=0,maxOffers=100,knownOnline={},knownVersions={},presenceResolutionDiagnostics={},publishedVersions={},requestTimeout=60,presenceTimeout=300,cleanupTimer=nil,cleanupDue=nil,cleanupTaskId=nil,activityNotifyTimer=nil,activitySequence=0,activeActivities={},activityPublishedActive=false,activityStateMismatch=false,activityMismatchLogged=false,retiredRequestIds={},retiredRequestOrder={},maxRetiredRequests=256,terminalFetches={},terminalFetchOrder={},lastTerminalFetch=nil,terminalFetchRetention=600,maxTerminalFetches=512,loginSessionId=nil,presencePublished=false,peerVersionReceived=false,outdatedNotified=false,catchUpJobs={},catchUpIndex={},catchUpLimit=20000,activeTransfer=nil,pendingPayloads={},pendingPayloadOrder={},maxPendingPayloads=64,maxRetries=3,maxManifestEntries=64,pendingManifestEntries={},maxPendingManifestEntries=256,maxCoalescedRecipients=64,maxRequestIdsPerRecipient=4,requestCoalesceWindow=.75,outboundCoalescing={},outboundSequence=0,offerSnapshots={},runtimeMetrics={requested=0,started=0,completed=0,failed=0,retried=0,byDomain={},byReason={}}}
 local function copy(v)return HolyStorm.Utils.DeepCopy(v)end
 local function now()return HolyStorm.Utils.Now()end
 local function validId(v)return type(v)=="string"and#v>0 and#v<=160 end
@@ -96,7 +96,9 @@ local function recordRetry(sync,job)
  incrementMetric(sync.runtimeMetrics.byReason,job.reason,"retried")
 end
 local function matchesFetchPayload(transfer,domainId,data,sender)
- if not transfer or transfer.kind~="FETCH"or transfer.domain~=domainId or transfer.objectId~=data.objectId or not samePlayerName(transfer.selectedSource,sender)or data.requestId~=transfer.requestId then return false end
+ local requestMatches=transfer and data.requestId==transfer.requestId
+ if not requestMatches and transfer and type(data.requestIds)=="table"then local checked=0;for _,requestId in ipairs(data.requestIds)do checked=checked+1;if checked>Sync.maxCoalescedRecipients*Sync.maxRequestIdsPerRecipient then break end;if requestId==transfer.requestId then requestMatches=true;break end end end
+ if not transfer or transfer.kind~="FETCH"or transfer.domain~=domainId or transfer.objectId~=data.objectId or not samePlayerName(transfer.selectedSource,sender)or not requestMatches then return false end
  local resolvedGuid=senderGuid(sender);return not transfer.selectedSourceGuid or not resolvedGuid or transfer.selectedSourceGuid==resolvedGuid
 end
 local function startupActive()return HolyStorm.Tasks and type(HolyStorm.Tasks.IsStartupActive)=="function" and HolyStorm.Tasks:IsStartupActive()or false end
@@ -106,10 +108,99 @@ local function startupPhase(domainId)
 end
 
 function Sync:RegisterDomain(id,definition)
- if not validDomain(id)or type(definition)~="table"or type(definition.getMetadata)~="function"or type(definition.listMetadata)~="function"or type(definition.export)~="function"or type(definition.import)~="function"or definition.canShare~=nil and type(definition.canShare)~="function"or definition.getRecipients~=nil and type(definition.getRecipients)~="function"or(definition.canShare==nil)~=(definition.getRecipients==nil)then return false,"INVALID_DOMAIN"end
- self.domains[id]={id=id,getMetadata=definition.getMetadata,listMetadata=definition.listMetadata,export=definition.export,import=definition.import,validate=definition.validate,authorize=definition.authorize,canShare=definition.canShare,getRecipients=definition.getRecipients,getChannel=definition.getChannel,updateEvent=definition.updateEvent,freshness=definition.freshness or"metadata",live=definition.live==true,catchUp=definition.catchUp~=false,priority=tonumber(definition.priority)or nil};return true
+ if not validDomain(id)or type(definition)~="table"or type(definition.getMetadata)~="function"or type(definition.listMetadata)~="function"or type(definition.export)~="function"or type(definition.import)~="function"or definition.canShare~=nil and type(definition.canShare)~="function"or definition.getRecipients~=nil and type(definition.getRecipients)~="function"or(definition.canShare==nil)~=(definition.getRecipients==nil)or definition.listManifest~=nil and type(definition.listManifest)~="function"or definition.canBroadcast~=nil and type(definition.canBroadcast)~="function"or definition.broadcastSafe~=nil and type(definition.broadcastSafe)~="boolean"then return false,"INVALID_DOMAIN"end
+ self.domains[id]={id=id,getMetadata=definition.getMetadata,listMetadata=definition.listMetadata,listManifest=definition.listManifest,export=definition.export,import=definition.import,validate=definition.validate,authorize=definition.authorize,canShare=definition.canShare,getRecipients=definition.getRecipients,getChannel=definition.getChannel,canBroadcast=definition.canBroadcast,broadcastSafe=definition.broadcastSafe==true,updateEvent=definition.updateEvent,freshness=definition.freshness or"metadata",live=definition.live==true,catchUp=definition.catchUp~=false,priority=tonumber(definition.priority)or nil};self:ProcessPendingManifest(id);return true
 end
 function Sync:GetDomain(id)return self.domains[id]end
+local function compactManifestEntry(domainId,metadata)
+ if type(metadata)~="table"or not validDomain(domainId)or not validId(metadata.objectId)or not validId(metadata.owner)then return nil end
+ local version=tonumber(metadata.version);if not version or version~=version or version==math.huge or version<0 or version%1~=0 then return nil end
+ if metadata.revisionID~=nil and not validId(metadata.revisionID)then return nil end
+ local result={domain=domainId,objectId=metadata.objectId,owner=metadata.owner,version=version}
+ if metadata.revisionID then result.revisionID=metadata.revisionID end
+ local schemaVersion=tonumber(metadata.schemaVersion);if schemaVersion and schemaVersion==schemaVersion and schemaVersion~=math.huge and schemaVersion>=0 and schemaVersion%1==0 then result.schemaVersion=schemaVersion end
+ local snapshotVersion=tonumber(metadata.snapshotVersion);if snapshotVersion and snapshotVersion==snapshotVersion and snapshotVersion~=math.huge and snapshotVersion>=0 and snapshotVersion%1==0 then result.snapshotVersion=snapshotVersion end
+ return result
+end
+local function sameAuthoritativeRevision(localMeta,remoteMeta)
+ if type(localMeta)~="table"or type(remoteMeta)~="table"or localMeta.owner~=remoteMeta.owner then return false end
+ if tonumber(localMeta.version)~=tonumber(remoteMeta.version)then return false end
+ return localMeta.revisionID==remoteMeta.revisionID
+end
+local function metadataNeedsFetch(domain,localMeta,remoteMeta)
+ if sameAuthoritativeRevision(localMeta,remoteMeta)then return false,"SAME_REVISION"end
+ local decision,reason=HolyStorm.PlayerData:CompareMetadata(localMeta,remoteMeta)
+ local sibling=domain and domain.freshness=="revision-chain"and localMeta and tonumber(localMeta.version)==tonumber(remoteMeta.version)and localMeta.revisionID~=remoteMeta.revisionID
+ if decision>0 or sibling then return true,sibling and"REVISION_CHAIN_SIBLING"or reason end
+ return false,localMeta and decision<0 and"LOCAL_NEWER"or reason or"CURRENT"
+end
+function Sync:BuildManifest()
+ local entries,seen={},{};local scanLimit=self.maxManifestEntries*4
+ local domainIds={};for domainId,domain in pairs(self.domains)do if type(domain.listManifest)=="function"then domainIds[#domainIds+1]=domainId end end
+ table.sort(domainIds,function(a,b)if a=="character"then return b~="character"elseif b=="character"then return false end;return a<b end)
+ for _,domainId in ipairs(domainIds)do
+  local domain=self.domains[domainId]
+  if #entries>=self.maxManifestEntries then break end
+  do
+   local ok,metadataList=pcall(domain.listManifest,self.maxManifestEntries-#entries)
+   if ok and type(metadataList)=="table"then
+    local scanned=0
+    for _,metadata in pairs(metadataList)do
+     scanned=scanned+1;if scanned>scanLimit or #entries>=self.maxManifestEntries then break end
+     local entry=compactManifestEntry(domainId,metadata);local dedupe=entry and key(entry.domain,entry.objectId)
+     if entry and not seen[dedupe]then seen[dedupe]=true;entries[#entries+1]=entry end
+    end
+   else log("WARN","metadata","Domain manifest provider failed",{domain=domainId,error=ok and"INVALID_MANIFEST_LIST"or tostring(metadataList)})end
+  end
+ end
+ table.sort(entries,function(a,b)if a.domain==b.domain then return a.objectId<b.objectId end;return a.domain<b.domain end)
+ return{schema=1,entries=entries}
+end
+function Sync:ProcessManifestEntry(entry,sender,senderGuidValue)
+ local domain=self.domains[entry.domain];if not domain then return false,"UNKNOWN_DOMAIN"end
+ local metadata={objectId=entry.objectId,owner=entry.owner,version=entry.version,revisionID=entry.revisionID,schemaVersion=entry.schemaVersion,snapshotVersion=entry.snapshotVersion,direct=senderGuidValue~=nil and senderGuidValue==entry.owner,senderGuid=senderGuidValue}
+ local ok,localMeta=pcall(domain.getMetadata,entry.objectId);if not ok then log("WARN","metadata","Manifest metadata comparison failed",{domain=entry.domain,objectId=entry.objectId,sender=sender,error=tostring(localMeta)});return false,"METADATA_LOOKUP_FAILED"end
+ local needed,reason=metadataNeedsFetch(domain,localMeta,metadata)
+ if not needed then
+  local message=reason=="SAME_REVISION"and"Local revision already matches announced metadata"or reason=="LOCAL_NEWER"and"Local revision is newer; metadata request suppressed"or"Announced metadata does not require a payload"
+  log("DEBUG","freshness",message,{domain=entry.domain,objectId=entry.objectId,owner=entry.owner,localVersion=localMeta and localMeta.version,remoteVersion=entry.version,localRevision=localMeta and localMeta.revisionID,remoteRevision=entry.revisionID,decision=reason,sender=sender})
+  return false,reason
+ end
+ log("INFO","metadata","New authoritative revision discovered from Presence manifest",{domain=entry.domain,objectId=entry.objectId,owner=entry.owner,localVersion=localMeta and localMeta.version,remoteVersion=entry.version,revision=entry.revisionID,sender=sender,sourceDirect=metadata.direct==true})
+ local requestId,state=self:QueueFetch(entry.domain,entry.objectId,sender,localMeta and localMeta.version or-1,"PRESENCE_MANIFEST",localMeta and localMeta.revisionID,nil,metadata,{priorityClass="MAINTENANCE",notBeforeDelay=.35})
+ log(requestId and"DEBUG"or"WARN","request",requestId and"Manifest payload demand registered"or"Manifest payload demand rejected",{domain=entry.domain,objectId=entry.objectId,owner=entry.owner,revision=entry.revisionID,sender=sender,requestId=requestId,state=state})
+ return requestId~=nil, state
+end
+function Sync:ProcessPendingManifest(domainId)
+ local pending=self.pendingManifestEntries;local kept={};local current=now()
+ for _,item in ipairs(pending)do
+  if current-(tonumber(item.receivedAt)or 0)<self.presenceTimeout then
+   if item.entry.domain==domainId and self.domains[domainId]then self:ProcessManifestEntry(item.entry,item.sender,item.senderGuid)else kept[#kept+1]=item end
+  end
+ end
+ self.pendingManifestEntries=kept;self:ScheduleCleanup();return true
+end
+function Sync:ReceiveManifest(manifest,sender,senderGuidValue)
+ if type(manifest)~="table"or manifest.schema~=1 or type(manifest.entries)~="table"then log("WARN","validation","Invalid Presence revision manifest rejected",{sender=sender,reason="INVALID_MANIFEST_SCHEMA"});return false end
+ local count=0;for index in pairs(manifest.entries)do count=count+1;if count>self.maxManifestEntries or type(index)~="number"or index<1 or index%1~=0 then log("WARN","validation","Invalid Presence revision manifest rejected",{sender=sender,reason="MANIFEST_ENTRY_LIMIT_OR_SHAPE",entryCount=count});return false end end
+ if count~=#manifest.entries then log("WARN","validation","Invalid Presence revision manifest rejected",{sender=sender,reason="SPARSE_MANIFEST",entryCount=count});return false end
+ log("DEBUG","metadata","Presence revision manifest received",{sender=sender,senderGuid=senderGuidValue,entryCount=count,schema=manifest.schema})
+ local pending=self.pendingManifestEntries;local current=now()
+ local cleaned={};for _,item in ipairs(pending)do if current-(tonumber(item.receivedAt)or 0)<self.presenceTimeout then cleaned[#cleaned+1]=item end end;self.pendingManifestEntries=cleaned;pending=cleaned
+ local seen={}
+ for _,raw in ipairs(manifest.entries)do
+  local entry=compactManifestEntry(raw and raw.domain,raw);local dedupe=entry and key(entry.domain,entry.objectId)
+  if not entry or seen[dedupe]then log("WARN","validation","Invalid or duplicate Presence manifest entry ignored",{sender=sender,domain=raw and raw.domain,objectId=raw and raw.objectId,reason=entry and"DUPLICATE_OBJECT"or"INVALID_ENTRY"})
+  else
+   seen[dedupe]=true
+   if self.domains[entry.domain]then self:ProcessManifestEntry(entry,sender,senderGuidValue)
+   elseif #pending<self.maxPendingManifestEntries then pending[#pending+1]={entry=entry,sender=sender,senderGuid=senderGuidValue,receivedAt=current}
+   else log("WARN","backpressure","Unknown-domain manifest entry dropped at capacity",{domain=entry.domain,objectId=entry.objectId,limit=self.maxPendingManifestEntries})end
+  end
+ end
+ self:ScheduleCleanup()
+ return true
+end
 function Sync:UnregisterDomain(id)
  if not self.domains[id]then return false end;self.domains[id]=nil
  local transfer=self.activeTransfer;if transfer and transfer.domain==id and transfer.kind~="SEND"then self:ReleaseTransfer(false,"DOMAIN_UNREGISTERED",transfer)end
@@ -134,6 +225,7 @@ function Sync:GetNextCleanupAt()
  for _,snapshot in pairs(self.offerSnapshots)do include((tonumber(snapshot.createdAt)or 0)+self.requestTimeout)end
  for _,request in pairs(self.retiredRequestIds)do include(tonumber(request.expiresAt))end
  for _,entry in pairs(self.terminalFetches)do include(tonumber(entry.expiresAt))end
+ for _,entry in ipairs(self.pendingManifestEntries)do include((tonumber(entry.receivedAt)or 0)+self.presenceTimeout)end
  for _,at in pairs(self.heardAt)do include((tonumber(at)or 0)+self.requestTimeout)end
  for _,at in pairs(self.knownOnline)do include((tonumber(at)or 0)+self.presenceTimeout)end
  for _,entry in pairs(self.knownVersions)do if not entry.localPlayer then include((tonumber(entry.receivedAt)or 0)+self.presenceTimeout)end end
@@ -271,6 +363,8 @@ function Sync:IsTransferActivityAuthoritative(transfer)
   return false,"FETCH_WITHOUT_TIMEOUT_OR_PAYLOAD"
  end
  if transfer.kind=="SEND"then
+  if tonumber(transfer.pendingTransmissions or 0)>0 then return true,"COMMS_TRANSMISSION_PENDING"end
+  for transmissionId in pairs(transfer.transmissionIds or{})do if HolyStorm.Comms and type(HolyStorm.Comms.IsTransmissionActive)=="function"and HolyStorm.Comms:IsTransmissionActive(transmissionId)==true then return true,"COMMS_TRANSMISSION_ACTIVE"end end
   if transfer.transmissionId and HolyStorm.Comms and type(HolyStorm.Comms.IsTransmissionActive)=="function"and HolyStorm.Comms:IsTransmissionActive(transfer.transmissionId)==true then return true,"COMMS_TRANSMISSION_ACTIVE"end
   return false,"SEND_WITHOUT_ACTIVE_TRANSMISSION"
  end
@@ -397,8 +491,9 @@ function Sync:RecordOffers(domainId,data,sender,isAnnouncement)
    if requestId then local old=self.heard[requestId][meta.objectId];if not old or HolyStorm.PlayerData:CompareMetadata(old,meta)>0 then self.heard[requestId][meta.objectId]=meta end end
    if pending and pending.domain==domainId and(not pending.objectId or pending.objectId==meta.objectId)and(not data.requester or samePlayerName(data.requester,GetUnitName("player",true)))then
     pending.candidates[meta.objectId]=pending.candidates[meta.objectId]or{};pending.candidates[meta.objectId][sender]={sender=sender,senderGuid=senderId,meta=meta}
-    local localMeta=domain.getMetadata(meta.objectId);local decision=HolyStorm.PlayerData:CompareMetadata(localMeta,meta);local sibling=domain.freshness=="revision-chain"and localMeta and tonumber(localMeta.version)==tonumber(meta.version)and localMeta.revisionID~=meta.revisionID
-    if decision>0 or sibling then self:QueueFetch(domainId,meta.objectId,sender,localMeta and localMeta.version or-1,pending.reason or"DISCOVERY",localMeta and localMeta.revisionID,requestId,meta,{priorityClass=pending.priorityClass})end
+    local localMeta=domain.getMetadata(meta.objectId);local needed,decision=metadataNeedsFetch(domain,localMeta,meta)
+    if needed then self:QueueFetch(domainId,meta.objectId,sender,localMeta and localMeta.version or-1,pending.reason or"DISCOVERY",localMeta and localMeta.revisionID,requestId,meta,{priorityClass=pending.priorityClass})
+    else log("DEBUG","freshness",decision=="SAME_REVISION"and"Local revision already matches announced metadata"or decision=="LOCAL_NEWER"and"Local revision is newer; fetch suppressed"or"Announced metadata does not require a payload",{domain=domainId,objectId=meta.objectId,owner=meta.owner,localVersion=localMeta and localMeta.version,remoteVersion=meta.version,localRevision=localMeta and localMeta.revisionID,remoteRevision=meta.revisionID,decision=decision,sender=sender})end
    elseif not data.requester then self:ConsiderPassive(domainId,meta,sender)end
   end
  end
@@ -424,9 +519,9 @@ function Sync:ApplyPayload(domainId,data,sender)
  if not domain.live then HolyStorm.PlayerData:AdvanceForeignWatermark(meta.owner,meta.updatedAt,domainId)end;log("DEBUG","freshness",meta.direct and"Direct owner payload accepted"or"Indirect relay payload accepted",{domain=domainId,objectId=data.objectId,owner=meta.owner,version=meta.version,receivedFrom=sender});HolyStorm.Events:Emit("HS_SYNC_DOMAIN_UPDATED",domainId,data.objectId,meta);if domain.updateEvent then HolyStorm.Events:Emit(domain.updateEvent,data.objectId,meta)end;return true
 end
 function Sync:ConsiderPassive(domainId,meta,sender)
- local domain=self.domains[domainId];local localMeta=domain and domain.getMetadata(meta.objectId);local decision=HolyStorm.PlayerData:CompareMetadata(localMeta,meta);local sibling=domain and domain.freshness=="revision-chain"and localMeta and tonumber(localMeta.version)==tonumber(meta.version)and localMeta.revisionID~=meta.revisionID;if decision<=0 and not sibling then return false end;local delay=3+math.random()*5;HolyStorm.Tasks:Queue("Sync.PassiveRefresh",{mergeKey=key(domainId,meta.objectId),delay=delay,priority=95,triggerSource="PASSIVE_HEALING",metadata={domain=domainId,objectId=meta.objectId,sender=sender,version=meta.version,revisionID=meta.revisionID}});log("DEBUG","passive","Passive refresh scheduled",{domain=domainId,objectId=meta.objectId,remoteVersion=meta.version,localVersion=localMeta and localMeta.version});return true
+ local domain=self.domains[domainId];local localMeta=domain and domain.getMetadata(meta.objectId);local needed,reason=metadataNeedsFetch(domain,localMeta,meta);if not needed then log("DEBUG","freshness",reason=="SAME_REVISION"and"Local revision already matches announced metadata"or reason=="LOCAL_NEWER"and"Local revision is newer; passive fetch suppressed"or"Metadata did not require passive healing",{domain=domainId,objectId=meta.objectId,owner=meta.owner,localVersion=localMeta and localMeta.version,remoteVersion=meta.version,localRevision=localMeta and localMeta.revisionID,remoteRevision=meta.revisionID,decision=reason,sender=sender});return false end;local delay=3+math.random()*5;HolyStorm.Tasks:Queue("Sync.PassiveRefresh",{mergeKey=key(domainId,meta.objectId),delay=delay,priority=95,triggerSource="PASSIVE_HEALING",metadata={domain=domainId,objectId=meta.objectId,sender=sender,owner=meta.owner,direct=meta.direct==true,version=meta.version,revisionID=meta.revisionID}});log("DEBUG","passive","Passive refresh scheduled",{domain=domainId,objectId=meta.objectId,owner=meta.owner,remoteVersion=meta.version,localVersion=localMeta and localMeta.version,revision=meta.revisionID});return true
 end
-function Sync:RunPassive(task)local m=task.metadata;local domain=self.domains[m.domain];local localMeta=domain and domain.getMetadata(m.objectId);if localMeta and(tonumber(localMeta.version)or 0)>=(tonumber(m.version)or 0)and not(domain.freshness=="revision-chain"and localMeta.revisionID~=m.revisionID)then return true end;return self:QueueFetch(m.domain,m.objectId,m.sender,localMeta and localMeta.version or-1,"PASSIVE_HEALING",localMeta and localMeta.revisionID,nil,{version=m.version,revisionID=m.revisionID})~=nil end
+function Sync:RunPassive(task)local m=task.metadata;local domain=self.domains[m.domain];if not domain then return false end;local localMeta=domain.getMetadata(m.objectId);local remoteMeta={owner=m.owner,version=m.version,revisionID=m.revisionID,direct=m.direct==true};local needed,reason=metadataNeedsFetch(domain,localMeta,remoteMeta);if not needed then return true end;return self:QueueFetch(m.domain,m.objectId,m.sender,localMeta and localMeta.version or-1,"PASSIVE_HEALING",localMeta and localMeta.revisionID,nil,remoteMeta)~=nil end
 function Sync:GetOnlineName(guid)if type(guid)~="string"then return nil end;local guild=HolyStorm.Data.GuildStore:GetCurrent();local member=guild and guild.roster and guild.roster[guid];return member and member.online and member.name or nil end
 function Sync:QueueFetch(domainId,objectId,target,knownVersion,reason,knownRevisionID,requestId,desiredMeta,options)
  local domain=self.domains[domainId];if not domain or not validId(objectId)or type(target)~="string"or target==""then return nil,"INVALID_FETCH"end
@@ -443,13 +538,13 @@ function Sync:QueueFetch(domainId,objectId,target,knownVersion,reason,knownRevis
   elseif sourceListed(terminal.exhaustedSources,target,candidateGuid)then
    log("DEBUG","suppression","Unchanged exhausted Sync source suppressed",{domain=domainId,entity=objectId,revision=revision,dedupKey=readableDedupKey(dedupeKey),source=target,sourceGuid=candidateGuid,terminalReason=terminal.terminalReason,requeueReason=reason,discoveryGeneration=terminal.discoveryGeneration,queueLength=#self.catchUpJobs});return nil,"SOURCE_EXHAUSTED"
   else
-   job={key=dedupeKey,kind="FETCH",domain=domainId,objectId=objectId,entity=objectId,requiredVersion=version,requiredRevision=revision,knownVersion=knownVersion,knownRevisionID=knownRevisionID,sourceCandidates={},allSourceCandidates=copy(terminal.sourceCandidates or{}),exhaustedSources=copy(terminal.exhaustedSources or{}),sourceAttempts={},priorityClass=class,priority=priorities[class]or priorities.BACKGROUND_CATCHUP,state="QUEUED",queuedAt=now(),retryCount=0,maxRetries=self.maxRetries,requestId=requestId or self:NewRequestId(),reason=reason or"DISCOVERY",requeueReason="NEW_SOURCE",discoveryGeneration=(terminal.discoveryGeneration or 0)+1,notBefore=now()+((class=="USER_INTERACTIVE")and.15 or 1.5)};jobCreated=true
+   job={key=dedupeKey,kind="FETCH",domain=domainId,objectId=objectId,entity=objectId,requiredVersion=version,requiredRevision=revision,knownVersion=knownVersion,knownRevisionID=knownRevisionID,sourceCandidates={},allSourceCandidates=copy(terminal.sourceCandidates or{}),exhaustedSources=copy(terminal.exhaustedSources or{}),sourceAttempts={},priorityClass=class,priority=priorities[class]or priorities.BACKGROUND_CATCHUP,state="QUEUED",queuedAt=now(),retryCount=0,maxRetries=self.maxRetries,requestId=requestId or self:NewRequestId(),reason=reason or"DISCOVERY",requeueReason="NEW_SOURCE",discoveryGeneration=(terminal.discoveryGeneration or 0)+1,notBefore=now()+(tonumber(options.notBeforeDelay)or((class=="USER_INTERACTIVE")and.15 or 1.5))};jobCreated=true
    self.catchUpIndex[dedupeKey]=job;self.catchUpJobs[#self.catchUpJobs+1]=job;recordJobMetric(self,job,"requested");log("INFO","selection","New source reopened terminal Sync job",{domain=domainId,entity=objectId,revision=revision,source=target,dedupKey=readableDedupKey(dedupeKey),discoveryGeneration=job.discoveryGeneration,queueLength=#self.catchUpJobs})
   end
  end
  if not job then
   if#self.catchUpJobs>=self.catchUpLimit then log("WARN","backpressure","Sync catch-up queue is full; job deferred",{domain=domainId,objectId=objectId,revision=revision,queueLimit=self.catchUpLimit,reason="QUEUE_LIMIT"});return nil,"QUEUE_FULL"end
-  local characterUUID,block=splitCharacterId(objectId);job={key=dedupeKey,kind="FETCH",domain=domainId,objectId=objectId,characterUUID=characterUUID,block=block,entity=objectId,requiredVersion=version,requiredRevision=revision,knownVersion=knownVersion,knownRevisionID=knownRevisionID,sourceCandidates={},allSourceCandidates={},exhaustedSources={},sourceAttempts={},priorityClass=class,priority=priorities[class]or priorities.BACKGROUND_CATCHUP,state="QUEUED",queuedAt=now(),retryCount=0,maxRetries=self.maxRetries,requestId=requestId or self:NewRequestId(),reason=reason or"DISCOVERY",requeueReason=reason or"DISCOVERY",discoveryGeneration=1,notBefore=now()+((class=="USER_INTERACTIVE")and.15 or 1.5)};jobCreated=true
+  local characterUUID,block=splitCharacterId(objectId);job={key=dedupeKey,kind="FETCH",domain=domainId,objectId=objectId,characterUUID=characterUUID,block=block,entity=objectId,requiredVersion=version,requiredRevision=revision,knownVersion=knownVersion,knownRevisionID=knownRevisionID,sourceCandidates={},allSourceCandidates={},exhaustedSources={},sourceAttempts={},priorityClass=class,priority=priorities[class]or priorities.BACKGROUND_CATCHUP,state="QUEUED",queuedAt=now(),retryCount=0,maxRetries=self.maxRetries,requestId=requestId or self:NewRequestId(),reason=reason or"DISCOVERY",requeueReason=reason or"DISCOVERY",discoveryGeneration=1,notBefore=now()+(tonumber(options.notBeforeDelay)or((class=="USER_INTERACTIVE")and.15 or 1.5))};jobCreated=true
   self.catchUpIndex[dedupeKey]=job;self.catchUpJobs[#self.catchUpJobs+1]=job;recordJobMetric(self,job,"requested")
  end
  job.exhaustedSources=job.exhaustedSources or{}
@@ -465,10 +560,23 @@ function Sync:QueueFetch(domainId,objectId,target,knownVersion,reason,knownRevis
  self:QueuePump(math.max(0,job.notBefore-now()));self:NotifyActivity();return job.key,"MERGED"
 end
 function Sync:QueueOutbound(domainId,data,sender,meta)
- local characterUUID,block=splitCharacterId(data.objectId);local keyValue=table.concat({"SEND",string.lower(sender),domainId,data.objectId,tostring(meta.revisionID or meta.version),tostring(data.requestId or"")} ,"\030");if self.catchUpIndex[keyValue]then return keyValue,"MERGED"end
- if#self.catchUpJobs>=self.catchUpLimit then return nil,"QUEUE_FULL"end
- local job={key=keyValue,kind="SEND",domain=domainId,objectId=data.objectId,characterUUID=characterUUID,block=block,entity=data.objectId,target=sender,requiredVersion=meta.version,requiredRevision=meta.revisionID,requestId=data.requestId or self:NewRequestId(),priorityClass="BACKGROUND_CATCHUP",priority=priorities.BACKGROUND_CATCHUP,state="QUEUED",queuedAt=now(),retryCount=0,maxRetries=self.maxRetries,reason="REQUEST_RESPONSE",notBefore=now()}
- self.catchUpIndex[keyValue]=job;self.catchUpJobs[#self.catchUpJobs+1]=job;recordJobMetric(self,job,"requested");self:QueuePump();self:NotifyActivity();return keyValue,"QUEUED"
+ if type(sender)~="string"or sender==""then return nil,"INVALID_RECIPIENT"end
+ local senderId=senderGuid(sender);local recipientKey=tostring(senderId or string.lower(sender));local baseKey=table.concat({"SEND",domainId,data.objectId,tostring(meta.owner or""),tostring(meta.version or"?"),tostring(meta.revisionID or"")},"\030")
+ local job=self.outboundCoalescing[baseKey];local state="MERGED"
+ if not job or job.state~="QUEUED"or not job.recipients[recipientKey]and#job.recipientOrder>=self.maxCoalescedRecipients then
+  if#self.catchUpJobs>=self.catchUpLimit then return nil,"QUEUE_FULL"end
+  self.outboundSequence=self.outboundSequence+1;local characterUUID,block=splitCharacterId(data.objectId);local keyValue=baseKey.."\030B"..self.outboundSequence
+  job={key=keyValue,coalesceKey=baseKey,kind="SEND",domain=domainId,objectId=data.objectId,characterUUID=characterUUID,block=block,entity=data.objectId,target=sender,requiredOwner=meta.owner,requiredVersion=meta.version,requiredRevision=meta.revisionID,requestId=data.requestId or self:NewRequestId(),recipients={},recipientOrder={},priorityClass="BACKGROUND_CATCHUP",priority=priorities.BACKGROUND_CATCHUP,state="QUEUED",queuedAt=now(),retryCount=0,maxRetries=self.maxRetries,reason="REQUEST_RESPONSE",notBefore=now()+self.requestCoalesceWindow}
+  self.outboundCoalescing[baseKey]=job;self.catchUpIndex[keyValue]=job;self.catchUpJobs[#self.catchUpJobs+1]=job;recordJobMetric(self,job,"requested");state="QUEUED"
+ end
+ local recipient=job.recipients[recipientKey]
+ if not recipient then recipient={key=recipientKey,guid=senderId,name=sender,requestIds={}};job.recipients[recipientKey]=recipient;job.recipientOrder[#job.recipientOrder+1]=recipientKey
+ else recipient.name=sender;recipient.guid=senderId or recipient.guid end
+ local requestId=data.requestId or self:NewRequestId();local known=false;for _,existing in ipairs(recipient.requestIds)do if existing==requestId then known=true;break end end
+ if not known then if#recipient.requestIds>=self.maxRequestIdsPerRecipient then table.remove(recipient.requestIds,1)end;recipient.requestIds[#recipient.requestIds+1]=requestId end
+ if not job.requestId then job.requestId=requestId end;job.target=job.target or sender
+ log("DEBUG","request",state=="MERGED"and"Fetch request merged into revision coalescing window"or"Fetch request opened revision coalescing window",{domain=domainId,objectId=data.objectId,owner=meta.owner,revision=meta.revisionID,receiver=sender,receiverGuid=senderId,receiverCount=#job.recipientOrder,requestCount=#recipient.requestIds,window=self.requestCoalesceWindow,dedupKey=readableDedupKey(job.key),state=state})
+ self:QueuePump(math.max(0,job.notBefore-now()));self:NotifyActivity();return job.key,state
 end
 function Sync:SendFetchResult(domainId,data,sender,result,reason,meta)
  if type(data)~="table"or not validId(data.requestId)or not validId(data.objectId)or type(sender)~="string"or sender==""then return false end
@@ -576,7 +684,7 @@ function Sync:StartFetch(job)
  if not source then job.state="FAILED";recordJobMetric(self,job,"failed");self.catchUpIndex[job.key]=nil;self:EndActivity(job.activityId,"NO_SOURCE",true);job.activityId=nil;job.activityHandoff=nil;log("WARN","selection","No valid source remains for sync job",{requestId=job.requestId,objectId=job.objectId,domain=job.domain,result="NO_SOURCE"});self:NotifyActivity(true,true);self:QueuePump();return false end
  local domain=self.domains[job.domain];local localMeta=domain and domain.getMetadata(job.objectId)
  if not domain then job.state="FAILED";recordJobMetric(self,job,"failed");self.catchUpIndex[job.key]=nil;self:EndActivity(job.activityId,"UNKNOWN_DOMAIN",true);job.activityId=nil;job.activityHandoff=nil;log("WARN","backpressure","Sync job failed because its domain was unloaded",{requestId=job.requestId,objectId=job.objectId,domain=job.domain,result="UNKNOWN_DOMAIN"});self:NotifyActivity(true,true);self:QueuePump();return false end
- if job.requiredVersion~=nil then local offered={version=source.version or job.requiredVersion,revisionID=source.revisionID or job.requiredRevision,owner=source.owner,direct=source.direct};local decision=HolyStorm.PlayerData:CompareMetadata(localMeta,offered);local sibling=domain.freshness=="revision-chain"and localMeta and tonumber(localMeta.version)==tonumber(offered.version)and localMeta.revisionID~=offered.revisionID;if decision<=0 and not sibling then job.state="COMPLETED";recordJobMetric(self,job,"completed");self.catchUpIndex[job.key]=nil;self:EndActivity(job.activityId,"ALREADY_CURRENT",true);job.activityId=nil;job.activityHandoff=nil;self:NotifyActivity(true,true);self:QueuePump();return true end end
+ if job.requiredVersion~=nil then local offered={version=source.version or job.requiredVersion,revisionID=source.revisionID or job.requiredRevision,owner=source.owner,direct=source.direct};local needed=metadataNeedsFetch(domain,localMeta,offered);if not needed then job.state="COMPLETED";recordJobMetric(self,job,"completed");self.catchUpIndex[job.key]=nil;self:EndActivity(job.activityId,"ALREADY_CURRENT",true);job.activityId=nil;job.activityHandoff=nil;self:NotifyActivity(true,true);self:QueuePump();return true end end
  job.requestId=self:NewRequestId();local sourceKey=tostring(source.senderGuid or string.lower(source.sender));job.sourceAttempts=job.sourceAttempts or{};job.sourceAttempts[sourceKey]=(job.sourceAttempts[sourceKey]or 0)+1;job.attempt=job.sourceAttempts[sourceKey]
  local transfer={kind="FETCH",job=job,key=job.key,objectId=job.objectId,entity=job.entity,characterUUID=job.characterUUID,activityDomain=job.block or job.domain,domain=job.domain,direction="RECEIVE",phase="REQUEST",sender=source.sender,receiver=playerName(),selectedSource=source.sender,selectedSourceGuid=source.senderGuid,requestId=job.requestId,revision=source.revisionID or job.requiredRevision,priorityClass=job.priorityClass,retryCount=job.retryCount,maxRetries=job.maxRetries,startedAt=job.activityStartedAt or now(),bytes=0,fragments=0,preparing=true,awaitingResponse=false}
  self.lastSelection={domain=job.domain,objectId=job.objectId,selectedSource=source.sender,selectedSourceGuid=source.senderGuid,owner=source.owner,direct=source.direct,reason=job.reason,candidateCount=#(job.sourceCandidates or{}),at=now()};log("DEBUG","selection","Selecting payload source",{domain=job.domain,objectId=job.objectId,characterUUID=job.characterUUID,block=job.block,version=source.version or job.requiredVersion,revision=source.revisionID or job.requiredRevision,requestId=job.requestId,reason=job.reason,selectedSource=source.sender,selectedSourceGuid=source.senderGuid,originalOwner=source.owner,relay=source.direct~=true,candidateCount=#(job.sourceCandidates or{}),attempt=job.attempt,dedupKey=readableDedupKey(job.key),discoveryGeneration=job.discoveryGeneration,requeueReason=job.requeueReason,queueLength=#self.catchUpJobs})
@@ -586,28 +694,110 @@ function Sync:StartFetch(job)
  if not sent then return self:ReleaseTransfer(false,"FETCH_QUEUE_REJECTED",transfer)end
  self:NotifyActivity();return true
 end
+local function latestRecipientRequest(recipient)
+ local ids=recipient and recipient.requestIds or{};return ids[#ids]
+end
+function Sync:SendResultToRecipients(job,result,reason,meta,recipients)
+ local sent=false
+ for _,entry in ipairs(recipients or job.recipientOrder or{})do
+  local recipient=type(entry)=="string"and job.recipients[entry]or entry
+  local requestId=latestRecipientRequest(recipient)
+  if recipient and requestId then sent=self:SendFetchResult(job.domain,{objectId=job.objectId,requestId=requestId,revisionID=job.requiredRevision},recipient.name,result,reason,meta)or sent end
+ end
+ return sent
+end
+function Sync:CanBroadcastToGuild(domain,meta,job,recipients)
+ if not IsInGuild()then return false,"GUILD_UNAVAILABLE"end
+ local channel=domain.getChannel and domain.getChannel(meta,"response")or"GUILD";if channel~="GUILD"then return false,"NO_SHARED_GUILD_CHANNEL"end
+ local guild=HolyStorm.Data.GuildStore and HolyStorm.Data.GuildStore:GetCurrent();local roster=guild and guild.roster
+ if type(roster)~="table"then return false,"ROSTER_UNAVAILABLE"end
+ local rosterByName={};for _,member in pairs(roster)do if type(member)=="table"and type(member.name)=="string"then rosterByName[string.lower(member.name)]=member end end
+ for _,recipient in ipairs(recipients)do
+  local member=(recipient.guid and roster[recipient.guid])or rosterByName[string.lower(recipient.name or"")]
+  if not member or member.online~=true then return false,"REQUESTER_NOT_CONFIRMED_ONLINE_IN_GUILD_ROSTER"end
+ end
+ if domain.canBroadcast then
+  local ok,allowed,reason=pcall(domain.canBroadcast,meta,roster,recipients)
+  if not ok then return false,"BROADCAST_POLICY_ERROR"elseif allowed~=true then return false,reason or"BROADCAST_POLICY_DENIED"end
+  return true,"DOMAIN_BROADCAST_POLICY"
+ end
+ if domain.canShare then
+  for guid,member in pairs(roster)do
+   if type(member)~="table"or type(member.name)~="string"then return false,"ROSTER_IDENTITY_INCOMPLETE"end
+   if member.online~=true and member.online~=false then return false,"ROSTER_ONLINE_STATE_UNKNOWN"end
+   if member.online==true then
+    local ok,allowed=pcall(domain.canShare,meta,guid,member.name,"fetch")
+    if not ok or allowed~=true then return false,"PRIVACY_PERMISSION_FILTER"end
+   end
+  end
+ elseif not domain.broadcastSafe then return false,"BROADCAST_NOT_DECLARED_SAFE"end
+ return true,"ALL_GUILD_RECIPIENTS_AUTHORIZED"
+end
 function Sync:StartSend(job,transfer)
  transfer=transfer or self.activeTransfer;if not transfer or self.activeTransfer~=transfer then return false end
- transfer.kind="SEND";transfer.job=job;transfer.key=job.key;transfer.objectId=job.objectId;transfer.entity=job.entity;transfer.characterUUID=job.characterUUID;transfer.activityDomain=job.block or job.domain;transfer.domain=job.domain;transfer.direction="SEND";transfer.phase="PREPARING";transfer.sender=playerName();transfer.receiver=job.target;transfer.requestId=job.requestId;transfer.priorityClass=job.priorityClass;transfer.retryCount=job.retryCount;transfer.maxRetries=job.maxRetries;transfer.startedAt=transfer.startedAt or now();transfer.preparing=true
+ transfer.kind="SEND";transfer.job=job;transfer.key=job.key;transfer.objectId=job.objectId;transfer.entity=job.entity;transfer.characterUUID=job.characterUUID;transfer.activityDomain=job.block or job.domain;transfer.domain=job.domain;transfer.direction="SEND";transfer.phase="PREPARING";transfer.sender=playerName();transfer.receiver=#(job.recipientOrder or{})==1 and job.target or"Guild request cohort";transfer.requestId=job.requestId;transfer.priorityClass=job.priorityClass;transfer.retryCount=job.retryCount;transfer.maxRetries=job.maxRetries;transfer.startedAt=transfer.startedAt or now();transfer.preparing=true
+ if self.outboundCoalescing[job.coalesceKey]==job then self.outboundCoalescing[job.coalesceKey]=nil end
  local domain=self.domains[job.domain];local meta=domain and domain.getMetadata(job.objectId)
- local function failResponse(reason,result)local notified=self:SendFetchResult(job.domain,{objectId=job.objectId,requestId=job.requestId,revisionID=job.requiredRevision},job.target,result or"UNAVAILABLE",reason,meta);return self:ReleaseTransfer(notified==true,reason,transfer)end
- if not domain or not meta then return failResponse("OBJECT_CHANGED","NOT_FOUND")end
- if domain.canShare then local authOK,canShare,shareReason=pcall(domain.canShare,meta,senderGuid(job.target),job.target,"fetch");if not authOK then return failResponse("AUTHORIZATION_CHECK_FAILED","UNAVAILABLE")elseif not canShare then local result=shareReason=="MODULE_DISABLED"and"UNAVAILABLE"or shareReason=="NOT_FOUND"and"NOT_FOUND"or shareReason=="STALE"and"STALE"or shareReason=="INVALID"and"INVALID"or"NOT_VISIBLE";return failResponse(shareReason or"AUTHORIZATION_OR_OBJECT_CHANGED",result)end end
- if job.requiredRevision and meta.revisionID~=job.requiredRevision then return failResponse("REVISION_CHANGED","STALE")end
- local payload=domain.export(job.objectId);if payload==nil then return failResponse("EXPORT_FAILED","NOT_FOUND")end
- local envelope={protocol=self.protocol,kind="PAYLOAD",domain=job.domain,data={objectId=job.objectId,metadata=meta,payload=payload,reason=job.reason,requestId=job.requestId},sentAt=now(),sender=UnitGUID("player")}
- local serialized,err=HolyStorm.Serializer:Serialize(envelope);if not serialized then return failResponse("SERIALIZE:"..tostring(err),"UNAVAILABLE")end
- local fragments=math.max(1,math.ceil(#serialized/HolyStorm.Comms.chunkSize));if#serialized>HolyStorm.Comms.receiveLimits.maxPayloadBytes or fragments>HolyStorm.Comms.receiveLimits.maxFragments then log("ERROR","backpressure","Atomic sync payload exceeds HSC1 transfer limit",{requestId=job.requestId,objectId=job.objectId,domain=job.domain,revision=meta.revisionID,bytes=#serialized,fragments=fragments,limit=HolyStorm.Comms.receiveLimits.maxFragments,result="DEFERRED_SIZE_LIMIT"});return failResponse("PAYLOAD_TOO_LARGE","UNAVAILABLE")end
- transfer.phase="TRANSFER";transfer.bytes=#serialized;transfer.fragments=0;transfer.fragmentsTotal=fragments;transfer.revision=meta.revisionID;transfer.selectedSource=playerName();transfer.sendPending=true;job.state="RUNNING";job.startedAt=transfer.startedAt;recordJobMetric(self,job,"started")
- if fragments>=48 then log("WARN","fragmentation","Large atomic sync domain transfer queued",{requestId=job.requestId,objectId=job.objectId,characterUUID=job.characterUUID,domain=job.domain,revision=meta.revisionID,recipient=job.target,priority=job.priorityClass,bytes=#serialized,fragments=fragments})end
- local function progress(sent,total)if Sync.activeTransfer==transfer then transfer.fragments=sent;transfer.fragmentsTotal=total;if transfer.activityId then Sync:NotifyActivity()end end end
- local function complete(ok,id,bytes,reason)if Sync.activeTransfer~=transfer then return end;transfer.transmissionId=id;transfer.sendPending=false;Sync:ReleaseTransfer(ok,reason,transfer)end
- local queued,id=HolyStorm.Comms:Send(serialized,"WHISPER",job.target,job.priority,{domain=job.domain,objectId=job.objectId,characterUUID=job.characterUUID,block=job.block,messageKind="PAYLOAD",messageClass="payload",revision=meta.revisionID,requestId=job.requestId,selectedSource=playerName(),originalOwner=meta.owner,relay=meta.owner~=UnitGUID("player"),priority=job.priorityClass,serializedBytes=#serialized},complete,progress)
- if self.activeTransfer~=transfer then return queued~=false end
- if not queued then return failResponse("TRANSPORT_QUEUE_REJECTED","UNAVAILABLE")end
- transfer.preparing=false;transfer.transmissionId=id
+ local function rejectAll(reason,result,currentMeta)
+  self:SendResultToRecipients(job,result or"UNAVAILABLE",reason,currentMeta)
+  log("WARN","request","Coalesced payload demand ended without a payload",{domain=job.domain,objectId=job.objectId,owner=job.requiredOwner,revision=job.requiredRevision,receiverCount=#(job.recipientOrder or{}),reason=reason,result=result})
+  return self:ReleaseTransfer(true,reason,transfer)
+ end
+ if not domain or not meta then return rejectAll("OBJECT_CHANGED","NOT_FOUND",meta)end
+ if meta.owner~=job.requiredOwner or tonumber(meta.version)~=tonumber(job.requiredVersion)or job.requiredRevision and meta.revisionID~=job.requiredRevision then return rejectAll("REVISION_CHANGED","STALE",meta)end
+ local authorized={}
+ for _,recipientKey in ipairs(job.recipientOrder or{})do
+  local recipient=job.recipients[recipientKey];local allowed,shareReason=true,nil
+  if domain.canShare then local authOK;authOK,allowed,shareReason=pcall(domain.canShare,meta,recipient.guid or senderGuid(recipient.name),recipient.name,"fetch");if not authOK then allowed=false;shareReason="AUTHORIZATION_CHECK_FAILED"end end
+  if allowed==true then authorized[#authorized+1]=recipient
+  else self:SendFetchResult(job.domain,{objectId=job.objectId,requestId=latestRecipientRequest(recipient),revisionID=job.requiredRevision},recipient.name,shareReason=="MODULE_DISABLED"and"UNAVAILABLE"or"NOT_VISIBLE",shareReason or"SOURCE_AUTHORIZATION",meta);log("WARN","privacy","Queued payload recipient no longer passes outbound authorization",{domain=job.domain,objectId=job.objectId,owner=meta.owner,revision=meta.revisionID,receiver=recipient.name,reason=shareReason or"SOURCE_AUTHORIZATION"})end
+ end
+ if #authorized==0 then log("DEBUG","payload","Payload suppressed because no authorized receiver still needs this revision",{domain=job.domain,objectId=job.objectId,owner=meta.owner,revision=meta.revisionID,requesterCount=#(job.recipientOrder or{}),reason="NO_AUTHORIZED_DEMAND"});return self:ReleaseTransfer(true,"NO_AUTHORIZED_DEMAND",transfer)end
+ local broadcast=false;local broadcastReason="SINGLE_RECIPIENT"
+ if #authorized>1 then broadcast,broadcastReason=self:CanBroadcastToGuild(domain,meta,job,authorized)end
+ if #authorized>1 and not broadcast then log("INFO","privacy","Shared-channel payload broadcast withheld; using authorized whispers",{domain=job.domain,objectId=job.objectId,owner=meta.owner,revision=meta.revisionID,receiverCount=#authorized,reason=broadcastReason})end
+ local payload=domain.export(job.objectId);if payload==nil then return rejectAll("EXPORT_FAILED","NOT_FOUND",meta)end
+ local plans={}
+ if broadcast then
+  local ids={};for _,recipient in ipairs(authorized)do for _,requestId in ipairs(recipient.requestIds)do if#ids<self.maxCoalescedRecipients*self.maxRequestIdsPerRecipient then ids[#ids+1]=requestId end end end
+  plans[1]={channel="GUILD",target=nil,recipients=authorized,requestIds=ids,requestId=ids[1]}
+  log("INFO","payload","Coalesced payload selected shared guild broadcast",{domain=job.domain,objectId=job.objectId,owner=meta.owner,revision=meta.revisionID,receiverCount=#authorized,requestIdCount=#ids,channel="GUILD",decision="BROADCAST"})
+ else
+  for _,recipient in ipairs(authorized)do plans[#plans+1]={channel="WHISPER",target=recipient.name,recipients={recipient},requestIds=copy(recipient.requestIds),requestId=latestRecipientRequest(recipient)}end
+  log("INFO","payload","Coalesced payload selected recipient whispers",{domain=job.domain,objectId=job.objectId,owner=meta.owner,revision=meta.revisionID,receiverCount=#authorized,channel="WHISPER",decision="WHISPER"})
+ end
+ local transmissions={};local fragmentsMax,bytesTotal=0,0
+ for _,plan in ipairs(plans)do
+  local envelope={protocol=self.protocol,kind="PAYLOAD",domain=job.domain,data={objectId=job.objectId,metadata=meta,payload=payload,reason=job.reason,requestId=plan.requestId,requestIds=plan.requestIds},sentAt=now(),sender=UnitGUID("player")}
+  local serialized,err=HolyStorm.Serializer:Serialize(envelope)
+  if not serialized then self:SendResultToRecipients(job,"UNAVAILABLE","SERIALIZE:"..tostring(err),meta,plan.recipients)
+  else
+   local fragments=math.max(1,math.ceil(#serialized/HolyStorm.Comms.chunkSize));if#serialized>HolyStorm.Comms.receiveLimits.maxPayloadBytes or fragments>HolyStorm.Comms.receiveLimits.maxFragments then log("ERROR","backpressure","Atomic sync payload exceeds HSC1 transfer limit",{requestId=plan.requestId,objectId=job.objectId,domain=job.domain,revision=meta.revisionID,bytes=#serialized,fragments=fragments,limit=HolyStorm.Comms.receiveLimits.maxFragments,result="DEFERRED_SIZE_LIMIT"});self:SendResultToRecipients(job,"UNAVAILABLE","PAYLOAD_TOO_LARGE",meta,plan.recipients)
+   else transmissions[#transmissions+1]={plan=plan,serialized=serialized,fragments=fragments};fragmentsMax=math.max(fragmentsMax,fragments);bytesTotal=bytesTotal+#serialized end
+  end
+ end
+ if#transmissions==0 then return self:ReleaseTransfer(true,"NO_TRANSMITTABLE_PAYLOAD",transfer)end
+ transfer.phase="TRANSFER";transfer.bytes=bytesTotal;transfer.fragments=0;transfer.fragmentsTotal=fragmentsMax;transfer.revision=meta.revisionID;transfer.selectedSource=playerName();transfer.sendPending=true;transfer.pendingTransmissions=#transmissions;transfer.transmissionIds={};job.state="RUNNING";job.startedAt=transfer.startedAt;recordJobMetric(self,job,"started")
+ if fragmentsMax>=48 then log("WARN","fragmentation","Large atomic sync domain transfer queued",{requestId=job.requestId,objectId=job.objectId,characterUUID=job.characterUUID,domain=job.domain,revision=meta.revisionID,receiverCount=#authorized,bytes=bytesTotal,fragments=fragmentsMax})end
+ local function progress(sent,total)if Sync.activeTransfer==transfer then transfer.fragments=math.max(transfer.fragments or 0,sent or 0);transfer.fragmentsTotal=math.max(transfer.fragmentsTotal or 0,total or 0);if transfer.activityId then Sync:NotifyActivity()end end end
+ local function completeOne(ok,id,bytes,reason)
+  if Sync.activeTransfer~=transfer then return end
+  transfer.pendingTransmissions=math.max(0,(transfer.pendingTransmissions or 1)-1);if id then transfer.transmissionIds[id]=true;transfer.transmissionId=id end
+  if ok~=true then transfer.failedTransmissions=(transfer.failedTransmissions or 0)+1;transfer.sendFailureReason=reason or"TRANSMISSION_FAILED"end
+  if transfer.pendingTransmissions==0 then transfer.sendPending=false;Sync:ReleaseTransfer((transfer.failedTransmissions or 0)==0,transfer.sendFailureReason,transfer)end
+ end
+ self:BeginTransferActivity(transfer)
+ for _,transmission in ipairs(transmissions)do
+  local plan=transmission.plan;local diagnostics={domain=job.domain,objectId=job.objectId,characterUUID=job.characterUUID,block=job.block,messageKind="PAYLOAD",messageClass="payload",revision=meta.revisionID,requestId=plan.requestId,selectedSource=playerName(),originalOwner=meta.owner,relay=meta.owner~=UnitGUID("player"),priority=job.priorityClass,receiverCount=#plan.recipients,channel=plan.channel,serializedBytes=#transmission.serialized}
+  local queued,id=HolyStorm.Comms:Send(transmission.serialized,plan.channel,plan.target,job.priority,diagnostics,function(okValue,transmissionId,bytes,reason)completeOne(okValue,transmissionId,bytes,reason)end,progress)
+  if queued then if id then transfer.transmissionIds[id]=true;transfer.transmissionId=id end
+  else self:SendResultToRecipients(job,"UNAVAILABLE","TRANSPORT_QUEUE_REJECTED",meta,plan.recipients);completeOne(true,nil,0,"TRANSPORT_QUEUE_REJECTED")end
+ end
+ transfer.preparing=false
+ if self.activeTransfer~=transfer then return true end
  if not self:IsTransferActivityAuthoritative(transfer)then return self:ReleaseTransfer(false,"TRANSMISSION_NOT_ACTIVE",transfer)end
- self:BeginTransferActivity(transfer);return true
+ log("INFO","payload","Authorized payload transfer queued",{domain=job.domain,objectId=job.objectId,owner=meta.owner,revision=meta.revisionID,receiverCount=#authorized,transmissionCount=#transmissions,decision=broadcast and"BROADCAST"or"WHISPER",bytes=bytesTotal})
+ return true
 end
 function Sync:RunQueuePump()
  if self.activeTransfer then return true end
@@ -623,7 +813,7 @@ function Sync:RunQueuePump()
   local transfer=self.activeTransfer
   log("ERROR","activity","Sync queue operation raised an error",{requestId=job.requestId,domain=job.domain,objectId=job.objectId,error=tostring(result),result="OPERATION_ERROR"})
   if transfer and transfer.job==job and transfer.kind=="SEND"and job.reason=="REQUEST_RESPONSE"then
-   local replyOK,replyQueued=pcall(function()return self:SendFetchResult(job.domain,{objectId=job.objectId,requestId=job.requestId,revisionID=job.requiredRevision},job.target,"UNAVAILABLE","SYNC_OPERATION_ERROR")end)
+   local replyOK,replyQueued=pcall(function()return self:SendResultToRecipients(job,"UNAVAILABLE","SYNC_OPERATION_ERROR")end)
    self:ReleaseTransfer(replyOK and replyQueued==true,"SYNC_OPERATION_ERROR",transfer)
   elseif transfer and transfer.job==job then self:ReleaseTransfer(false,"SYNC_OPERATION_ERROR",transfer)
    else job.state="QUEUED";job.notBefore=now()+1;if not job.activityHandoff then job.activityId=nil end;self.catchUpJobs[#self.catchUpJobs+1]=job;self:QueuePump(1);self:NotifyActivity(true)end
@@ -633,9 +823,14 @@ function Sync:RunQueuePump()
 end
 function Sync:OnPayload(domainId,data,sender,transport,kind)
  local domain=self.domains[domainId];if not domain or type(data)~="table"or not validId(data.objectId)or type(data.metadata)~="table"then return false end
+ if data.requestIds~=nil then
+  if type(data.requestIds)~="table"then return false,"INVALID_REQUEST_IDS"end
+  local count=0;for index,requestId in pairs(data.requestIds)do count=count+1;if count>self.maxCoalescedRecipients*self.maxRequestIdsPerRecipient or type(index)~="number"or index<1 or index%1~=0 or not validId(requestId)then return false,"INVALID_REQUEST_IDS"end end
+ end
  transport=type(transport)=="table"and transport or{};kind=kind or"PAYLOAD"
- if kind=="PAYLOAD"and self:IsRetiredRequest(data.requestId)then log("DEBUG","request","Late payload for a completed Sync request ignored",{requestId=data.requestId,domain=domainId,objectId=data.objectId,sender=sender,result="RETIRED_REQUEST"});return false,"RETIRED_REQUEST"end
+ if kind=="PAYLOAD"and self:IsRetiredRequest(data.requestId)and not matchesFetchPayload(self.activeTransfer,domainId,data,sender)then log("DEBUG","request","Late payload for a retired Sync request ignored",{requestId=data.requestId,domain=domainId,objectId=data.objectId,sender=sender,result="RETIRED_REQUEST"});return false,"RETIRED_REQUEST"end
  if kind=="PAYLOAD"and not matchesFetchPayload(self.activeTransfer,domainId,data,sender)then log("DEBUG","request","Payload does not match the active Sync fetch",{requestId=data.requestId,domain=domainId,objectId=data.objectId,sender=sender,activeRequestId=self.activeTransfer and self.activeTransfer.requestId,result="UNMATCHED_REQUEST"});return false,"UNMATCHED_REQUEST"end
+ if kind=="PAYLOAD"and self:IsRetiredRequest(self.activeTransfer and self.activeTransfer.requestId)then log("DEBUG","request","Late payload for a completed Sync request ignored",{requestId=self.activeTransfer and self.activeTransfer.requestId,domain=domainId,objectId=data.objectId,sender=sender,result="RETIRED_REQUEST"});return false,"RETIRED_REQUEST"end
  if kind=="LIVE"and not domain.live then return false,"INVALID_LIVE_DOMAIN"end
  if kind=="LIVE"and domain.live then
   local incomingVersion=tonumber(data.metadata.version)or-1
@@ -689,7 +884,7 @@ end
 function Sync:ResetActivityState(reason)
  if self.activityNotifyTimer then self.activityNotifyTimer:Cancel();self.activityNotifyTimer=nil end
  if self.activeTransfer and self.activeTransfer.timeoutTimer then self.activeTransfer.timeoutTimer:Cancel();self.activeTransfer.timeoutTimer=nil end
- self.activeTransfer=nil;self.activeActivities={};self.catchUpJobs={};self.catchUpIndex={};self.pendingPayloads={};self.pendingPayloadOrder={};self.retiredRequestIds={};self.retiredRequestOrder={}
+ self.activeTransfer=nil;self.activeActivities={};self.catchUpJobs={};self.catchUpIndex={};self.outboundCoalescing={};self.pendingManifestEntries={};self.pendingPayloads={};self.pendingPayloadOrder={};self.retiredRequestIds={};self.retiredRequestOrder={}
  if reason=="INITIALIZE"or reason=="SYNC_SHUTDOWN"then self.terminalFetches={};self.terminalFetchOrder={};self.lastTerminalFetch=nil end
  self.activityStateMismatch=false;self.activityMismatchLogged=false;self.activityPublishedActive=false;self.activityNotifyDeferred=nil
  if HolyStorm.Events then HolyStorm.Events:Emit("HS_SYNC_ACTIVITY_UPDATED",activitySnapshot(self))end
@@ -714,14 +909,15 @@ function Sync:GetDiagnostics()
 end
 function Sync:Cleanup()
  local current=now();local requestCutoff=current-self.requestTimeout;for requestId,request in pairs(self.requests)do if(request.createdAt or 0)<=requestCutoff then self.activeRequests[request.key or key(request.domain,request.objectId)]=nil;self.requests[requestId]=nil end end;for requestId,at in pairs(self.heardAt)do if at<=requestCutoff then self.heardAt[requestId]=nil;self.heard[requestId]=nil end end;for id,snapshot in pairs(self.offerSnapshots)do if(tonumber(snapshot.createdAt)or 0)<=requestCutoff then self.offerSnapshots[id]=nil end end;pruneTerminalFetches(self)
+ local pending={};for _,entry in ipairs(self.pendingManifestEntries)do if current-(tonumber(entry.receivedAt)or 0)<self.presenceTimeout then pending[#pending+1]=entry end end;self.pendingManifestEntries=pending
  for requestId,entry in pairs(self.retiredRequestIds)do if(tonumber(entry.expiresAt)or 0)<=current then self.retiredRequestIds[requestId]=nil end end
  local presenceCutoff=current-self.presenceTimeout;for guid,at in pairs(self.knownOnline)do if at<=presenceCutoff then self.knownOnline[guid]=nil end end
  for guid,entry in pairs(self.knownVersions)do if not entry.localPlayer and(not validPresenceVersion(entry.version)or(tonumber(entry.receivedAt)or 0)<=presenceCutoff)then clearKnownVersion(self,guid,entry,validPresenceVersion(entry.version)and"PRESENCE_EXPIRED"or"INVALID_PRESENCE_VERSION")end end
  self:ScheduleCleanup();return true
 end
 function Sync:RunCatchUp()
- -- Each domain is a distinct logical scope. Discover() merges repeated catch-up requests per domain/scope.
- if not IsInGuild()then return false end;for domainId,domain in pairs(self.domains)do if domain.catchUp~=false then self:Discover(domainId,nil,{reason="LOGIN_CATCHUP",priority=98,watermark=HolyStorm.PlayerData:GetForeignWatermark(domainId)})end end;log("DEBUG","catchup","Delayed login catch-up started",{watermark=HolyStorm.PlayerData:GetForeignWatermark(),domains=HolyStorm.Utils.TableCount(self.domains)});return true
+ log("DEBUG","catchup","Login catch-up deliberately suppressed",{reason="METADATA_ON_DEMAND",domains=HolyStorm.Utils.TableCount(self.domains)})
+ return false,"LOGIN_CATCHUP_SUPPRESSED"
 end
 function Sync:GetKnownVersion(guid)
  if type(guid)~="string"then return nil end
@@ -756,15 +952,15 @@ function Sync:BeginLoginSession()
 end
 function Sync:RunLoginPresence(task)
  if not IsInGuild()then return false end;local sessionId=task.metadata and task.metadata.sessionId or self.loginSessionId
- self:QueueEnvelope("PRESENCE",nil,{version=HolyStorm.version,sessionId=sessionId,replyRequested=true,reason="LOGIN_PRESENCE"},"GUILD",nil,50);self:SchedulePresenceHeartbeat();self:RunCatchUp();return true
-end
-function Sync:SchedulePresenceHeartbeat()
- local delay=self.presenceRefreshMin+math.random()*self.presenceRefreshJitter
- return HolyStorm.Tasks:Queue("Sync.PresenceHeartbeat",{delay=delay,priority=90,triggerSource="PRESENCE_REFRESH_SCHEDULED"})~=nil
+ local manifest=self:BuildManifest();local queued=self:QueueEnvelope("PRESENCE",nil,{version=HolyStorm.version,sessionId=sessionId,replyRequested=true,manifest=manifest,reason="LOGIN_PRESENCE"},"GUILD",nil,50)
+ log(queued and"INFO"or"WARN","discovery",queued and"Minimal login Presence and revision manifest queued"or"Login Presence could not be queued",{reason="LOGIN_PRESENCE",sessionId=sessionId,manifestEntries=#manifest.entries,channel="GUILD"})
+ log("DEBUG","catchup","Login catch-up deliberately suppressed",{reason="METADATA_ON_DEMAND",sessionId=sessionId,domains=HolyStorm.Utils.TableCount(self.domains)})
+ return queued~=nil and queued~=false
 end
 function Sync:RunPresenceHeartbeat()
- if IsInGuild()then self:QueueEnvelope("PRESENCE",nil,{version=HolyStorm.version,reason="PRESENCE_HEARTBEAT"},"GUILD",nil,50)end
- self:SchedulePresenceHeartbeat();return IsInGuild()
+ if not IsInGuild()then return false end
+ self:QueueEnvelope("PRESENCE",nil,{version=HolyStorm.version,reason="PRESENCE_HEARTBEAT"},"GUILD",nil,50)
+ log("DEBUG","version","One-shot Presence heartbeat sent without catch-up",{reason="PRESENCE_HEARTBEAT"});return true
 end
 function Sync:EvaluateOutdatedVersion()
  if self.outdatedNotified or not self.presencePublished or not self.peerVersionReceived then return false end
@@ -794,6 +990,7 @@ function Sync:OnPresence(data,sender,resolved,claimedGuid,identityReason)
   end
  end
  self:ScheduleCleanup()
+ if data.manifest~=nil then self:ReceiveManifest(data.manifest,sender,resolved)end
  if data.replyRequested==true and not data.responseTo then self:QueueEnvelope("PRESENCE",nil,{version=HolyStorm.version,responseTo=data.sessionId,reason="PRESENCE_RESPONSE"},"WHISPER",sender,50,.2+math.random()*.6)end
  return true
 end
@@ -830,10 +1027,9 @@ function Sync:Initialize()
  HolyStorm.Tasks:RegisterTaskType("Sync.ReceivePayload",{name="Validate and commit sync payload",module="Sync",priority=22,executionMode="UNIQUE",execute=function()return Sync:RunReceivePayload()end})
  HolyStorm.Tasks:RegisterTaskType("Sync.PassiveRefresh",{name=L["TASK_SYNC_PASSIVE"],localizedNameKey="TASK_SYNC_PASSIVE",module="Sync",priority=95,executionMode="MERGE_BY_KEY",execute=function(task)return Sync:RunPassive(task)end})
  HolyStorm.Tasks:RegisterTaskType("Sync.Cleanup",{name="Sync cleanup",module="Sync",priority=100,executionMode="UNIQUE",execute=function()Sync.cleanupTaskId=nil;return Sync:Cleanup()end})
- HolyStorm.Tasks:RegisterTaskType("Sync.LoginPresence",{name=L["TASK_SYNC_CATCHUP"],localizedNameKey="TASK_SYNC_CATCHUP",module="Sync",priority=98,executionMode="UNIQUE",conditions={"PLAYER_LOGGED_IN","PLAYER_READY","NOT_LOADING","NOT_ZONING","GUILD_AVAILABLE"},execute=function(task)return Sync:RunLoginPresence(task)end})
- HolyStorm.Tasks:RegisterTaskType("Sync.PresenceHeartbeat",{name=L["TASK_SYNC_PRESENCE_HEARTBEAT"],localizedNameKey="TASK_SYNC_PRESENCE_HEARTBEAT",module="Sync",priority=90,executionMode="UNIQUE",conditions={"PLAYER_LOGGED_IN","PLAYER_READY","NOT_LOADING","NOT_ZONING","GUILD_AVAILABLE"},execute=function(task)return Sync:RunPresenceHeartbeat(task)end})
+ HolyStorm.Tasks:RegisterTaskType("Sync.LoginPresence",{name=L["TASK_SYNC_LOGIN_PRESENCE"],localizedNameKey="TASK_SYNC_LOGIN_PRESENCE",module="Sync",priority=98,executionMode="UNIQUE",conditions={"PLAYER_LOGGED_IN","PLAYER_READY","NOT_LOADING","NOT_ZONING","GUILD_AVAILABLE"},execute=function(task)return Sync:RunLoginPresence(task)end})
  HolyStorm.Tasks:RegisterTaskType("Sync.VersionNotice",{name=L["TASK_SYNC_VERSION_NOTICE"],localizedNameKey="TASK_SYNC_VERSION_NOTICE",module="Sync",priority=99,executionMode="UNIQUE",execute=function()return Sync:EvaluateOutdatedVersion()end})
- self:RegisterDomain("character",{freshness="player-block",getMetadata=function(objectId)local guid,block=splitCharacterId(objectId);return guid and HolyStorm.PlayerData:GetMetadata(guid,block)end,listMetadata=function(since)local out={};for guid,record in pairs(HolyStorm.PlayerData:GetCharacters())do for block in pairs(record.blockMeta or{})do if characterBlockSyncEnabled(block)then local meta=HolyStorm.PlayerData:GetMetadata(guid,block);if meta and(meta.committedAt or meta.updatedAt or 0)>since then out[#out+1]=meta end end end end;return out end,export=function(objectId)local guid,block=splitCharacterId(objectId);if not guid or not characterBlockSyncEnabled(block)then return nil end;local data=HolyStorm.PlayerData:GetBlockForExport(guid,block);return data and{guid=guid,block=block,data=data}end,validate=function(payload,meta,objectId)local guid,block=splitCharacterId(objectId);return characterBlockSyncEnabled(block)and type(payload)=="table"and payload.guid==guid and payload.block==block and type(payload.data)=="table"and meta.owner==guid end,authorize=function(_,meta,_,_,objectId)local guid,block=splitCharacterId(objectId);return characterBlockSyncEnabled(block)and meta.owner==guid end,import=function(objectId,payload,meta,senderId,sender)local guid,block=splitCharacterId(objectId);return HolyStorm.PlayerData:AcceptRemoteBlock(guid,block,payload.data,meta,senderId,sender)end,updateEvent="HS_CHARACTER_SYNC_UPDATED"})
+ self:RegisterDomain("character",{freshness="player-block",broadcastSafe=true,listManifest=function(limit)local guid=UnitGUID and UnitGUID("player");local out={};local playerData=HolyStorm.PlayerData;if not guid or not playerData or type(playerData.GetBlockDefinitions)~="function"or type(playerData.GetMetadata)~="function"then return out end;for _,definition in ipairs(playerData:GetBlockDefinitions())do if#out>=math.min(tonumber(limit)or self.maxManifestEntries,self.maxManifestEntries)then break end;if type(definition)=="table"and characterBlockSyncEnabled(definition.id)then local meta=playerData:GetMetadata(guid,definition.id);if meta and meta.owner==guid and tonumber(meta.version)then out[#out+1]=meta end end end;return out end,getMetadata=function(objectId)local guid,block=splitCharacterId(objectId);return guid and HolyStorm.PlayerData:GetMetadata(guid,block)end,listMetadata=function(since)local out={};for guid,record in pairs(HolyStorm.PlayerData:GetCharacters())do for block in pairs(record.blockMeta or{})do if characterBlockSyncEnabled(block)then local meta=HolyStorm.PlayerData:GetMetadata(guid,block);if meta and(meta.committedAt or meta.updatedAt or 0)>since then out[#out+1]=meta end end end end;return out end,export=function(objectId)local guid,block=splitCharacterId(objectId);if not guid or not characterBlockSyncEnabled(block)then return nil end;local data=HolyStorm.PlayerData:GetBlockForExport(guid,block);return data and{guid=guid,block=block,data=data}end,validate=function(payload,meta,objectId)local guid,block=splitCharacterId(objectId);return characterBlockSyncEnabled(block)and type(payload)=="table"and payload.guid==guid and payload.block==block and type(payload.data)=="table"and meta.owner==guid end,authorize=function(_,meta,_,_,objectId)local guid,block=splitCharacterId(objectId);return characterBlockSyncEnabled(block)and meta.owner==guid end,import=function(objectId,payload,meta,senderId,sender)local guid,block=splitCharacterId(objectId);return HolyStorm.PlayerData:AcceptRemoteBlock(guid,block,payload.data,meta,senderId,sender)end,updateEvent="HS_CHARACTER_SYNC_UPDATED"})
   HolyStorm.Events:Register("HS_COMMS_MESSAGE","sync",function(_,payload,sender,channel,transport)Sync:Receive(payload,sender,channel,transport)end)
   HolyStorm.Events:Register("HS_COMMS_FRAGMENT_PROGRESS","sync-activity",function(_,progress)Sync:OnFragmentProgress(progress)end)
   HolyStorm.Events:Register("HS_COMMS_TRANSMISSION_COMPLETED","sync-activity-reconcile",function(_,transmissionId,result,bytes,reason)Sync:OnTransportCompleted(transmissionId,result,bytes,reason)end)

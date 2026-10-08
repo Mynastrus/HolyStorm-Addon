@@ -4,6 +4,12 @@ local GM=HolyStorm.GuildManagement
 local UI={version="1.0.0",built={},selected="notes",absenceState="ACTIVE"}
 local C
 local function now()return HolyStorm.Utils.Now()end
+local featureDomains={notes="guildNotes",absences="guildAbsences",activity="guildActivity"}
+function UI:RequestFeatureSync(id)
+ local domain=featureDomains[id]
+ if not domain or not IsInGuild()or not HolyStorm.Sync or not HolyStorm.Sync:GetDomain(domain)then return false end
+ return HolyStorm.Sync:Discover(domain,nil,{reason="GUILD_MANAGEMENT_UI_OPEN",priority=65})~=nil
+end
 local function formatDate(value)return value and date("%Y-%m-%d",value)or"-"end
 local function parseDate(value)value=tostring(value or"");local y,m,d=value:match("^(%d%d%d%d)%-(%d%d)%-(%d%d)$");if not y then return nil end;local stamp=time({year=tonumber(y),month=tonumber(m),day=tonumber(d),hour=12});return stamp and date("%Y-%m-%d",stamp)==value and stamp or nil end
 local function characterName(guid)local character=guid and HolyStorm.Data.CharacterStore:Get(guid);local guild=HolyStorm.Data.GuildStore:GetCurrent();local member=guild and guild.roster and guild.roster[guid];return(member and member.name)or(character and(character.fullName or character.name))or guid or"-"end
@@ -17,6 +23,7 @@ local function confirm(text,callback)
 end
 function UI:SelectFeature(id)
  local feature=GM:GetFeature(id);if not feature then return false end;self.selected=id
+ self:RequestFeatureSync(id)
  for featureId,frame in pairs(self.built)do frame:SetShown(featureId==id)end
  if not self.built[id]then local built=feature.build(self.content,self);local frame=type(built)=="table"and built.frame or built;if not frame then return false end;frame:SetAllPoints(self.content);self.built[id]=frame end
  for featureId,frame in pairs(self.built)do frame:SetShown(featureId==id)end;if feature.refresh then feature.refresh()end;if self.tabs and self.tabs.selected~=id then self.tabs:SelectTab(id,true)end;return true

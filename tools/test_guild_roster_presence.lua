@@ -102,7 +102,6 @@ local function loadAddonRuntime(addon,guid,name,withGuildStore)
   addon.Data.GuildStore={ResolveSenderGuid=function()return nil end}
  end
  assert(loadfile(root.."LIVE/Holy_Storm/Sync/SyncManager.lua"))()
- addon.Sync.RunCatchUp=function()return true end
  assert(addon.Sync:Initialize(),"production Sync task types initialize")
 end
 
@@ -177,14 +176,15 @@ local function startRemote(guid,name,version)
 end
 local function heartbeat(addon,guid,name)
  activeAddon,activeGuid,activeName=addon,guid,name
- local heartbeatTask=assert(addon.Tasks.registry["Sync.PresenceHeartbeat"],"heartbeat task is registered"):execute({metadata={}})
- assert(heartbeatTask,"online peer runs its scheduled Presence refresh")
+ local before=0;for _,task in ipairs(addon.Tasks.queue)do if task.id=="Sync.Discover"then before=before+1 end end
+ assert(addon.Sync:RunPresenceHeartbeat(),"an explicit one-shot Presence refresh remains available")
+ local after=0;for _,task in ipairs(addon.Tasks.queue)do if task.id=="Sync.Discover"then after=after+1 end end
+ assert(after==before,"Presence refresh does not start a domain catch-up")
  receive(addon,guid,name)
 end
 local function heartbeatTo(addon,guid,name,target)
  activeAddon,activeGuid,activeName=addon,guid,name
- local heartbeatTask=assert(addon.Tasks.registry["Sync.PresenceHeartbeat"],"heartbeat task is registered"):execute({metadata={}})
- assert(heartbeatTask,"online peer runs its scheduled Presence refresh")
+ assert(addon.Sync:RunPresenceHeartbeat(),"an explicit one-shot Presence refresh remains available")
  return receiveTo(addon,guid,name,target)
 end
 
@@ -257,9 +257,8 @@ assert(receiver.Sync:Discover("character",nil,{reason="VERSION_RETENTION_TEST"})
 versions=renderedVersions();assertVersion(versions,"Player-Local","DEV","Sync.Discover does not replace local version authority");assertVersion(versions,"Player-A","5.9.0","Sync.Discover does not clear a known peer version")
 
 for _,peer in ipairs({peerA,peerB})do
- local scheduled
- for index=#peer.Tasks.queue,1,-1 do if peer.Tasks.queue[index].id=="Sync.PresenceHeartbeat"then scheduled=peer.Tasks.queue[index];break end end
- assert(scheduled and scheduled.options.delay>=peer.Sync.presenceRefreshMin and scheduled.options.delay<=peer.Sync.presenceRefreshMin+peer.Sync.presenceRefreshJitter,"login refresh is jittered inside the version freshness window")
+ assert(not peer.Tasks.registry["Sync.PresenceHeartbeat"],"Presence is not scheduled as a periodic online ping")
+ for _,task in ipairs(peer.Tasks.queue)do assert(task.id~="Sync.PresenceHeartbeat","login schedules no recurring Presence heartbeat")end
 end
 clock=1250
 local logsBeforeHeartbeat=#versionLogs(receiver)

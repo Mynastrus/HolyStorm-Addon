@@ -88,12 +88,13 @@ HolyStorm.Comms.autoComplete=true
 local outboundId=remoteEntries[1].objectId
 assert(Sync:OnFetch("character",{objectId=outboundId,knownVersion=0,requestId="outbound-one"},"Requester-Realm"))
 assert(#Sync.catchUpJobs==1 and Sync.catchUpJobs[1].kind=="SEND")
+clock=clock+1
 assert(Sync:RunQueuePump() and #exportIds==1 and exportIds[1]==outboundId,"one FETCH exports exactly one entity")
 assert(HolyStorm.Serializer.lastEnvelope.kind=="PAYLOAD"and HolyStorm.Serializer.lastEnvelope.data.objectId==outboundId and HolyStorm.Serializer.lastEnvelope.data.payload.objectId==outboundId,"outbound snapshots never combine multiple characters")
 assert(not Sync:GetActivity().active,"send completion callback closes the active transfer")
 HolyStorm.Comms.autoComplete=false;Sync.catchUpJobs={};Sync.catchUpIndex={}
 exportSize=66001;local sentBeforeOversize=#HolyStorm.Comms.sent;local oversizeId=remoteEntries[2].objectId;local taskCountBeforeOversize=#HolyStorm.Tasks.queue
-assert(Sync:OnFetch("character",{objectId=oversizeId,knownVersion=0,requestId="oversize"} ,"Requester-Realm"));local oversizeJob=Sync.catchUpJobs[1];assert(Sync:RunQueuePump())
+assert(Sync:OnFetch("character",{objectId=oversizeId,knownVersion=0,requestId="oversize"} ,"Requester-Realm"));local oversizeJob=Sync.catchUpJobs[1];clock=clock+1;assert(Sync:RunQueuePump())
 local negativeResponseTask=HolyStorm.Tasks.queue[#HolyStorm.Tasks.queue];assert(#HolyStorm.Comms.sent==sentBeforeOversize and oversizeJob.state=="COMPLETED"and#HolyStorm.Tasks.queue==taskCountBeforeOversize+1 and negativeResponseTask.options.metadata.envelope.kind=="FETCH_RESULT"and negativeResponseTask.options.metadata.envelope.data.result=="UNAVAILABLE","oversized atomic snapshot is not sent and returns an explicit negative response")
 exportSize=300;Sync.catchUpJobs={};Sync.catchUpIndex={};Sync.activeTransfer=nil
 
@@ -156,7 +157,7 @@ local userGuid,userOwner="Character-0500","Owner-0500-Realm";local userObject=us
 local userKey,userQueueState=Sync:QueueFetch("character",userObject,"Owner-0500-Realm",1,"CHARACTER_OPEN",nil,"interactive-500",{version=2,revisionID="r2",owner=userGuid,direct=true,senderGuid=userGuid},{priorityClass="USER_INTERACTIVE"})
 local userJob=Sync.catchUpIndex[userKey];local selected=Sync:BestSource(userJob)
 assert(userQueueState=="MERGED"and userJob.priorityClass=="USER_INTERACTIVE"and selected.sender==userOwner and selected.direct,"interactive request promotes the job and direct owner wins source election")
-clock=1001;assert(Sync:RunQueuePump());assert(Sync.activeTransfer and Sync.activeTransfer.characterUUID==userGuid and Sync.activeTransfer.selectedSource==userOwner,"interactive character starts ahead of background catch-up")
+clock=clock+1;assert(Sync:RunQueuePump());assert(Sync.activeTransfer and Sync.activeTransfer.characterUUID==userGuid and Sync.activeTransfer.selectedSource==userOwner,"interactive character starts ahead of background catch-up")
 local activity=Sync:GetActivity();assert(activity.active and activity.activeOperations[1].characterUUID==userGuid and activity.queuedJobs==2999,"activity model exposes one active transfer and bounded queue state")
 Sync:OnFragmentProgress({sender=userOwner,channel="WHISPER",transmissionId="unrelated-transmission",fragments=2,fragmentsTotal=2,bytes=400})
 assert(Sync.activeTransfer.fragments==0 and Sync.activeTransfer.phase=="REQUEST","unrelated sender-only fragment progress cannot masquerade as this fetch")
@@ -235,7 +236,7 @@ assert(HolyStorm.Comms.sent[#HolyStorm.Comms.sent].priority==110,
  "position traffic must retain its low Sync transport priority")
 
 -- A lost response retries finitely and does not block the next eligible character.
-clock=1002
+clock=clock+1
 assert(Sync:RunQueuePump());local timedOut=Sync.activeTransfer;assert(timedOut and timedOut.kind=="FETCH")
 local staleTimeout=timedOut.timeoutTimer.callback;staleTimeout();assert(timedOut.job.retryCount==1 and timedOut.job.state=="QUEUED","response timeout returns the job to bounded retry state")
 assert(Sync:RunQueuePump() and Sync.activeTransfer and Sync.activeTransfer.characterUUID~=userGuid,"queue advances to another stale character while the failed job backs off")
