@@ -19,6 +19,23 @@ end
 local function styleDashboardBody(region)
  region:SetFontObject(GameFontHighlightSmall);region:SetTextColor(.92,.95,1,1);region:SetAlpha(1)
 end
+local function keepOneLine(region)
+ if not region then return end
+ if region.SetWordWrap then region:SetWordWrap(false)end
+ if region.SetNonSpaceWrap then region:SetNonSpaceWrap(false)end
+ if region.SetMaxLines then region:SetMaxLines(1)end
+end
+local function hideOwnedTooltip(owner)
+ if GameTooltip and owner and GameTooltip.IsOwned and GameTooltip:IsOwned(owner)then GameTooltip:Hide();return true end
+ return false
+end
+local function showDashboardTooltip(owner,build)
+ if not GameTooltip or not owner then return false end
+ GameTooltip:Hide();if GameTooltip.ClearLines then GameTooltip:ClearLines()end
+ GameTooltip:SetOwner(owner,"ANCHOR_NONE");build(GameTooltip);GameTooltip:Show()
+ UI:PositionDashboardTooltip(owner)
+ return true
+end
 local function unknown()local components=HolyStorm.UIComponents;return components and components.FormatState and components:FormatState(nil)or"|cff888888\226\128\147|r"end
 local function statusPrompt(state)
  if state=="MISSING"or state=="UNSUPPORTED"then return L["DASHBOARD_SCAN_MISSING"]end
@@ -162,7 +179,36 @@ function UI:CalculateDashboardProfileHeight(rowCount)
 end
 function UI:CalculateDashboardProfileWidth(width)
  width=math.max(1,tonumber(width)or 900)
- return math.min(310,math.max(280,width*.32))
+ return math.min(300,math.max(220,width*.38),math.max(1,width-160))
+end
+function UI:CalculateDashboardHeaderLayout(width,profileAvailable)
+ width=math.max(1,tonumber(width)or 1)
+ local profileWidth=profileAvailable and self:CalculateDashboardProfileWidth(width)or 0
+ local identityWidth=math.max(1,width-profileWidth-(profileAvailable and 10 or 4))
+ local classSize,specSize,classLeft,specGap,textGap=68,52,3,8,8
+ if identityWidth<315 then classSize,specSize,classLeft,specGap,textGap=52,38,2,5,6 end
+ if identityWidth<245 then classSize,specSize,classLeft,specGap,textGap=44,0,2,0,8 end
+ local textLeft=classLeft+classSize+textGap
+ if specSize>0 then textLeft=textLeft+specGap+specSize end
+ return{profileWidth=profileWidth,identityWidth=identityWidth,classSize=classSize,specSize=specSize,classLeft=classLeft,specGap=specGap,textGap=textGap,textLeft=textLeft,textWidth=math.max(1,identityWidth-textLeft-4),showSpecIcon=specSize>0}
+end
+function UI:PositionDashboardTooltip(owner)
+ local tooltip=GameTooltip;local screen=UIParent
+ if not tooltip or not owner then return false end
+ local left,right,top,bottom=owner.GetLeft and owner:GetLeft(),owner.GetRight and owner:GetRight(),owner.GetTop and owner:GetTop(),owner.GetBottom and owner:GetBottom()
+ local screenWidth=screen and screen.GetWidth and screen:GetWidth();local screenHeight=screen and screen.GetHeight and screen:GetHeight()
+ local tooltipWidth=tooltip.GetWidth and tooltip:GetWidth()or 0;local tooltipHeight=tooltip.GetHeight and tooltip:GetHeight()or 0
+ if screen and left and right and top and bottom and screenWidth and screenHeight and tooltip.ClearAllPoints and tooltip.SetPoint then
+  local gap=8;local side=screenWidth-right>=tooltipWidth+gap and"RIGHT"or"LEFT"
+  local x=side=="RIGHT"and(right+gap)or(left-tooltipWidth-gap)
+  x=math.max(8,math.min(math.max(8,screenWidth-tooltipWidth-8),x))
+  local y=(top+bottom+tooltipHeight)/2
+  y=math.max(tooltipHeight+8,math.min(math.max(tooltipHeight+8,screenHeight-8),y))
+  tooltip:ClearAllPoints();tooltip:SetPoint("TOPLEFT",screen,"BOTTOMLEFT",x,y)
+  return true,side,x,y
+ end
+ tooltip:ClearAllPoints();tooltip:SetPoint("LEFT",owner,"RIGHT",8,0)
+ return true,"RIGHT"
 end
 function UI:CalculateDashboardWidgetHeight(providers,availableHeight)
  local count=math.min(3,#(providers or{}));if count==0 then return 0 end
@@ -184,19 +230,20 @@ end
 local function makeMetricCard(parent,kind)
  local frame=buttonPanel(parent);frame.kind=kind
  frame.icon=frame:CreateTexture(nil,"ARTWORK");frame.icon:SetSize(46,46);frame.icon:SetPoint("LEFT",frame,"LEFT",12,0);frame.icon:SetTexCoord(.08,.92,.08,.92)
- frame.title=frame:CreateFontString(nil,"OVERLAY","GameFontNormal");frame.title:SetPoint("TOPLEFT",frame,"TOPLEFT",73,-13);styleDashboardHeading(frame.title);frame.title:SetJustifyH("LEFT")
- frame.value=frame:CreateFontString(nil,"OVERLAY","GameFontHighlightLarge");frame.value:SetPoint("TOPLEFT",frame.title,"BOTTOMLEFT",0,-1);frame.value:SetPoint("RIGHT",frame,"RIGHT",-29,0);frame.value:SetJustifyH("LEFT");frame.value:SetWordWrap(false)
- frame.subtitle=frame:CreateFontString(nil,"OVERLAY","GameFontHighlightSmall");frame.subtitle:SetPoint("BOTTOMLEFT",frame,"BOTTOMLEFT",73,10);frame.subtitle:SetPoint("RIGHT",frame,"RIGHT",-12,0);frame.subtitle:SetJustifyH("LEFT");frame.subtitle:SetWordWrap(false);frame.subtitle:SetTextColor(.72,.78,.86)
+ frame.title=frame:CreateFontString(nil,"OVERLAY","GameFontNormal");frame.title:SetPoint("TOPLEFT",frame,"TOPLEFT",73,-13);styleDashboardHeading(frame.title);frame.title:SetJustifyH("LEFT");keepOneLine(frame.title)
+ frame.value=frame:CreateFontString(nil,"OVERLAY","GameFontHighlightLarge");frame.value:SetPoint("TOPLEFT",frame.title,"BOTTOMLEFT",0,-1);frame.value:SetPoint("RIGHT",frame,"RIGHT",-29,0);frame.value:SetJustifyH("LEFT");keepOneLine(frame.value)
+ frame.subtitle=frame:CreateFontString(nil,"OVERLAY","GameFontHighlightSmall");frame.subtitle:SetPoint("BOTTOMLEFT",frame,"BOTTOMLEFT",73,10);frame.subtitle:SetPoint("RIGHT",frame,"RIGHT",-12,0);frame.subtitle:SetJustifyH("LEFT");keepOneLine(frame.subtitle);frame.subtitle:SetTextColor(.72,.78,.86)
  frame.arrow=frame:CreateFontString(nil,"OVERLAY","GameFontHighlight");frame.arrow:SetPoint("RIGHT",frame,"RIGHT",-9,0);frame.arrow:SetText("›");frame.arrow:SetTextColor(.9,.68,.2)
  frame:SetScript("OnClick",function(self,button)if button=="RightButton"then if self.settings then self.settings()end;return end;if self.action then self.action(self.snapshotStatus)end end)
  return frame
 end
 
 local function profileTooltip(owner,model)
- if not GameTooltip then return end
- GameTooltip:SetOwner(owner,"ANCHOR_CURSOR_RIGHT");GameTooltip:SetText(colorText(L["DASHBOARD_PROFILE_TITLE"],1,.78,.18))
- for _,row in ipairs(model.profileRows or{})do GameTooltip:AddLine(row.text,.9,.95,1,true)end
- GameTooltip:AddLine(L["DASHBOARD_PROFILE_TOOLTIP"],.75,.82,.92,true);GameTooltip:Show()
+ return showDashboardTooltip(owner,function(tooltip)
+  tooltip:SetText(colorText(L["DASHBOARD_PROFILE_TITLE"],1,.78,.18))
+  for _,row in ipairs(model.profileRows or{})do tooltip:AddLine(row.text,.9,.95,1,true)end
+  tooltip:AddLine(L["DASHBOARD_PROFILE_TOOLTIP"],.75,.82,.92,true)
+ end)
 end
 
 local function createWidget(parent)
@@ -221,8 +268,8 @@ function UI:RebuildDashboardNavigation()
    button.icon=button:CreateTexture(nil,"ARTWORK");button.icon:SetSize(21,21)
    button.label=button:CreateFontString(nil,"OVERLAY","GameFontHighlightSmall");button.label:SetJustifyH("CENTER")
    button:SetScript("OnClick",function(self)UI:OpenCharacterTab(self.definition.id)end)
-   button:SetScript("OnEnter",function(self)self:SetBackdropBorderColor(1,.78,.25,1);if GameTooltip then GameTooltip:SetOwner(self,"ANCHOR_TOP");GameTooltip:SetText(self.label:GetText());GameTooltip:AddLine(L["DASHBOARD_OPEN_CHARACTER_TAB"],.85,.88,.94,true);GameTooltip:Show()end end)
-   button:SetScript("OnLeave",function(self)self:SetBackdropBorderColor(.34,.30,.22,.9);if GameTooltip then GameTooltip:Hide()end end)
+   button:SetScript("OnEnter",function(self)self:SetBackdropBorderColor(1,.78,.25,1);showDashboardTooltip(self,function(tooltip)tooltip:SetText(self.label:GetText());tooltip:AddLine(L["DASHBOARD_OPEN_CHARACTER_TAB"],.85,.88,.94,true)end)end)
+   button:SetScript("OnLeave",function(self)self:SetBackdropBorderColor(.34,.30,.22,.9);hideOwnedTooltip(self)end)
   end
   local achievementModule=definition.id=="achievements"and HolyStorm:GetModule("AchievementsUI",true)or nil
   if definition.id~="achievements"or(achievementModule and achievementModule.IsEnabled and achievementModule:IsEnabled())then button.definition=definition;setTexture(button.icon,definition.icon);button.label:SetText(definition.label or(definition.labelKey and locale[definition.labelKey])or definition.id);button:Show();buttons[#buttons+1]=button else button:Hide()end
@@ -235,12 +282,12 @@ function UI:BuildHomeDashboard(parent,widgets)
  local canvas=CreateFrame("Frame",nil,parent);canvas:SetAllPoints(parent);self.dashboardCanvas=canvas;self.dashboardWidgets=widgets;self.providerWidgets={};self.dashboardDirty=true;self.dashboardProvidersDirty=true;self.navigationDirty=true
  local header=panel(canvas);self.headerPanel=header
  local headerContent=CreateFrame("Frame",nil,canvas);self.headerContent=headerContent
- local profile=CreateFrame("Button",nil,canvas,"BackdropTemplate");profile:RegisterForClicks("LeftButtonUp","RightButtonUp");profile:SetBackdrop({bgFile=PANEL_TEXTURE,edgeFile=BORDER_TEXTURE,tile=true,tileSize=16,edgeSize=12,insets={left=3,right=3,top=3,bottom=3}});profile:SetBackdropColor(.025,.035,.05,.95);profile:SetBackdropBorderColor(.46,.36,.16,.9);self.profilePanel=profile
+ local profile=CreateFrame("Button",nil,headerContent,"BackdropTemplate");profile:RegisterForClicks("LeftButtonUp","RightButtonUp");profile:SetBackdrop({bgFile=PANEL_TEXTURE,edgeFile=BORDER_TEXTURE,tile=true,tileSize=16,edgeSize=12,insets={left=3,right=3,top=3,bottom=3}});profile:SetBackdropColor(.025,.035,.05,.95);profile:SetBackdropBorderColor(.46,.36,.16,.9);profile:SetClipsChildren(true);self.profilePanel=profile
  profile.title=profile:CreateFontString(nil,"OVERLAY","GameFontNormal");profile.title:SetPoint("TOPLEFT",profile,"TOPLEFT",12,-9);styleDashboardHeading(profile.title)
  profile.rows={}
  profile:SetScript("OnClick",function(_,button)if button=="RightButton"or button=="LeftButton"then UI:OpenProfileSettings()end end)
  profile:SetScript("OnEnter",function(owner)owner:SetBackdropBorderColor(1,.78,.25,1);profileTooltip(owner,self.dashboardModel or{})end)
- profile:SetScript("OnLeave",function(owner)owner:SetBackdropBorderColor(.46,.36,.16,.9);if GameTooltip then GameTooltip:Hide()end end)
+ profile:SetScript("OnLeave",function(owner)owner:SetBackdropBorderColor(.46,.36,.16,.9);hideOwnedTooltip(owner)end)
  self.navFrame=CreateFrame("Frame",nil,canvas);self.navButtons={}
  self.primaryCards={
   equipment=makeMetricCard(canvas,"equipment"),mythicPlus=makeMetricCard(canvas,"mythicPlus"),raid=makeMetricCard(canvas,"raid"),
@@ -280,17 +327,21 @@ function UI:LayoutDashboard()
  local header=self.headerPanel;header:ClearAllPoints();header:SetPoint("TOPLEFT",canvas,"TOPLEFT",margin,-layout.headerTop);header:SetPoint("TOPRIGHT",canvas,"TOPRIGHT",-margin,-layout.headerTop);header:SetHeight(layout.headerHeight)
  local headerContent=self.headerContent;headerContent:ClearAllPoints();headerContent:SetPoint("TOPLEFT",header,"TOPLEFT",5,-4);headerContent:SetPoint("BOTTOMRIGHT",header,"BOTTOMRIGHT",-5,4)
  local profile=self.profilePanel;local profileAvailable=self.dashboardModel and self.dashboardModel.profileAvailable==true
- profile:SetShown(profileAvailable);if profileAvailable then
-  profile:ClearAllPoints();profile:SetWidth(self:CalculateDashboardProfileWidth(width))
+ local headerWidth=headerContent:GetWidth()or(width-2*margin-10);if headerWidth<=0 then headerWidth=math.max(1,width-2*margin-10)end
+ local headerLayout=self:CalculateDashboardHeaderLayout(headerWidth,profileAvailable)
+ profile:SetShown(profileAvailable);profile:EnableMouse(profileAvailable==true);if profileAvailable then
+  profile:ClearAllPoints();profile:SetWidth(headerLayout.profileWidth)
   profile:SetHeight(self:CalculateDashboardProfileHeight(#self.dashboardModel.profileRows));profile:SetClipsChildren(true)
   profile:SetPoint("TOPRIGHT",headerContent,"TOPRIGHT",-2,-(headerContent:GetHeight()-profile:GetHeight())/2)
  end
  local identity=self.dashboardWidgets.identity;identity.frame:SetParent(headerContent);identity.frame:ClearAllPoints();identity.frame:SetPoint("TOPLEFT",headerContent,"TOPLEFT",0,0);if profileAvailable then identity.frame:SetPoint("BOTTOMRIGHT",profile,"BOTTOMLEFT",-8,0)else identity.frame:SetPoint("BOTTOMRIGHT",headerContent,"BOTTOMRIGHT",-4,0)end;identity.frame:Show()
- local classIcon=self.dashboardWidgets.classIcon;classIcon.frame:ClearAllPoints();classIcon.frame:SetParent(identity.frame);classIcon.frame:SetSize(68,68);classIcon.frame:SetPoint("LEFT",identity.frame,"LEFT",3,0);classIcon.frame:Show();classIcon.image:ClearAllPoints();classIcon.image:SetSize(62,62);classIcon.image:SetPoint("CENTER",classIcon.frame,"CENTER")
- local specIcon=self.dashboardWidgets.specIcon;specIcon.frame:ClearAllPoints();specIcon.frame:SetParent(identity.frame);specIcon.frame:SetSize(52,52);specIcon.frame:SetPoint("LEFT",classIcon.frame,"RIGHT",8,0);specIcon.frame:Show();specIcon.image:ClearAllPoints();specIcon.image:SetSize(46,46);specIcon.image:SetPoint("CENTER",specIcon.frame,"CENTER")
- local identityText=self.dashboardWidgets.identityText;identityText.frame:SetParent(identity.frame);identityText.frame:ClearAllPoints();identityText.frame:SetPoint("TOPLEFT",specIcon.frame,"TOPRIGHT",8,-3);identityText.frame:SetPoint("BOTTOMRIGHT",identity.frame,"BOTTOMRIGHT",-4,3);identityText.frame:SetHeight(68);identityText:SetWidth(math.max(120,identity.frame:GetWidth()-150));identityText.frame:Show()
+ identity.frame:SetClipsChildren(true)
+ local classIcon=self.dashboardWidgets.classIcon;classIcon.frame:ClearAllPoints();classIcon.frame:SetParent(identity.frame);classIcon.frame:SetSize(headerLayout.classSize,headerLayout.classSize);classIcon.frame:SetPoint("LEFT",identity.frame,"LEFT",headerLayout.classLeft,0);classIcon.frame:Show();classIcon.image:ClearAllPoints();classIcon.image:SetSize(math.max(1,headerLayout.classSize-6),math.max(1,headerLayout.classSize-6));classIcon.image:SetPoint("CENTER",classIcon.frame,"CENTER")
+ local specIcon=self.dashboardWidgets.specIcon;specIcon.frame:ClearAllPoints();specIcon.frame:SetParent(identity.frame);specIcon.frame:SetSize(math.max(1,headerLayout.specSize),math.max(1,headerLayout.specSize));specIcon.frame:SetPoint("LEFT",classIcon.frame,"RIGHT",headerLayout.specGap,0);specIcon.frame:SetShown(headerLayout.showSpecIcon);specIcon.image:ClearAllPoints();if headerLayout.showSpecIcon then specIcon.image:SetSize(math.max(1,headerLayout.specSize-6),math.max(1,headerLayout.specSize-6));specIcon.image:SetPoint("CENTER",specIcon.frame,"CENTER")end
+ local identityText=self.dashboardWidgets.identityText;identityText.frame:SetParent(identity.frame);identityText.frame:ClearAllPoints();if headerLayout.showSpecIcon then identityText.frame:SetPoint("TOPLEFT",specIcon.frame,"TOPRIGHT",headerLayout.textGap,-3)else identityText.frame:SetPoint("TOPLEFT",classIcon.frame,"TOPRIGHT",headerLayout.textGap,-3)end;identityText.frame:SetClipsChildren(true);identityText:SetWidth(headerLayout.textWidth);identityText:SetHeight(68);identityText.frame:Show()
  local name=self.dashboardWidgets.name;name:SetFontObject(GameFontHighlightLarge);name:SetJustifyH("LEFT")
  local spec=self.dashboardWidgets.specialization;spec:SetFontObject(GameFontHighlight);spec:SetJustifyH("LEFT")
+ keepOneLine(name.label);keepOneLine(spec.label);keepOneLine(self.dashboardWidgets.details.label)
  local nav= self.navFrame;nav:ClearAllPoints();nav:SetPoint("TOPLEFT",canvas,"TOPLEFT",margin,-layout.navTop);nav:SetPoint("TOPRIGHT",canvas,"TOPRIGHT",-margin,-layout.navTop);nav:SetHeight(layout.navHeight)
  local navWidth=math.max(1,width-2*margin);local navGap=4;local itemWidth=math.max(1,(navWidth-navGap*math.max(0,#self.navButtons-1))/math.max(1,#self.navButtons))
  for index,button in ipairs(self.navButtons)do button:ClearAllPoints();button:SetPoint("TOPLEFT",nav,"TOPLEFT",(index-1)*(itemWidth+navGap),0);button:SetSize(itemWidth,29);if itemWidth>=89 then button.label:Show()else button.label:Hide()end;button.icon:SetPoint("LEFT",button,itemWidth>=89 and"LEFT"or"CENTER",itemWidth>=89 and 7 or 0,0);button.label:ClearAllPoints();button.label:SetPoint("LEFT",button.icon,"RIGHT",5,0);button.label:SetPoint("RIGHT",button,"RIGHT",-5,0)end
@@ -311,6 +362,7 @@ function UI:LayoutDashboard()
   card.title:ClearAllPoints();card.title:SetPoint("TOPLEFT",card,"TOPLEFT",52,-6);card.title:SetPoint("RIGHT",card,"RIGHT",-10,0)
   card.value:ClearAllPoints();card.value:SetFontObject(GameFontHighlight);card.value:SetPoint("TOPLEFT",card.title,"BOTTOMLEFT",0,-1);card.value:SetPoint("RIGHT",card,"RIGHT",-10,0)
   card.subtitle:ClearAllPoints();card.subtitle:SetPoint("BOTTOMLEFT",card,"BOTTOMLEFT",52,5);card.subtitle:SetPoint("RIGHT",card,"RIGHT",-10,0)
+  keepOneLine(card.title);keepOneLine(card.value);keepOneLine(card.subtitle)
  end
  local widgetTop=layout.widgetTop;local providerLayouts,providerColumns,widgetHeight=self:CalculateDashboardProviderLayout(#(self.visibleDashboardProviders or{}),width-2*margin,self.visibleDashboardProviders)
  for index,provider in ipairs(self.visibleDashboardProviders or{})do
@@ -363,8 +415,8 @@ function UI:LayoutProviderWidget(frame,provider,height)
   local item=provider.items[index];local row=frame.entries[index]
   if not row then
    row=CreateFrame("Button",nil,frame);row.icon=row:CreateTexture(nil,"ARTWORK");row.icon:SetSize(26,26);row.icon:SetPoint("LEFT",row,"LEFT",2,0);row.title=row:CreateFontString(nil,"OVERLAY","GameFontHighlightSmall");row.title:SetPoint("TOPLEFT",row.icon,"TOPRIGHT",7,-1);row.title:SetPoint("RIGHT",row,"RIGHT",-6,0);row.title:SetJustifyH("LEFT");row.title:SetWordWrap(false);row.summary=row:CreateFontString(nil,"OVERLAY","GameFontHighlightSmall");row.summary:SetPoint("TOPLEFT",row.title,"BOTTOMLEFT",0,-1);row.summary:SetPoint("RIGHT",row,"RIGHT",-6,0);row.summary:SetJustifyH("LEFT");row.summary:SetWordWrap(false);frame.entries[index]=row
-   row:SetScript("OnEnter",function(self)self.title:SetTextColor(1,.85,.4);if self.item and self.item.tooltip and GameTooltip then GameTooltip:SetOwner(self,"ANCHOR_CURSOR_RIGHT");GameTooltip:SetText(colorText(self.item.title,1,.78,.18));GameTooltip:AddLine(self.item.tooltip,.88,.9,.94,true);GameTooltip:Show()end end)
-   row:SetScript("OnLeave",function(self)self.title:SetTextColor(.84,.92,1);if GameTooltip then GameTooltip:Hide()end end)
+   row:SetScript("OnEnter",function(self)self.title:SetTextColor(1,.85,.4);if self.item and self.item.tooltip then showDashboardTooltip(self,function(tooltip)tooltip:SetText(colorText(self.item.title,1,.78,.18));tooltip:AddLine(self.item.tooltip,.88,.9,.94,true)end)end end)
+   row:SetScript("OnLeave",function(self)self.title:SetTextColor(.84,.92,1);hideOwnedTooltip(self)end)
    row:SetScript("OnClick",function(self)if self.item and type(self.item.onClick)=="function"then self.item.onClick()end end)
   end
   local compactHeight=text(item.summary)and math.min(34,rowHeight)or math.min(26,rowHeight)
@@ -400,17 +452,19 @@ function UI:ShowMetricTooltip(kind,owner)
   local tooltips=HolyStorm.Tooltips
   if#rows>0 and tooltips then return tooltips:ShowTable("raid-best",owner,{anchor={point="LEFT",relativePoint="RIGHT",x=8,y=0},columns={{align="LEFT"},{align="CENTER"},{align="RIGHT"}},headers={{raidLocale["RAID_COLUMN_BOSS"],raidLocale["RAID_COLUMN_BEST"],raidLocale["RAID_COLUMN_KILLS"]}},separator=true,rows=rows})end
  end
- GameTooltip:SetOwner(owner,"ANCHOR_CURSOR_RIGHT");GameTooltip:SetText(colorText(self.primaryCards[kind].title:GetText(),1,.78,.18))
- if kind=="equipment"then
-  GameTooltip:AddLine(string.format(L["DASHBOARD_EQUIPMENT_TOOLTIP"],model.equippedCount or 0),.9,.94,1,true)
- elseif kind=="mythicPlus"then GameTooltip:AddLine(model.mythicPlusSubtitle or"",.9,.94,1,true)
- elseif kind=="raid"then GameTooltip:AddLine(L["DASHBOARD_RAID_TOOLTIP"],.9,.94,1,true);if model.raidSubtitle~=""then GameTooltip:AddLine(model.raidSubtitle,.8,.86,.94,true)end end
- GameTooltip:AddLine(prompt and L["DASHBOARD_CLICK_TO_SCAN"]or L["DASHBOARD_CLICK_TO_OPEN"],.25,.78,.92,true);GameTooltip:Show();return true
+  showDashboardTooltip(owner,function(tooltip)
+   tooltip:SetText(colorText(self.primaryCards[kind].title:GetText(),1,.78,.18))
+   if kind=="equipment"then
+    tooltip:AddLine(string.format(L["DASHBOARD_EQUIPMENT_TOOLTIP"],model.equippedCount or 0),.9,.94,1,true)
+   elseif kind=="mythicPlus"then tooltip:AddLine(model.mythicPlusSubtitle or"",.9,.94,1,true)
+   elseif kind=="raid"then tooltip:AddLine(L["DASHBOARD_RAID_TOOLTIP"],.9,.94,1,true);if model.raidSubtitle~=""then tooltip:AddLine(model.raidSubtitle,.8,.86,.94,true)end end
+   tooltip:AddLine(prompt and L["DASHBOARD_CLICK_TO_SCAN"]or L["DASHBOARD_CLICK_TO_OPEN"],.25,.78,.92,true)
+  end);return true
 end
 
 function UI:ShowSecondaryTooltip(kind,owner)
  local card=self.secondaryCards[kind];if not GameTooltip or not card then return false end
- GameTooltip:SetOwner(owner,"ANCHOR_CURSOR_RIGHT");GameTooltip:SetText(colorText(card.title:GetText(),1,.78,.18));GameTooltip:AddLine(statusPrompt(card.snapshotStatus)and L["DASHBOARD_CLICK_TO_SCAN"]or L["DASHBOARD_CLICK_TO_OPEN"],.25,.78,.92,true);GameTooltip:Show();return true
+ return showDashboardTooltip(owner,function(tooltip)tooltip:SetText(colorText(card.title:GetText(),1,.78,.18));tooltip:AddLine(statusPrompt(card.snapshotStatus)and L["DASHBOARD_CLICK_TO_SCAN"]or L["DASHBOARD_CLICK_TO_OPEN"],.25,.78,.92,true)end)
 end
 
 function UI:RefreshCharacterData()
@@ -425,6 +479,7 @@ end
 function UI:RefreshDashboard()
  if not self.dashboardCanvas then return false end
  if not self:IsDashboardVisible()then self.dashboardDirty=true;return false end
+ hideOwnedTooltip(self.profilePanel)
  if self.navigationDirty then self.navigationDirty=false;self:RebuildDashboardNavigation()end
  local model=self:BuildDashboardModel();self.dashboardModel=model;local widgets=self.dashboardWidgets
  widgets.name:SetText(model.name);widgets.specialization:SetText(model.specification);widgets.specIcon:SetImage(model.specIcon or"Interface\\Icons\\INV_Misc_QuestionMark")

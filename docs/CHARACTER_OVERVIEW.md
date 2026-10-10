@@ -56,6 +56,14 @@ The header uses stored name, realm, class, race, faction, level, guild rank, and
 
 Summary sections are adapters over the same stored blocks as their tabs. Equipment uses `equippedItemLevel` (the v4 `itemLevel` alias is also equipped level); it does not use overall item level or calculate an average. Mythic+ uses stored `overallScore` only when the stored v4 season matches the known current global season. Raid Best uses lifetime-confirmed per-boss statistics from the v3 stored catalog, not weekly lockouts.
 
+The home Dashboard's character identity and personal profile card share a dedicated header-content parent. The profile is right-anchored inside that header and is only mouse-enabled while at least one permitted profile field is available. Layout uses the measured header width; portrait/spec icons compact or hide before identity text can overlap the profile. Text stays on one line and clips within its card, while the existing hover tooltip keeps the full profile details available. Resizing continues through the main window's existing `OnSizeChanged` layout path and does not change a global or saved window size.
+
+Dashboard and native table tooltips are bounded to the screen. Dashboard tooltips prefer the side with room and clamp vertically; table-owned native tooltips enable Blizzard's screen clamp. Character context changes hide the native tooltip, and Dashboard data refresh closes a profile tooltip tied to the previous model. Structured LibQTip tables already use the shared service's screen clamp and owner-release lifecycle.
+
+The dashboard's snapshot labels continue to come from the shared `CharacterUI:GetDataStatus` result and existing task/status events. The UI does not start a scan while laying out or refreshing a card. Current, queued, active, failed, missing, unsupported, and stale states keep the saved value visible where the shared status contract permits it.
+
+`tools/test_localization_contract.lua` checks each literal locale lookup in both registered locales, including literal suffixes behind CharacterUI prefix proxies. Computed prefixes such as `STATUS_<state>`, `STAT_<name>`, `FACTION_<faction>`, and `RAID_DIFFICULTY_<id>` are explicitly listed there and are covered by focused Character UI tests. The Delves summary uses the `SUMMARY` suffix through the `DELVES_` proxy, resolving to the registered `DELVES_SUMMARY` key once.
+
 ## Equipment v4
 
 One row is rendered per supported slot. The complete stored item hyperlink is used for the native tooltip and item click; the UI does not reconstruct `item:<id>`. Confirmed empty slots use the WoW slot placeholder. Missing slots render gray unknown. Item names are truncated to the available table width while preserving the link payload and tooltip.
@@ -106,7 +114,7 @@ PlayerData and snapshot runtime-status events identify the changed character and
 
 ## Known limitations
 
-- No Retail client was available for this audit. Tests validate stored consumer behavior, not Blizzard client rendering or API timing. In-game verification is still required for native item tooltips/clicks, truncation, narrow-window layout, Encounter Journal navigation, combat behavior, and localized header widths.
+- No Retail client was available for this audit. Tests validate stored consumer behavior and pure width/anchor calculations, not Blizzard client rendering or API timing. In-game verification is still required for native item and screen-edge tooltips, text clipping at different UI scales, minimum-width layout, Encounter Journal navigation, and combat behavior.
 - Raid weekly freshness follows the shared domain status contract. Stale weekly lockouts remain in the stored snapshot and are labeled by status; lifetime best data remains current independently.
 - An unsupported remote snapshot can remain unavailable until an authoritative newer block arrives through normal sync; the Character UI adds no private sync protocol.
 - Long subtitle content is constrained by the shared HeaderBar's one-line width; verify it in both locales at the narrowest supported window.

@@ -4,6 +4,9 @@
 
 ### English
 
+- Fixed the Dashboard profile overlay: profile and character identity now share the header-content parent, and measured responsive widths prevent the identity text from extending underneath the profile card. Icons compact or hide at narrow widths, while full profile details remain available on hover.
+- Positioned Dashboard tooltips against available screen space, clamped native Character table tooltips, and close stale native/profile tooltips when the selected character or rendered profile data changes.
+- Fixed the Delves summary's doubled `DELVES_DELVES_SUMMARY` lookup and expanded the localization contract to validate literal keys behind prefix proxies in both locales. Updated the preferred-role label for compact cards.
 - Kept the local Holy Storm version authoritative in the Sync version store, preserved fresh peer versions across versionless Presence and repeated login reconciliation, and limited version DEBUG logs to actual changes and expiry. Guild Roster reads every version from the store.
 - Fixed Retail Mythic+ scans for Blizzard's current `CalendarTime.monthDay` best-run dates, made `GetSeasonBestAffixScoreInfoForMap` optional, derived map scores from Blizzard-selected best runs, and added bounded readiness retries with compact stable-reason diagnostics. Mythic+ snapshots are now v5.
 - Audited Character Overview consumers against stored snapshot contracts; corrected Equipment v4 unknown socket/tier rendering, stale Raid weekly display, strict legacy-version handling, data-driven Stats rows, header identity metadata, and read-only tab switching. Documented the consumer matrix and Retail acceptance sequence.
@@ -27,6 +30,9 @@
 
 ### Deutsch
 
+- Die Überlagerung der Profilkarte ist behoben: Profil und Charakteridentität verwenden jetzt denselben Header-Inhaltsbereich. Die gemessenen responsiven Breiten verhindern, dass Identitätstext unter die Profilkarte läuft. Bei geringer Breite werden Icons verkleinert oder das Spezialisierungsicon ausgeblendet; vollständige Profildetails bleiben im Tooltip zugänglich.
+- Dashboard-Tooltips berücksichtigen den verfügbaren Bildschirmplatz. Native Tooltips der Charaktertabellen werden am Bildschirm gehalten; veraltete Profil- und native Tooltips schließen beim Charakter- oder Datenwechsel.
+- Der doppelte Locale-Zugriff `DELVES_DELVES_SUMMARY` ist korrigiert. Der Localization Contract prüft nun auch literale Schlüssel über Präfix-Proxies in beiden Sprachen. Die Rollenbezeichnung wurde für kompakte Karten verkürzt.
 - Die lokale Holy-Storm-Version bleibt im Sync-Versionsstore autoritativ. Versionslose Presence-Updates und wiederholte Login-Abgleiche erhalten noch gueltige Peer-Versionen. Das Gildenroster liest alle Versionen aus dem Store; DEBUG-Eintraege entstehen nur bei tatsaechlichen Aenderungen und beim Ablauf.
 - Retail-Mythic+-Scans unterstützen nun Blizzards aktuelles Datumsfeld `CalendarTime.monthDay`. `GetSeasonBestAffixScoreInfoForMap` ist optionale Detailinformation; Dungeonwertungen stammen aus Blizzards Bestläufen. Begrenzte Readiness-Retries und kompakte Reason-IDs machen Scanfehler sichtbar. Mythic+-Snapshots verwenden Schema v5.
 - Die Character-Overview-Consumer wurden mit den gespeicherten Snapshot-Verträgen abgeglichen. Unbekannte Sockel-/Tierdaten in Equipment v4, veraltete Raid-Wochenbindungen, Legacy-Versionen, dynamische Stats-Zeilen, Header-Identität und Tab-Wechsel ohne Scan sind korrigiert. Consumer-Matrix und Retail-Abnahmefolge sind dokumentiert.

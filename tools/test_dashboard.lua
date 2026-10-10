@@ -26,7 +26,7 @@ function UI:ShowPage(id)openedPage=id;return true end
 function UnitGUID()return"Player-Local"end
 HolyStorm.UI=UI
 local raidLocale={RAID_DIFFICULTY_NORMAL="Normal",RAID_COLUMN_BOSS="Boss",RAID_COLUMN_BEST="Best",RAID_COLUMN_KILLS="Kills"}
-local locale=setmetatable({TABLE_EMPTY="No entries",TABLE_UNKNOWN="Unknown",DASHBOARD_SPEC_CLASS="%s - %s",DASHBOARD_SEASON="Season %d",DASHBOARD_DELVE_ACTIVITIES="%d activities this week",DASHBOARD_ACHIEVEMENTS_COUNT="%d / %d",DASHBOARD_BIRTHDAY="Birthday: %s",DASHBOARD_PREFERRED_ROLE="Preferred role: %s",DASHBOARD_ROLE_HEALER="Healer"},{__index=function(_,key)return key end})
+local locale=setmetatable({TABLE_EMPTY="No entries",TABLE_UNKNOWN="Unknown",DASHBOARD_SPEC_CLASS="%s - %s",DASHBOARD_SEASON="Season %d",DASHBOARD_DELVE_ACTIVITIES="%d activities this week",DASHBOARD_ACHIEVEMENTS_COUNT="%d / %d",DASHBOARD_BIRTHDAY="Birthday: %s",DASHBOARD_PREFERRED_ROLE="Role: %s",DASHBOARD_ROLE_HEALER="Healer",DASHBOARD_ROLE_TANK="Tank"},{__index=function(_,key)return key end})
 function LibStub(name,silent)
  if name=="AceAddon-3.0"then return{GetAddon=function()return HolyStorm end}
  elseif name=="AceLocale-3.0"then return{GetLocale=function(_,id)return id=="Holy_Storm_CharacterUI"and raidLocale or locale end}end
@@ -71,7 +71,7 @@ assert(model.statsValue=="3"and model.twinksValue=="2","Stats and additional-cha
 local completeStats=latestSnapshot.stats;latestSnapshot.stats={snapshotVersion=2,schemaVersion=2,primary={strength={baseline=95},agility={baseline=50}},secondary={},armor={},capture={eligible=true,partial=true,reason="TIMED_AURA_ACTIVE"}};local partialStats=UI:BuildDashboardModel();assert(partialStats.statsValue=="2","the Dashboard counts persisted primary baselines in a valid partial Stats snapshot instead of showing unknown")
 latestSnapshot.stats=completeStats
 assert(model.snapshotStatus.equipment=="CURRENT"and model.snapshotStatus.raidLifetime=="CURRENT","dashboard consumes producer-owned status states from the shared summary")
-assert(model.profileAvailable and#model.profileRows==3 and model.profileRows[1].text=="Richard"and model.profileRows[3].text=="Preferred role: Healer","only configured local profile fields are displayed")
+assert(model.profileAvailable and#model.profileRows==3 and model.profileRows[1].text=="Richard"and model.profileRows[3].text=="Role: Healer","only configured local profile fields are displayed")
 assert(not model.achievementsAvailable,"optional Achievements tab stays hidden while its feature module is disabled")
 
 providersEnabled.AchievementsUI=true;local withAchievement=UI:BuildDashboardModel();assert(withAchievement.achievementsAvailable and withAchievement.achievementValue=="1 / 2","Achievements card appears only with the existing enabled feature and reports actual earned definitions")
@@ -79,6 +79,7 @@ HolyStorm.Achievements.GetDefinitions=function()return{}end;local emptyAchieveme
 HolyStorm.Achievements.GetDefinitions=function()return{{achievementID="one"},{achievementID="two"}}end
 context.record.profile={};HolyStorm.Data.PlayerStore.Get=function()return{metadata={}}end;local noProfile=UI:BuildDashboardModel();assert(not noProfile.profileAvailable and#noProfile.profileRows==0,"an empty profile collapses the personal panel")
 context.record.profile={preferredRole="HEALER"};HolyStorm.Data.PlayerStore.Get=function()return{metadata={displayName="Richard",birthdate="14 March"}}end
+context.record.profile={preferredRole="TANK"};local changedProfile=UI:BuildDashboardModel();assert(changedProfile.profileAvailable and changedProfile.profileRows[3].text=="Role: Tank","profile role changes appear on the next data driven dashboard rebuild");context.record.profile={preferredRole="HEALER"}
 
 local unknownSnapshot={name="Unknown",className=nil,specName=nil,specIcon=nil,itemLevel=nil,mythicPlusRating=nil,bestRaid=nil,bestRaidRows={}}
 HolyStorm.CharacterUI.GetDashboardSummary=function()return unknownSnapshot end
@@ -89,13 +90,29 @@ HolyStorm.CharacterUI.GetDashboardSummary=function()return latestSnapshot end
 local layout450=UI:CalculateDashboardLayout(860,450);assert(layout450.navButtonWidth>89 and layout450.widgetHeight>100 and layout450.primaryHeight==94,"standard-size page keeps labeled tabs, primary cards and a useful dynamic area")
 assert(layout450.headerHeight>=75 and layout450.headerHeight<=90,"identity header remains compact at the standard window size")
 assert(UI:CalculateDashboardProfileHeight(0)==34 and UI:CalculateDashboardProfileHeight(1)==51 and UI:CalculateDashboardProfileHeight(3)==85,"profile panel height grows only with actual profile rows")
-assert(UI:CalculateDashboardProfileWidth(900)==288 and UI:CalculateDashboardProfileWidth(650)==280,"profile width remains bounded in the requested range at standard and narrow window sizes")
+assert(UI:CalculateDashboardProfileWidth(900)==300 and UI:CalculateDashboardProfileWidth(650)==247 and UI:CalculateDashboardProfileWidth(560)==220,"profile width scales with available content width and keeps a compact readable floor")
+for _,width in ipairs({900,650,560,500,280})do local header=UI:CalculateDashboardHeaderLayout(width,true);assert(header.profileWidth+10+header.identityWidth==width and header.textWidth>=1 and header.textLeft+header.textWidth<=header.identityWidth,"profile and identity bounds stay disjoint at header width "..width)end
+local noProfileHeader=UI:CalculateDashboardHeaderLayout(560,false);assert(noProfileHeader.profileWidth==0 and noProfileHeader.identityWidth==556 and noProfileHeader.textWidth>0,"missing profile releases the right header area for character identity")
+assert(not UI:CalculateDashboardHeaderLayout(280,true).showSpecIcon and UI:CalculateDashboardHeaderLayout(280,true).classSize==44,"very narrow headers hide the secondary icon without distorting the portrait")
 local dashboardSource=read(uiRoot.."UI/Framework/Dashboard.lua")
 assert(dashboardSource:find('profile:SetHeight(self:CalculateDashboardProfileHeight(#self.dashboardModel.profileRows))',1,true)and dashboardSource:find('row.icon:SetPoint("LEFT",frame,"LEFT",12,-(25+(index-1)*17))',1,true),"profile fields are anchored to the content-sized card rather than the tab region")
+assert(dashboardSource:find('CreateFrame("Button",nil,headerContent,"BackdropTemplate")',1,true)and dashboardSource:find('identityText:SetWidth(headerLayout.textWidth)',1,true)and not dashboardSource:find('math.max(120,identity.frame:GetWidth()-150)',1,true),"profile and identity share their header parent and use the measured non-overflowing identity width")
+assert(dashboardSource:find('profile:SetShown(profileAvailable);profile:EnableMouse(profileAvailable==true)',1,true)and dashboardSource:find('profile:SetClipsChildren(true)',1,true),"unavailable profile data leaves no visible or interactive overlay")
 assert(dashboardSource:find('profile:SetPoint("TOPRIGHT",headerContent,"TOPRIGHT"',1,true)and not dashboardSource:find('profile:SetPoint("TOP",headerContent,"TOP"',1,true),"profile uses one top-right anchor rather than conflicting horizontal constraints")
 assert(dashboardSource:find('local function styleDashboardHeading(region)',1,true)and dashboardSource:find('local function styleDashboardBody(region)',1,true)and dashboardSource:find('styleDashboardHeading(frame.title)',1,true)and dashboardSource:find('styleDashboardBody(row.text)',1,true),"profile heading and body use shared canonical dashboard styles")
 assert(dashboardSource:find('frame.icon:SetPoint("TOPLEFT",frame,"TOPLEFT",12,-7)',1,true)and dashboardSource:find('frame.title:SetPoint("TOPLEFT",frame,"TOPLEFT",38,-9)',1,true),"provider header icons and labels are anchored inside their owning card")
 assert(dashboardSource:find('DASHBOARD_GUILD_RANK_SHORT',1,true),"character identity shows the localized rank value without a redundant label")
+do
+ local oldTooltip,oldParent=GameTooltip,UIParent
+ local tooltip={width=300,height=160}
+ function tooltip:GetWidth()return self.width end;function tooltip:GetHeight()return self.height end
+ function tooltip:ClearAllPoints()self.point=nil end;function tooltip:SetPoint(...)self.point={...}end
+ GameTooltip=tooltip;UIParent={GetWidth=function()return 1920 end,GetHeight=function()return 1080 end}
+ local function owner(left,right,top,bottom)return{GetLeft=function()return left end,GetRight=function()return right end,GetTop=function()return top end,GetBottom=function()return bottom end}end
+ local _,side,x,y=UI:PositionDashboardTooltip(owner(1800,1880,1060,1000));assert(side=="LEFT"and x==1492 and y==1072,"near-right and top-edge dashboard tooltip flips left and remains on screen")
+ local _,bottomSide,bottomX,bottomY=UI:PositionDashboardTooltip(owner(10,50,40,0));assert(bottomSide=="RIGHT"and bottomX==58 and bottomY==168,"near-left and bottom-edge dashboard tooltip opens right and clamps vertically")
+ GameTooltip,UIParent=oldTooltip,oldParent
+end
 GameFontNormal={name="GameFontNormal"};GameFontHighlightSmall={name="GameFontHighlightSmall"}
 local dimColor={.2,.2,.2,0}
 local function mockRegion()

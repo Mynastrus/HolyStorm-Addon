@@ -1,4 +1,4 @@
-local addonVersion="2.0.1"
+local addonVersion="2.0.2"
 local HolyStorm=LibStub("AceAddon-3.0"):GetAddon("Holy_Storm")
 local localeLibrary=LibStub("AceLocale-3.0",true)
 local L=localeLibrary and localeLibrary.GetLocale and localeLibrary:GetLocale("Holy_Storm_CharacterUI")or setmetatable({},{__index=function(_,key)return key end})
@@ -86,6 +86,7 @@ function CharacterUI:ResolveContext(characterUUID)
  return{characterUUID=characterUUID,guid=characterUUID,accountUUID=accountUUID,name=name,realm=realm,fullName=record.fullName or(rawName~=name and rawName or name),level=record.level or(member and member.level),classFile=classFile,className=record.class or(member and member.class)or className(classFile),spec=spec,guild=guild,member=member,record=record}
 end
 function CharacterUI:SetContext(characterUUID,addHistory)
+ if GameTooltip and GameTooltip.Hide then GameTooltip:Hide()end
  if HolyStorm.Tooltips then HolyStorm.Tooltips:Release("raid-best")end
  if HolyStorm.Tooltips then HolyStorm.Tooltips:Release("raid-weekly")end
  if HolyStorm.Tooltips then HolyStorm.Tooltips:Release("mythicplus-best-run")end
@@ -99,6 +100,7 @@ function CharacterUI:Back()local target=table.remove(self.history);if not target
 
 function CharacterUI:ShowTooltip(owner,characterUUID)
  local context=self:ResolveContext(characterUUID);if not context or not GameTooltip then return false end
+ if GameTooltip.SetClampedToScreen then GameTooltip:SetClampedToScreen(true)end
  local record=context.record or{};local member=context.member;local main=context.accountUUID and HolyStorm.TwinkCore:GetRosterIdentity(characterUUID,context.guild)
  local title=shortName(context.fullName or context.name or characterUUID);GameTooltip:SetOwner(owner,"ANCHOR_CURSOR_RIGHT");GameTooltip:SetText(classColoredName(context,title))
  local clean={};local function add(part)if part and part~=""then clean[#clean+1]=tostring(part)end end;add(context.realm);add(context.className);add(context.level and((LEVEL or"Level").." "..context.level));add(member and member.rank);add(factionIndicator(record.faction));if#clean>0 then GameTooltip:AddLine(table.concat(clean," | "),1,1,1,false)end

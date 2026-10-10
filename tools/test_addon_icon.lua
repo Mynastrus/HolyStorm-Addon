@@ -29,7 +29,7 @@ assert(mainWindow:find("HolyStorm.Libraries and HolyStorm.Libraries.ADDON_ICON",
 assert(mainWindow:find("ADDON_ICON_FALLBACK", 1, true), "main frame keeps a failure fallback")
 assert(mainWindow:find("frame.portrait or frame.Portrait", 1, true), "main icon occupies the native ButtonFrame portrait slot")
 assert(dashboardRenderer:find("widgets.specIcon:SetImage(model.specIcon", 1, true), "specialization icon remains a separate dashboard widget")
-assert(dashboardRenderer:find("identityText:SetWidth(math.max(120,identity.frame:GetWidth()-150))", 1, true), "identity text fits beside both existing identity icons at the minimum width")
+assert(dashboardRenderer:find("identityText:SetWidth(headerLayout.textWidth)", 1, true) and dashboardRenderer:find("function UI:CalculateDashboardHeaderLayout", 1, true), "identity text uses the measured width after responsive icon layout")
 assert(header:sub(1, 8) == "\137PNG\r\n\26\n", "canonical addon asset is a PNG")
 local width, height = header:byte(17) * 16777216 + header:byte(18) * 65536 + header:byte(19) * 256 + header:byte(20), header:byte(21) * 16777216 + header:byte(22) * 65536 + header:byte(23) * 256 + header:byte(24)
 assert(width == 1024 and height == 1024, "WoW texture dimensions are power-of-two and square")

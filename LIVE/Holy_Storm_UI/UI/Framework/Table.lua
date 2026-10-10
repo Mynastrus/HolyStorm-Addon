@@ -123,6 +123,7 @@ end
 function TableMethods:ShowTooltip(owner,row,column)
     if not GameTooltip then return end
     local source=column and column.tooltip or self.options.rowTooltip;if not source then return end
+    if GameTooltip.SetClampedToScreen then GameTooltip:SetClampedToScreen(true)end
     GameTooltip:SetOwner(owner,"ANCHOR_RIGHT");local text=call(source,row,column,self,GameTooltip,owner)
     if text==true then GameTooltip:Show();return end
     if not text or text==""then return end;GameTooltip:SetText(tostring(text));GameTooltip:Show()

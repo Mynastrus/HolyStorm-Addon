@@ -1,4 +1,4 @@
-local addonVersion="2.0.1"
+local addonVersion="2.0.2"
 local HolyStorm=LibStub("AceAddon-3.0"):GetAddon("Holy_Storm")
 local L=LibStub("AceLocale-3.0"):GetLocale("Holy_Storm_CharacterUI")
 local Page=HolyStorm:RegisterRequiredModule("CharacterOverview")
