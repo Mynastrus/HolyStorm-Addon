@@ -8,6 +8,7 @@ end
 local listeners={}
 local locale=setmetatable({},{__index=function(_,key)return key end})
 locale.ROSTER_RESULT_COUNT="%d of %d members";locale.ROSTER_NO_MATCHES="No guild members match these filters.";locale.NO_MEMBERS="No guild members could be found."
+locale.ROSTER_FILTER_COUNT="Filter (%d)";locale.ROSTER_FILTER_COUNT_SHORT="F (%d)";locale.ROSTER_SAVED_MENU="Saved";locale.ROSTER_SAVED_MENU_COUNT="Saved (%d)";locale.ROSTER_SAVED_MENU_SHORT="Saved";locale.ROSTER_SAVED_MENU_SHORT_COUNT="Saved (%d)";locale.ROSTER_FILTER_BUTTON="Filter";locale.ROSTER_FILTER_BUTTON_SHORT="Filter";locale.ROSTER_SEARCH_PLACEHOLDER="Search guild members...";locale.ROSTER_SEARCH_PLACEHOLDER_SHORT="Search..."
 local filters={localFilters={},globalFilters={},active={}}
 local characterReads=0
 local HolyStorm={
@@ -80,6 +81,14 @@ assert(quick({search="",status="DND",rank="ALL",class="ALL",addonStatus="ALL"},d
 assert(not quick({search="",status="AFK",rank="ALL",class="ALL",addonStatus="ALL"},offlineStatus),"offline status codes do not imply AFK")
 local unknownPresence=member();unknownPresence.online,unknownPresence.status=nil,nil
 assert(not quick({search="",status="AFK",rank="ALL",class="ALL",addonStatus="ALL"},unknownPresence),"missing online or status data remains UNKNOWN for AFK")
+local multiStatus={search="",status={ONLINE=true,OFFLINE=true},rank={['1']=true,['3']=true},class={MAGE=true,PRIEST=true},addonStatus={RECOGNIZED=true,UNKNOWN=true}}
+assert(quick(multiStatus,recognized)and quick(multiStatus,unknown),"multiple values use OR within every selected category")
+multiStatus.class={MAGE=true}
+assert(quick(multiStatus,recognized)and not quick(multiStatus,unknown),"separate categories combine with AND")
+multiStatus.search="silvermoon"
+assert(quick(multiStatus,recognized)and not quick(multiStatus,unknown),"search is ANDed with multi-select quick filters")
+local multiRoot=GuildRoster:BuildQuickFilter(multiStatus)
+assert(multiRoot.logic=="AND"and multiRoot.children[2].logic=="OR"and multiRoot.children[3].logic=="OR","quick-filter groups preserve category OR and cross-category AND logic")
 assert(not quick({search="",status="",rank="ALL",class="ALL",addonStatus="NOT_RECOGNIZED"},unknown),"missing version stays UNKNOWN and never implies not recognized")
 assert(quick({search="",status="",rank="ALL",class="ALL",addonStatus="ALL"},member({name="ÜBER-Silvermoon"})),"empty status is not treated as a quick filter")
 assert(Rules:RegisterField("search-test","search.text",{type="string",resolver=function(context)return context.text end}))
@@ -145,31 +154,134 @@ local noMatches=GuildRoster:ApplyRosterFilters()
 assert(#noMatches==0 and#rendered==0 and emptyShown and emptyText==locale.ROSTER_NO_MATCHES and resultText=="0 of 500 members","an empty result set shows the localized no-match state and count")
 
 local savedSearchBox;savedSearchBox={SetText=function(_,value)savedSearchBox.text=value end}
+local refreshQuickLabels,refreshSavedLabel=GuildRoster.RefreshQuickFilterLabels,GuildRoster.RefreshSavedFilterMenuText
 GuildRoster.searchBox=savedSearchBox;GuildRoster.RefreshQuickFilterLabels=function()end;GuildRoster.RefreshSavedFilterMenuText=function()end
 GuildRoster.filterState={search="member",status="ONLINE",rank="1",class="MAGE",addonStatus="UNKNOWN"};GuildRoster.activeFilters={{id="mages",scope="global"}};GuildRoster.activeFilterDefinitions={}
 GuildRoster:ResetFilters()
-assert(GuildRoster.filterState.search==""and GuildRoster.filterState.status=="ALL"and#GuildRoster.activeFilters==0 and#filters.active.guildRoster==0,"reset clears search, quick filters and saved selections")
+assert(GuildRoster.filterState.search==""and next(GuildRoster.filterState.status)==nil and next(GuildRoster.filterState.rank)==nil and#GuildRoster.activeFilters==0 and#filters.active.guildRoster==0,"reset clears search, quick filters and saved selections")
+GuildRoster.RefreshQuickFilterLabels=refreshQuickLabels;GuildRoster.RefreshSavedFilterMenuText=refreshSavedLabel
 
 local function layoutWidget(name)
     return{name=name,points={},ClearAllPoints=function(self)self.points={}end,SetPoint=function(self,_,_,_,x,y)self.points={x=x,y=y}end,SetSize=function(self,w,h)self.width,self.height=w,h end,SetWidth=function(self,w)self.width=w end,SetHeight=function(self,h)self.height=h end}
 end
 -- Physical window widths can differ at the same UI scale; these values also
 -- model the effective UI-unit widths seen under Retail's supported scales.
-for _,width in ipairs({900,820,740,700,650,600,520})do
-    local names={"searchBox","clearSearchButton","savedFilterMenu","saveFilterButton","manageFiltersButton","refreshButton","resetFiltersButton","statusMenu","rankMenu","classMenu","addonStatusMenu","resultLabel"}
+for _,width in ipairs({1100,900,820,740,700,650,600,520,400,360,320,300,280})do
+    local names={"searchBox","filterMenu","savedFilterMenu","refreshButton"}
     for _,name in ipairs(names)do GuildRoster[name]=layoutWidget(name)end
     local height=GuildRoster:GetContextHeaderHeight(width);GuildRoster:LayoutContextHeader({},width,height)
-    assert((width>=820 and height==62)or(width>=650 and width<820 and height==92)or(width<650 and height==150),"context header height adapts to the available window width")
-    local dropdowns={savedFilterMenu=true,statusMenu=true,rankMenu=true,classMenu=true,addonStatusMenu=true};local rows={}
+    assert(height==30,"context header keeps one compact row at every width")
+    local rows={};local visible=0
     for _,name in ipairs(names)do
         local widget=GuildRoster[name];assert(widget.points and widget.points.y<0,"every context header control is positioned for the active width: "..name)
-        local x=widget.points.x+(dropdowns[name]and 16 or 0);local y=widget.points.y
+        visible=visible+1
+        local x=widget.points.x;local y=widget.points.y
         assert(x>=0 and x+widget.width<=width+0.01,"context header control stays inside the available width: "..name)
         assert(-y+widget.height<=height+0.01,"context header control stays inside its responsive height: "..name)
         rows[y]=rows[y]or{};rows[y][#rows[y]+1]={name=name,left=x,right=x+widget.width}
     end
+    assert(visible==4 and GuildRoster.searchBox.points.y==GuildRoster.filterMenu.points.y and GuildRoster.searchBox.points.y==GuildRoster.savedFilterMenu.points.y and GuildRoster.searchBox.points.y==GuildRoster.refreshButton.points.y,"exactly four visible controls share one row")
     for _,row in pairs(rows)do table.sort(row,function(a,b)return a.left<b.left end);for index=2,#row do assert(row[index-1].right<=row[index].left+0.01,"context header controls do not overlap: "..row[index-1].name.." / "..row[index].name)end end
 end
+for _,scale in ipairs({.70,.85,1,1.15})do
+    local width=math.floor(650/scale)
+    GuildRoster:LayoutContextHeader({},width,GuildRoster:GetContextHeaderHeight(width))
+    for _,name in ipairs({"searchBox","filterMenu","savedFilterMenu","refreshButton"})do
+        local widget=GuildRoster[name]
+        assert(widget.points.x>=0 and widget.points.x+widget.width<=width and widget.points.y==-3,"same physical minimum window remains one row at UI scale "..scale)
+    end
+end
+
+-- Build the actual header controls with native dropdown callbacks, then inspect
+-- the root/submenu entries and exercise checkbox toggles without a game client.
+local function fakeWidget(name)
+    local widget={name=name,scripts={},shown=true,text="",points={}}
+    function widget:SetScript(event,callback)self.scripts[event]=callback end
+    function widget:SetText(value)self.text=value or"";if self.scripts.OnTextChanged then self.scripts.OnTextChanged(self,false)end end
+    function widget:GetText()return self.text end
+    function widget:SetMaxLetters(value)self.maxLetters=value end
+    function widget:SetShown(value)self.shown=value==true end
+    function widget:Show()self.shown=true end
+    function widget:Hide()self.shown=false end
+    function widget:HasFocus()return self.focused==true end
+    function widget:SetFocus()self.focused=true;if self.scripts.OnEditFocusGained then self.scripts.OnEditFocusGained(self)end end
+    function widget:ClearFocus()self.focused=false;if self.scripts.OnEditFocusLost then self.scripts.OnEditFocusLost(self)end end
+    function widget:CreateFontString()return fakeWidget(name.."-font")end
+    function widget:SetPoint(...)self.pointArgs={...};local args={...};self.points={x=args[4],y=args[5]}end
+    function widget:ClearAllPoints()self.points={}end
+    function widget:SetSize(w,h)self.width,self.height=w,h end
+    function widget:SetWidth(w)self.width=w end
+    function widget:SetHeight(h)self.height=h end
+    function widget:SetNormalTexture(value)self.normalTexture=value end
+    function widget:SetPushedTexture(value)self.pushedTexture=value end
+    function widget:SetHighlightTexture(value,blend)self.highlightTexture,self.highlightBlend=value,blend end
+    function widget:SetTextColor(r,g,b)self.color={r,g,b}end
+    function widget:SetJustifyH(value)self.justifyH=value end
+    function widget:SetWordWrap(value)self.wordWrap=value end
+    function widget:SetDefaultText(value)self.defaultText=value end
+    function widget:OverrideText(value)self.displayText=value end
+    function widget:SetupMenu(generator)self.menuGenerator=generator end
+    function widget:GenerateMenu()
+        local root=menuNode("root",nil);self.menuGenerator(self,root);self.generatedMenu=root;return root
+    end
+    return widget
+end
+function menuNode(kind,text,data)
+    local node={kind=kind,text=text,data=data,children={}}
+    function node:CreateButton(label,callback,value)
+        local child=menuNode("button",label,value);child.callback=callback;self.children[#self.children+1]=child;return child
+    end
+    function node:CreateCheckbox(label,isSelected,setSelected,value)
+        local child=menuNode("checkbox",label,value);child.isSelected=isSelected;child.setSelected=setSelected;self.children[#self.children+1]=child;return child
+    end
+    function node:CreateTitle(label)local child=menuNode("title",label);self.children[#self.children+1]=child;return child end
+    function node:CreateDivider()local child=menuNode("divider");self.children[#self.children+1]=child;return child end
+    function node:SetSelectionIgnored()self.selectionIgnored=true end
+    function node:SetEnabled(value)self.enabled=value end
+    return node
+end
+local activeDropdown
+CreateFrame=function(frameType,name,parent,template)return fakeWidget(template or name or frameType or"frame")end
+HolyStorm.PolicyUI.Edit=function(_,parent,width)return fakeWidget("search-edit")end
+HolyStorm.Administration={Open=function(_,section)assert(section=="filters")end}
+GameTooltip={SetOwner=function()end,SetText=function()end,Show=function()end,Hide=function()end}
+StaticPopupDialogs={};ACCEPT="Accept";CANCEL="Cancel"
+MenuResponse={Refresh="refresh",CloseAll="close-all"}
+GuildRoster.resultLabel=nil
+local contextHeader=fakeWidget("context-header")
+GuildRoster:CreateContextHeader(contextHeader)
+assert(GuildRoster.searchBox and GuildRoster.filterMenu and GuildRoster.savedFilterMenu and GuildRoster.refreshButton,"header builds the four required controls")
+for _,name in ipairs({"clearSearchButton","saveFilterButton","manageFiltersButton","resetFiltersButton","statusMenu","rankMenu","classMenu","addonStatusMenu","resultLabel"})do
+    assert(GuildRoster[name]==nil,"legacy permanent header control is not created: "..name)
+end
+assert(GuildRoster.searchPlaceholder.text==locale.ROSTER_SEARCH_PLACEHOLDER and GuildRoster.searchPlaceholder.shown,"localized placeholder is visibly shown while search is empty")
+GuildRoster:LayoutContextHeader(contextHeader,320,30)
+assert(GuildRoster.searchPlaceholder.text==locale.ROSTER_SEARCH_PLACEHOLDER_SHORT and GuildRoster.searchPlaceholder.width==GuildRoster.searchBox.width-16,"compact placeholder is localized and clipped to the narrow search field")
+GuildRoster:LayoutContextHeader(contextHeader,650,30)
+assert(GuildRoster.searchPlaceholder.text==locale.ROSTER_SEARCH_PLACEHOLDER,"wide layout restores the full localized search hint")
+GuildRoster.searchBox:SetFocus();assert(not GuildRoster.searchPlaceholder.shown,"search placeholder hides while the edit box is focused")
+GuildRoster.searchBox:ClearFocus();assert(GuildRoster.searchPlaceholder.shown,"search placeholder returns on an empty unfocused edit box")
+local filterRoot=GuildRoster.filterMenu:GenerateMenu()
+local categoryRows={};for _,entry in ipairs(filterRoot.children)do if entry.kind=="button"then categoryRows[entry.text]=entry end end
+assert(categoryRows[locale.ROSTER_FILTER_STATUS]and categoryRows[locale.ROSTER_FILTER_RANK]and categoryRows[locale.ROSTER_FILTER_CLASS]and categoryRows[locale.ROSTER_FILTER_ADDON],"filter dropdown exposes four hierarchical categories")
+local statusRows=categoryRows[locale.ROSTER_FILTER_STATUS].children;local statusOptions={}
+for _,entry in ipairs(statusRows)do statusOptions[entry.text]=entry end
+assert(statusOptions[locale.ROSTER_STATUS_ONLINE]and statusOptions[locale.ROSTER_STATUS_OFFLINE]and statusOptions[locale.ROSTER_STATUS_AFK],"status submenu contains Online, Offline and AFK")
+assert(statusOptions[locale.ROSTER_STATUS_ONLINE].kind=="checkbox"and statusOptions[locale.ROSTER_STATUS_OFFLINE].kind=="checkbox","status submenu uses native checkbox controls")
+local quickChanged=GuildRoster.OnQuickFiltersChanged
+GuildRoster.OnQuickFiltersChanged=function(self)self.quickFilter=self:BuildQuickFilter(self.filterState);self:RefreshQuickFilterLabels()end
+local onlineResponse=statusOptions[locale.ROSTER_STATUS_ONLINE].setSelected(statusOptions[locale.ROSTER_STATUS_ONLINE].data)
+local offlineResponse=statusOptions[locale.ROSTER_STATUS_OFFLINE].setSelected(statusOptions[locale.ROSTER_STATUS_OFFLINE].data)
+assert(onlineResponse==MenuResponse.Refresh and offlineResponse==MenuResponse.Refresh,"checkbox selection refreshes in place so the submenu stays open")
+assert(GuildRoster.filterState.status.ONLINE and GuildRoster.filterState.status.OFFLINE and GuildRoster.filterMenu.displayText=="Filter (2)","filter submenu supports checked multi-selection and updates its active count")
+GuildRoster.OnQuickFiltersChanged=quickChanged
+local savedRoot=GuildRoster.savedFilterMenu:GenerateMenu();local savedLabels={};for _,entry in ipairs(savedRoot.children)do if entry.text then savedLabels[entry.text]=entry end end
+assert(savedLabels[locale.ROSTER_SAVE_CURRENT_FILTER]and savedLabels[locale.ROSTER_MANAGE_FILTERS]and savedLabels[locale.ROSTER_CLEAR_SAVED_SELECTION],"saved dropdown contains save, manage and clear-selection actions")
+local mageProfile;for _,entry in ipairs(savedRoot.children)do if entry.kind=="checkbox"and entry.data and entry.data.id=="mages"then mageProfile=entry;break end end
+assert(mageProfile and mageProfile.isSelected(mageProfile.data)==false,"saved profiles remain native multi-select checkbox entries")
+assert(mageProfile.setSelected(mageProfile.data)==MenuResponse.Refresh and GuildRoster:IsSavedFilterActive("mages","global"),"saved profile selection still flows through FilterManager")
+GuildRoster:ClearSavedFilterSelection()
+assert(GuildRoster.refreshButton.normalTexture and GuildRoster.refreshButton.scripts.OnClick,"refresh control uses the icon button and roster refresh action")
 
 -- A search for one character cannot reuse a previous character's row object or filter result.
 GuildRoster.activeFilterDefinitions={};GuildRoster.filterState={search="",status="ALL",rank="ALL",class="ALL",addonStatus="RECOGNIZED"};GuildRoster.quickFilter=GuildRoster:BuildQuickFilter(GuildRoster.filterState)

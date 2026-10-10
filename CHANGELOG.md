@@ -4,6 +4,7 @@
 
 ### English
 
+- Rebuilt the Guild Roster context header as one responsive row with only search, Filter, Saved, and icon refresh controls. Filter and saved-profile menus now use Retail Blizzard Menu dropdowns; quick filters support multi-select with OR inside categories and AND across categories/search. The localized search hint remains visible without becoming query text.
 - Replaced the separate Guild Roster toolbar with a shared, page-owned context-header slot. Character Overview keeps its existing identity/status HeaderBar in that slot; Guild Roster places search and filters there while its member list uses the remaining content and scroll height. The UIManager, MainWindow, CharacterOverview, and GuildRoster modules were versioned for the new contract.
 - Fixed the Dashboard profile rows' vertical anchors. The heading and all available name, birthday and role rows now form one clipped, resize-safe block inside the Character header. Dashboard GameTooltip and LibQTip card tooltips now choose among all four screen sides, avoid other Dashboard cards where space permits, and remain screen-clamped.
 - Fixed the Dashboard profile overlay: profile and character identity now share the header-content parent, and measured responsive widths prevent the identity text from extending underneath the profile card. Icons compact or hide at narrow widths, while full profile details remain available on hover.
@@ -32,6 +33,7 @@
 
 ### Deutsch
 
+- Der Gildenroster-Kontext-Header zeigt nun genau eine responsive Zeile mit Suche, Filter, Gespeichert und einem Refresh-Icon. Filter- und Profilmenüs verwenden Blizzards aktuelles Retail-Menüsystem. Schnellfilter unterstützen Mehrfachauswahl mit ODER innerhalb einer Kategorie sowie UND zwischen Kategorien und Suchtext. Der lokalisierte Suchhinweis bleibt sichtbar und wird nicht als Suchtext verwendet.
 - Die separate Gildenroster-Toolbar wurde durch einen gemeinsamen, seitenabhängigen Kontext-Header ersetzt. Die Charakterübersicht behält ihren bestehenden HeaderBar für Identität und Status; das Gildenroster zeigt Suche und Filter dort an. Die Mitgliederliste nutzt die verbleibende Content- und Scrollhöhe. UIManager, MainWindow, CharacterOverview und GuildRoster erhalten Versionen für den neuen Vertrag.
 - Die vertikalen Anker der Profilzeilen sind korrigiert. Überschrift sowie Name, Geburtstag und Rolle bleiben zusammenhängend und innerhalb des Charakter-Headers; beim Ändern der Fensterbreite wird das Layout neu berechnet. Dashboard-Tooltips für GameTooltip und LibQTip prüfen alle vier Bildschirmseiten, meiden nach Möglichkeit andere Karten und bleiben am sichtbaren Bildschirm begrenzt.
 - Die Überlagerung der Profilkarte ist behoben: Profil und Charakteridentität verwenden jetzt denselben Header-Inhaltsbereich. Die gemessenen responsiven Breiten verhindern, dass Identitätstext unter die Profilkarte läuft. Bei geringer Breite werden Icons verkleinert oder das Spezialisierungsicon ausgeblendet; vollständige Profildetails bleiben im Tooltip zugänglich.

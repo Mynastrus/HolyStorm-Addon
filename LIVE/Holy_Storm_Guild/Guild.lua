@@ -1,4 +1,4 @@
-local addonVersion = "2.4.0"
+local addonVersion = "2.5.0"
 local HolyStorm = LibStub("AceAddon-3.0"):GetAddon("Holy_Storm")
 local L = LibStub("AceLocale-3.0"):GetLocale("Holy_Storm_GuildRoster")
 if HolyStorm.PermissionRegistry then HolyStorm.PermissionRegistry:RegisterLegacyAlias("guild.roster.read","guild-roster-read");HolyStorm.PermissionRegistry:RegisterLegacyAlias("roster.manage","roster-manage")end
@@ -55,13 +55,33 @@ function GuildRoster:GetSettings()
 end
 
 local function newFilterState()
-    return {search="",status="ALL",rank="ALL",class="ALL",addonStatus="ALL"}
+    return {search="",status={},rank={},class={},addonStatus={}}
 end
 
-local function combineRules(children)
+local function combineRules(children,logic)
     if #children==0 then return nil end
     if #children==1 then return children[1] end
-    return {logic="AND",children=children}
+    return {logic=logic or"AND",children=children}
+end
+
+local function selectedValues(selection)
+    local values,seen={},{}
+    local function add(value)
+        if value==nil or value==""or value=="ALL"then return end
+        local key=tostring(value)
+        if not seen[key]then seen[key]=true;values[#values+1]=key end
+    end
+    if type(selection)=="table"then
+        if #selection>0 then
+            for _,value in ipairs(selection)do add(value)end
+        else
+            for value,checked in pairs(selection)do if checked then add(value)end end
+        end
+    else
+        add(selection)
+    end
+    table.sort(values)
+    return values
 end
 
 function GuildRoster:BuildQuickFilter(state)
@@ -69,14 +89,69 @@ function GuildRoster:BuildQuickFilter(state)
     local children={}
     local query=HolyStorm.Utils.Trim and HolyStorm.Utils.Trim(state.search)or tostring(state.search or""):match("^%s*(.-)%s*$")
     if query and query~=""then children[#children+1]={field="guild.rosterSearch",operator="contains",value=query}end
-    if state.status=="ONLINE"then children[#children+1]={field="player.online",operator="=",value=true}
-    elseif state.status=="OFFLINE"then children[#children+1]={field="player.online",operator="=",value=false}
-    elseif state.status=="AFK"then children[#children+1]={field="player.afk",operator="true"}
-    elseif state.status=="DND"then children[#children+1]={field="player.dnd",operator="true"}end
-    if state.rank and state.rank~="ALL"and tonumber(state.rank)then children[#children+1]={field="guild.rankIndex",operator="=",value=tonumber(state.rank)}end
-    if state.class and state.class~="ALL"then children[#children+1]={field="guild.classFile",operator="=",value=state.class}end
-    if state.addonStatus and state.addonStatus~="ALL"then children[#children+1]={field="guild.addonStatus",operator="=",value=state.addonStatus}end
-    return combineRules(children)
+    local statusRules={}
+    for _,status in ipairs(selectedValues(state.status))do
+        if status=="ONLINE"then statusRules[#statusRules+1]={field="player.online",operator="=",value=true}
+        elseif status=="OFFLINE"then statusRules[#statusRules+1]={field="player.online",operator="=",value=false}
+        elseif status=="AFK"then statusRules[#statusRules+1]={field="player.afk",operator="true"}
+        elseif status=="DND"then statusRules[#statusRules+1]={field="player.dnd",operator="true"}end
+    end
+    local statusGroup=combineRules(statusRules,"OR");if statusGroup then children[#children+1]=statusGroup end
+    local rankRules={}
+    for _,rank in ipairs(selectedValues(state.rank))do if tonumber(rank)then rankRules[#rankRules+1]={field="guild.rankIndex",operator="=",value=tonumber(rank)}end end
+    local rankGroup=combineRules(rankRules,"OR");if rankGroup then children[#children+1]=rankGroup end
+    local classRules={}
+    for _,class in ipairs(selectedValues(state.class))do classRules[#classRules+1]={field="guild.classFile",operator="=",value=class}end
+    local classGroup=combineRules(classRules,"OR");if classGroup then children[#children+1]=classGroup end
+    local addonRules={}
+    for _,addonStatus in ipairs(selectedValues(state.addonStatus))do
+        if addonStatus=="RECOGNIZED"or addonStatus=="NOT_RECOGNIZED"or addonStatus=="UNKNOWN"then
+            addonRules[#addonRules+1]={field="guild.addonStatus",operator="=",value=addonStatus}
+        end
+    end
+    local addonGroup=combineRules(addonRules,"OR");if addonGroup then children[#children+1]=addonGroup end
+    return combineRules(children,"AND")
+end
+
+function GuildRoster:SetQuickFilterSelection(category,value,checked)
+    local state=self.filterState or newFilterState()
+    self.filterState=state
+    local selected={}
+    for _,current in ipairs(selectedValues(state[category]))do selected[current]=true end
+    if value==nil or value=="ALL"then
+        selected={}
+    elseif checked==nil then
+        if selected[value]then selected[value]=nil else selected[value]=true end
+    elseif checked then
+        selected[value]=true
+    else
+        selected[value]=nil
+    end
+    state[category]=selected
+    self:OnQuickFiltersChanged(false)
+end
+
+function GuildRoster:IsQuickFilterSelected(category,value)
+    value=tostring(value)
+    for _,selected in ipairs(selectedValues(self.filterState and self.filterState[category]))do
+        if selected==value then return true end
+    end
+    return false
+end
+
+function GuildRoster:IsSavedFilterActive(id,scope)
+    for _,entry in ipairs(self.activeFilters or{})do
+        local activeId=type(entry)=="table"and entry.id or entry
+        local activeScope=type(entry)=="table"and(entry.scope or"global")or"global"
+        if activeId==id and activeScope==scope then return true end
+    end
+    return false
+end
+
+function GuildRoster:ClearSavedFilterSelection()
+    self.activeFilters={};self.activeFilterDefinitions={}
+    HolyStorm.FilterManager:SetActiveFilters("guildRoster",{})
+    self:ReloadActiveFilters();self:RefreshSavedFilterMenuText();self:ApplyRosterFilters()
 end
 
 function GuildRoster:GetFilterContext(member)
@@ -134,6 +209,7 @@ function GuildRoster:ReloadActiveFilters()
 end
 
 function GuildRoster:SetActiveFilter(id,scope)
+    self.activeFilters=self.activeFilters or{}
     local found
     for index,entry in ipairs(self.activeFilters or{})do
         local entryId=type(entry)=="table"and entry.id or entry
@@ -151,7 +227,10 @@ function GuildRoster:ResetFilters()
     self.searchGeneration=(self.searchGeneration or 0)+1
     if self.searchTimer and self.searchTimer.Cancel then self.searchTimer:Cancel();self.searchTimer=nil end
     self.activeFilters={};self.activeFilterDefinitions={}
-    if self.searchBox then self.isUpdatingControls=true;self.searchBox.isPlaceholder=false;self.searchBox:SetText("");self.searchBox.isPlaceholder=true;self.searchBox:SetText(L["ROSTER_SEARCH_PLACEHOLDER"]);self.isUpdatingControls=false end
+    if self.searchBox then
+        self.isUpdatingControls=true;self.searchBox:SetText("");self.isUpdatingControls=false
+        self:RefreshSearchPlaceholder()
+    end
     HolyStorm.FilterManager:SetActiveFilters("guildRoster",{})
     self:RefreshQuickFilterLabels();self:RefreshSavedFilterMenuText();self:ApplyRosterFilters()
 end
@@ -242,28 +321,37 @@ function GuildRoster:RefreshSavedFilterMenuText()
     local selected={};local count=0
     for _,entry in ipairs(self.activeFilters or{})do
         local id,scope=type(entry)=="table"and entry.id or entry,type(entry)=="table"and entry.scope or"global"
-        if id then selected[#selected+1]=(scope or"global")..":"..id;count=count+1 end
+        if id then selected[(scope or"global")..":"..id]=true;count=count+1 end
     end
-    menu:SetValues(selected)
-    UIDropDownMenu_SetText(menu,string.format(L["ROSTER_SAVED_FILTERS_SELECTED"],count))
+    menu.values=selected
+    local text
+    if self.compactContextHeader then
+        text=count>0 and string.format(L["ROSTER_SAVED_MENU_SHORT_COUNT"],count)or L["ROSTER_SAVED_MENU_SHORT"]
+    else
+        text=count>0 and string.format(L["ROSTER_SAVED_MENU_COUNT"],count)or L["ROSTER_SAVED_MENU"]
+    end
+    if menu.OverrideText then menu:OverrideText(text)end
 end
 
 function GuildRoster:RefreshQuickFilterLabels()
     local state=self.filterState or newFilterState()
-    local function set(menu,value,label)
-        if menu then menu:SetValue(value,label)end
+    local count=0
+    for _,category in ipairs({"status","rank","class","addonStatus"})do count=count+#selectedValues(state[category])end
+    if self.filterMenu then
+        local text
+        if count>0 then
+            text=string.format(self.compactContextHeader and L["ROSTER_FILTER_COUNT_SHORT"]or L["ROSTER_FILTER_COUNT"],count)
+        else
+            text=self.compactContextHeader and L["ROSTER_FILTER_BUTTON_SHORT"]or L["ROSTER_FILTER_BUTTON"]
+        end
+        if self.filterMenu.OverrideText then self.filterMenu:OverrideText(text)end
     end
-    set(self.statusMenu,state.status,string.format(L["ROSTER_FILTER_STATUS_FORMAT"],L["ROSTER_FILTER_STATUS"],L["ROSTER_STATUS_"..state.status]or L["ROSTER_STATUS_ALL"]))
-    local rankLabel=L["ROSTER_RANK_ALL"]
-    if state.rank~="ALL"then for _,item in ipairs(self:GetRankOptions())do if item.value==state.rank then rankLabel=item.label;break end end end
-    set(self.rankMenu,state.rank,string.format(L["ROSTER_FILTER_RANK_FORMAT"],L["ROSTER_FILTER_RANK"],rankLabel))
-    local classLabel=L["ROSTER_CLASS_ALL"]
-    if state.class~="ALL"then for _,item in ipairs(self:GetClassOptions())do if item.value==state.class then classLabel=item.label;break end end end
-    set(self.classMenu,state.class,string.format(L["ROSTER_FILTER_CLASS_FORMAT"],L["ROSTER_FILTER_CLASS"],classLabel))
-    local addonLabel=L["ROSTER_ADDON_ALL"]
-    if state.addonStatus~="ALL"then addonLabel=L["ROSTER_ADDON_"..state.addonStatus]or addonLabel end
-    set(self.addonStatusMenu,state.addonStatus,string.format(L["ROSTER_FILTER_ADDON_FORMAT"],L["ROSTER_FILTER_ADDON"],addonLabel))
-    if self.clearSearchButton then self.clearSearchButton:SetShown((state.search or"")~="")end
+end
+
+function GuildRoster:RefreshSearchPlaceholder()
+    if not self.searchBox or not self.searchPlaceholder then return end
+    local focused=self.searchBox.HasFocus and self.searchBox:HasFocus()or false
+    self.searchPlaceholder:SetShown(not focused and(self.searchBox:GetText()or"")=="")
 end
 
 function GuildRoster:UpdateResultCount(visible,total)
@@ -284,66 +372,120 @@ function GuildRoster:OpenSaveFilterDialog()
 end
 
 function GuildRoster:CreateContextHeader(parent)
-    local policyUI=HolyStorm.PolicyUI
-    local search=policyUI:Edit(parent,220,function(edit)
-        if GuildRoster.isUpdatingControls or edit.isPlaceholder then return end
-        GuildRoster.filterState.search=edit:GetText()or""
-        GuildRoster:OnQuickFiltersChanged(true)
-    end)
+    local search=HolyStorm.PolicyUI:Edit(parent,220)
     search:SetMaxLetters(128)
-    search:SetScript("OnEditFocusGained",function(edit)
-        if edit.isPlaceholder then edit.isPlaceholder=nil;edit:SetText("")end
-    end)
-    search:SetScript("OnEditFocusLost",function(edit)
-        if edit:GetText()==""then edit.isPlaceholder=true;edit:SetText(L["ROSTER_SEARCH_PLACEHOLDER"])end
-    end)
-    search:SetScript("OnEnterPressed",function(edit)edit:ClearFocus()end)
-    search.isPlaceholder=true;search:SetText(L["ROSTER_SEARCH_PLACEHOLDER"])
     self.searchBox=search
-    self.clearSearchButton=policyUI:Button(parent,"x",26,function()
-        GuildRoster.filterState.search="";GuildRoster.isUpdatingControls=true;search.isPlaceholder=true;search:SetText(L["ROSTER_SEARCH_PLACEHOLDER"]);GuildRoster.isUpdatingControls=false
-        GuildRoster:OnQuickFiltersChanged(false)
+    self.searchPlaceholder=search:CreateFontString(nil,"OVERLAY","GameFontDisableSmall")
+    self.searchPlaceholder:SetPoint("LEFT",search,"LEFT",8,0)
+    self.searchPlaceholder:SetJustifyH("LEFT")
+    self.searchPlaceholder:SetWordWrap(false)
+    self.searchPlaceholder:SetText(L["ROSTER_SEARCH_PLACEHOLDER"])
+    self.searchPlaceholder:SetTextColor(.62,.62,.62)
+    search:SetScript("OnTextChanged",function(edit,userInput)
+        GuildRoster:RefreshSearchPlaceholder()
+        if GuildRoster.isUpdatingControls then return end
+        GuildRoster.filterState.search=edit:GetText()or""
+        if userInput then GuildRoster:OnQuickFiltersChanged(true)end
     end)
-    self.clearSearchButton:SetScript("OnEnter",function(button)GameTooltip:SetOwner(button,"ANCHOR_TOP");GameTooltip:SetText(L["ROSTER_CLEAR_SEARCH"]);GameTooltip:Show()end)
-    self.clearSearchButton:SetScript("OnLeave",function()GameTooltip:Hide()end)
-    self.clearSearchButton:Hide()
+    search:SetScript("OnEditFocusGained",function()GuildRoster:RefreshSearchPlaceholder()end)
+    search:SetScript("OnEditFocusLost",function()GuildRoster:RefreshSearchPlaceholder()end)
+    search:SetScript("OnEnterPressed",function(edit)edit:ClearFocus()end)
 
-    local saved=policyUI:CreateMultiSelector(parent,180,function()return GuildRoster:GetSavedFilterItems()end,function(values)
-        local itemsByKey={};for _,item in ipairs(GuildRoster:GetSavedFilterItems())do itemsByKey[item.value]=item end
-        local active={};for _,key in ipairs(values or{})do local item=itemsByKey[key];if item then active[#active+1]={id=item.id,scope=item.scope}end end
-        GuildRoster.activeFilters=active;HolyStorm.FilterManager:SetActiveFilters("guildRoster",active)
-        GuildRoster:ReloadActiveFilters();GuildRoster:RefreshSavedFilterMenuText();GuildRoster:ApplyRosterFilters()
-    end)
-    self.savedFilterMenu=saved
-    self.saveFilterButton=policyUI:Button(parent,L["ROSTER_SAVE_FILTER"],100,function()GuildRoster:OpenSaveFilterDialog()end)
-    self.manageFiltersButton=policyUI:Button(parent,L["ROSTER_MANAGE_FILTERS"],104,function()HolyStorm.Administration:Open("filters")end)
-    self.refreshButton=policyUI:Button(parent,L["REFRESH"],86,function()GuildRoster:RequestAndRefresh()end)
-    self.refreshButton:SetScript("OnEnter",function(button)GameTooltip:SetOwner(button,"ANCHOR_TOP");GameTooltip:SetText(L["REFRESH_TOOLTIP"]);GameTooltip:Show()end)
-    self.refreshButton:SetScript("OnLeave",function()GameTooltip:Hide()end)
-    self.resetFiltersButton=policyUI:Button(parent,L["ROSTER_RESET_FILTERS"],88,function()GuildRoster:ResetFilters()end)
-    self.statusMenu=policyUI:CreateSelector(parent,110,function()return{
-        {value="ALL",label=L["ROSTER_STATUS_ALL"]},{value="ONLINE",label=L["ROSTER_STATUS_ONLINE"]},{value="OFFLINE",label=L["ROSTER_STATUS_OFFLINE"]},
-        {value="AFK",label=L["ROSTER_STATUS_AFK"]},{value="DND",label=L["ROSTER_STATUS_DND"]},
-    }end,function(value)GuildRoster.filterState.status=value;GuildRoster:OnQuickFiltersChanged(false)end)
-    self.rankMenu=policyUI:CreateSelector(parent,110,function()
-        local items={{value="ALL",label=L["ROSTER_RANK_ALL"]}};for _,item in ipairs(GuildRoster:GetRankOptions())do items[#items+1]=item end;return items
-    end,function(value)GuildRoster.filterState.rank=value;GuildRoster:OnQuickFiltersChanged(false)end)
-    self.classMenu=policyUI:CreateSelector(parent,110,function()
-        local items={{value="ALL",label=L["ROSTER_CLASS_ALL"]}};for _,item in ipairs(GuildRoster:GetClassOptions())do items[#items+1]=item end;return items
-    end,function(value)GuildRoster.filterState.class=value;GuildRoster:OnQuickFiltersChanged(false)end)
-    self.addonStatusMenu=policyUI:CreateSelector(parent,168,function()return{
-        {value="ALL",label=L["ROSTER_ADDON_ALL"]},{value="RECOGNIZED",label=L["ROSTER_ADDON_RECOGNIZED"]},
-        {value="NOT_RECOGNIZED",label=L["ROSTER_ADDON_NOT_RECOGNIZED"]},{value="UNKNOWN",label=L["ROSTER_ADDON_UNKNOWN"]},
-    }end,function(value)GuildRoster.filterState.addonStatus=value;GuildRoster:OnQuickFiltersChanged(false)end)
-    self.resultLabel=policyUI:Label(parent,"","GameFontHighlightSmall")
-    self.resultLabel:SetJustifyH("RIGHT")
-    local function tooltip(widget,text)
-        widget:SetScript("OnEnter",function(owner)GameTooltip:SetOwner(owner,"ANCHOR_TOP");GameTooltip:SetText(text);GameTooltip:Show()end)
-        widget:SetScript("OnLeave",function()GameTooltip:Hide()end)
+    local filterMenu=CreateFrame("DropdownButton",nil,parent,"WowStyle1FilterDropdownTemplate")
+    self.filterMenu=filterMenu
+    local categories={
+        {id="status",label=L["ROSTER_FILTER_STATUS"]},
+        {id="rank",label=L["ROSTER_FILTER_RANK"]},
+        {id="class",label=L["ROSTER_FILTER_CLASS"]},
+        {id="addonStatus",label=L["ROSTER_FILTER_ADDON"]},
+    }
+    local function getCategoryItems(category)
+        if category=="status"then return{
+            {value="ONLINE",label=L["ROSTER_STATUS_ONLINE"]},{value="OFFLINE",label=L["ROSTER_STATUS_OFFLINE"]},
+            {value="AFK",label=L["ROSTER_STATUS_AFK"]},{value="DND",label=L["ROSTER_STATUS_DND"]},
+        }elseif category=="rank"then return GuildRoster:GetRankOptions()
+        elseif category=="class"then return GuildRoster:GetClassOptions()
+        elseif category=="addonStatus"then return{
+            {value="RECOGNIZED",label=L["ROSTER_ADDON_RECOGNIZED"]},
+            {value="NOT_RECOGNIZED",label=L["ROSTER_ADDON_NOT_RECOGNIZED"]},
+            {value="UNKNOWN",label=L["ROSTER_ADDON_UNKNOWN"]},
+        }end
+        return{}
     end
-    tooltip(search,L["ROSTER_SEARCH_TOOLTIP"]);tooltip(saved,L["ROSTER_SAVED_FILTERS_TOOLTIP"])
-    tooltip(self.statusMenu,L["ROSTER_STATUS_TOOLTIP"]);tooltip(self.rankMenu,L["ROSTER_RANK_TOOLTIP"])
-    tooltip(self.classMenu,L["ROSTER_CLASS_TOOLTIP"]);tooltip(self.addonStatusMenu,L["ROSTER_ADDON_TOOLTIP"])
+    filterMenu:SetDefaultText(L["ROSTER_FILTER_BUTTON"])
+    filterMenu:SetupMenu(function(_,rootDescription)
+        for _,category in ipairs(categories)do
+            local submenu=rootDescription:CreateButton(category.label)
+            submenu:SetSelectionIgnored()
+            submenu:CreateButton(L["ROSTER_FILTER_CLEAR_CATEGORY"],function()
+                GuildRoster:SetQuickFilterSelection(category.id,"ALL",true)
+                return MenuResponse.Refresh
+            end)
+            for _,item in ipairs(getCategoryItems(category.id))do
+                local selected=item
+                submenu:CreateCheckbox(selected.label or selected.value,
+                    function(value)return GuildRoster:IsQuickFilterSelected(category.id,value)end,
+                    function(value)
+                        GuildRoster:SetQuickFilterSelection(category.id,value)
+                        return MenuResponse.Refresh
+                    end,
+                    selected.value)
+            end
+        end
+        rootDescription:CreateDivider()
+        rootDescription:CreateTitle(L["ROSTER_FILTER_ACTIONS"])
+        rootDescription:CreateButton(L["ROSTER_FILTER_RESET_ALL"],function()
+            GuildRoster:ResetFilters()
+            return MenuResponse.CloseAll
+        end)
+    end)
+
+    local saved=CreateFrame("DropdownButton",nil,parent,"WowStyle1FilterDropdownTemplate")
+    self.savedFilterMenu=saved
+    saved:SetDefaultText(L["ROSTER_SAVED_MENU"])
+    saved:SetupMenu(function(_,rootDescription)
+        rootDescription:CreateTitle(L["ROSTER_SAVED_FILTERS_TITLE"])
+        for _,item in ipairs(GuildRoster:GetSavedFilterItems())do
+            local selected=item
+            rootDescription:CreateCheckbox(selected.label,
+                function(profile)return GuildRoster:IsSavedFilterActive(profile.id,profile.scope)end,
+                function(profile)
+                    GuildRoster:SetActiveFilter(profile.id,profile.scope)
+                    return MenuResponse.Refresh
+                end,
+                selected)
+        end
+        rootDescription:CreateDivider()
+        rootDescription:CreateTitle(L["ROSTER_FILTER_ACTIONS"])
+        rootDescription:CreateButton(L["ROSTER_SAVE_CURRENT_FILTER"],function()
+            GuildRoster:OpenSaveFilterDialog()
+            return MenuResponse.CloseAll
+        end)
+        rootDescription:CreateButton(L["ROSTER_MANAGE_FILTERS"],function()
+            HolyStorm.Administration:Open("filters")
+            return MenuResponse.CloseAll
+        end)
+        local clear=rootDescription:CreateButton(L["ROSTER_CLEAR_SAVED_SELECTION"],function()
+            GuildRoster:ClearSavedFilterSelection()
+            return MenuResponse.Refresh
+        end)
+        clear:SetEnabled(#(GuildRoster.activeFilters or{})>0)
+    end)
+
+    local refresh=CreateFrame("Button",nil,parent)
+    refresh:SetNormalTexture("Interface\\Buttons\\UI-RefreshButton")
+    refresh:SetPushedTexture("Interface\\Buttons\\UI-RefreshButton")
+    refresh:SetHighlightTexture("Interface\\Buttons\\ButtonHilight-Square","ADD")
+    refresh:SetScript("OnClick",function()GuildRoster:RequestAndRefresh()end)
+    self.refreshButton=refresh
+    local function tooltip(widget,text)
+        local onEnter=function(owner)GameTooltip:SetOwner(owner,"ANCHOR_TOP");GameTooltip:SetText(text);GameTooltip:Show()end
+        local onLeave=function()GameTooltip:Hide()end
+        if widget.HookScript then widget:HookScript("OnEnter",onEnter);widget:HookScript("OnLeave",onLeave)
+        else widget:SetScript("OnEnter",onEnter);widget:SetScript("OnLeave",onLeave)end
+    end
+    tooltip(search,L["ROSTER_SEARCH_TOOLTIP"]);tooltip(filterMenu,L["ROSTER_FILTER_TOOLTIP"])
+    tooltip(saved,L["ROSTER_SAVED_FILTERS_TOOLTIP"]);tooltip(refresh,L["REFRESH_TOOLTIP"])
     if not StaticPopupDialogs["HOLYSTORM_SAVE_ROSTER_FILTER"]then
         StaticPopupDialogs["HOLYSTORM_SAVE_ROSTER_FILTER"]={
             text=L["ROSTER_SAVE_FILTER_PROMPT"],button1=ACCEPT,button2=CANCEL,hasEditBox=true,maxLetters=128,timeout=0,whileDead=true,hideOnEscape=true,preferredIndex=3,
@@ -356,56 +498,39 @@ function GuildRoster:CreateContextHeader(parent)
             OnShow=function(dialog)if dialog.EditBox then dialog.EditBox:SetText("");dialog.EditBox:SetFocus()end end,
         }
     end
-    self:RefreshSavedFilterMenuText();self:RefreshQuickFilterLabels()
+    self:RefreshSearchPlaceholder();self:RefreshSavedFilterMenuText();self:RefreshQuickFilterLabels()
 end
 
 function GuildRoster:LayoutContextHeader(parent,width,height)
-    local narrow=width<820
-    local compact=width<650
-    local function place(widget,x,y,w,h,dropdown)
+    local compact=width<520
+    self.compactContextHeader=compact
+    local function place(widget,x,w,h)
         widget:ClearAllPoints()
-        if dropdown then widget:SetPoint("TOPLEFT",parent,"TOPLEFT",x-16,-y)
-        else widget:SetPoint("TOPLEFT",parent,"TOPLEFT",x,-y)end
-        if widget.SetSize then widget:SetSize(w,h)elseif widget.SetWidth then widget:SetWidth(w);if widget.SetHeight then widget:SetHeight(h)end end
+        widget:SetPoint("TOPLEFT",parent,"TOPLEFT",x,-3)
+        widget:SetSize(w,h)
     end
-    local gap=5
-    if not narrow then
-        local x=0;local y=2;local searchW=math.min(230,width*.28)
-        place(self.searchBox,x,y,searchW-31,24);place(self.clearSearchButton,searchW-26,y,26,23);x=x+searchW+gap
-        local savedW=math.min(190,width*.23);place(self.savedFilterMenu,x,y,savedW,24,true);x=x+savedW+gap
-        place(self.saveFilterButton,x,y,96,23);x=x+101
-        place(self.manageFiltersButton,x,y,104,23);x=x+109
-        place(self.refreshButton,x,y,84,23)
-        y=34;x=0
-        local statusW=112;local rankW=112;local classW=112;local addonW=170
-        place(self.statusMenu,x,y,statusW,24,true);x=x+statusW+gap
-        place(self.rankMenu,x,y,rankW,24,true);x=x+rankW+gap
-        place(self.classMenu,x,y,classW,24,true);x=x+classW+gap
-        place(self.addonStatusMenu,x,y,addonW,24,true);x=x+addonW+gap
-        place(self.resetFiltersButton,x,y,88,23);x=x+93
-        place(self.resultLabel,x,y,math.max(80,width-x),22)
-    elseif not compact then
-        local y1,y2,y3=2,32,62
-        local searchWidth=width*.35;local savedWidth=width*.25;local actionX=searchWidth+31+savedWidth+gap*3
-        place(self.searchBox,0,y1,searchWidth,24);place(self.clearSearchButton,searchWidth+5,y1,26,23)
-        place(self.savedFilterMenu,searchWidth+31,y1,savedWidth,24,true)
-        place(self.saveFilterButton,actionX,y1,90,23);place(self.manageFiltersButton,actionX+95,y1,96,23)
-        place(self.statusMenu,0,y2,112,24,true);place(self.rankMenu,116,y2,112,24,true);place(self.classMenu,232,y2,112,24,true)
-        place(self.addonStatusMenu,348,y2,164,24,true);place(self.refreshButton,518,y2,84,23)
-        place(self.resetFiltersButton,0,y3,88,23);place(self.resultLabel,94,y3,width-94,22)
+    local gap,filterWidth,savedWidth,refreshWidth
+    if width>=520 then gap,filterWidth,savedWidth,refreshWidth=7,102,140,26
+    elseif width>=400 then gap,filterWidth,savedWidth,refreshWidth=6,88,116,24
+    elseif width>=320 then gap,filterWidth,savedWidth,refreshWidth=4,66,84,22
     else
-        local y1,y2,y3,y4=2,32,62,92
-        place(self.searchBox,0,y1,width-34,24);place(self.clearSearchButton,width-28,y1,26,23)
-        local half=math.floor((width-gap)/2)
-        place(self.statusMenu,0,y2,half,24,true);place(self.rankMenu,half+gap,y2,half,24,true)
-        place(self.classMenu,0,y3,half,24,true);place(self.addonStatusMenu,half+gap,y3,half,24,true)
-        place(self.savedFilterMenu,0,y4,width-188,24,true);place(self.refreshButton,width-182,y4,84,23);place(self.resetFiltersButton,width-93,y4,88,23)
-        local y5=122;place(self.saveFilterButton,0,y5,96,23);place(self.manageFiltersButton,101,y5,104,23);place(self.resultLabel,210,y5,width-210,22)
+        gap,filterWidth,savedWidth,refreshWidth=4,60,74,22
     end
+    local searchWidth=math.max(88,width-filterWidth-savedWidth-refreshWidth-gap*3)
+    local x=0
+    place(self.searchBox,x,searchWidth,24);x=x+searchWidth+gap
+    place(self.filterMenu,x,filterWidth,24);x=x+filterWidth+gap
+    place(self.savedFilterMenu,x,savedWidth,24);x=x+savedWidth+gap
+    place(self.refreshButton,x,refreshWidth,24)
+    if self.searchPlaceholder then
+        self.searchPlaceholder:SetWidth(math.max(1,searchWidth-16))
+        self.searchPlaceholder:SetText(compact and L["ROSTER_SEARCH_PLACEHOLDER_SHORT"]or L["ROSTER_SEARCH_PLACEHOLDER"])
+    end
+    self:RefreshQuickFilterLabels();self:RefreshSavedFilterMenuText()
 end
 
 function GuildRoster:GetContextHeaderHeight(width)
-    if width<650 then return 150 elseif width<820 then return 92 else return 62 end
+    return 30
 end
 
 function GuildRoster:RegisterContextHeader()
