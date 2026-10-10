@@ -85,16 +85,20 @@ local driver={content=region("content"),pages={}}
 function driver:RegisterPage(id,frame,title,onShow)self.pages[id]={frame=frame,title=title,onShow=onShow}end
 function driver:UnregisterPage(id)self.pages[id]=nil end
 function driver:ShowPage(id)for _,page in pairs(self.pages)do page.frame:Hide()end;self.pages[id].frame:Show();if self.pages[id].onShow then self.pages[id].onShow()end end
-function driver:RegisterPageToolbar(id,owner,definition)self.toolbars=self.toolbars or{};if self.toolbars[id]then return false,"EXISTS"end;self.toolbars[id]={owner=owner,definition=definition};return true end
-function driver:UnregisterPageToolbar(id,owner)local toolbar=self.toolbars and self.toolbars[id];if not toolbar then return false end;if owner and toolbar.owner~=owner then return false end;self.toolbars[id]=nil;return true end
+function driver:RegisterPageContextHeader(id,owner,definition)self.contextHeaders=self.contextHeaders or{};if self.contextHeaders[id]then return false,"EXISTS"end;self.contextHeaders[id]={owner=owner,definition=definition};return true end
+function driver:UnregisterPageContextHeader(id,owner)local header=self.contextHeaders and self.contextHeaders[id];if not header then return false end;if owner and header.owner~=owner then return false end;self.contextHeaders[id]=nil;return true end
 function driver:AddRightDockIcon()return true end;function driver:RemoveRightDockIcon()return true end;function driver:ShowModules()self.home=true end;function driver:SetStatusText()end
-local pendingToolbar={height=function()return 48 end,build=function()end,layout=function()end}
-assert(UI:RegisterPageToolbar("example.toolbar","example",pendingToolbar)and not driver.toolbars,"toolbar registration can wait for the central UI driver")
+local pendingHeader={height=function()return 48 end,build=function()end,layout=function()end}
+assert(UI:RegisterPageContextHeader("example.header","example",pendingHeader)and not driver.contextHeaders,"context header registration can wait for the central UI driver")
 assert(UI:SetDriver(driver))
-assert(driver.toolbars["example.toolbar"].owner=="example"and driver.toolbars["example.toolbar"].definition==pendingToolbar,"the UI facade forwards optional toolbars to the driver")
-local duplicateToolbar,toolbarReason=UI:RegisterPageToolbar("example.toolbar","other",pendingToolbar);assert(not duplicateToolbar and toolbarReason=="PAGE_TOOLBAR_OWNER_CONFLICT","a page toolbar has one explicit owner")
-assert(not UI:UnregisterPageToolbar("example.toolbar","other")and driver.toolbars["example.toolbar"],"another owner cannot remove a page toolbar")
-assert(UI:UnregisterPageToolbar("example.toolbar","example")and not driver.toolbars["example.toolbar"],"the toolbar owner can unregister its slot")
+assert(driver.contextHeaders["example.header"].owner=="example"and driver.contextHeaders["example.header"].definition==pendingHeader,"the UI facade forwards optional context headers to the driver")
+local duplicateHeader,headerReason=UI:RegisterPageContextHeader("example.header","other",pendingHeader);assert(not duplicateHeader and headerReason=="PAGE_CONTEXT_HEADER_OWNER_CONFLICT","a page context header has one explicit owner")
+assert(not UI:UnregisterPageContextHeader("example.header","other")and driver.contextHeaders["example.header"],"another owner cannot remove a page context header")
+assert(UI:UnregisterPageContextHeader("example.header","example")and not driver.contextHeaders["example.header"],"the context header owner can unregister its slot")
+local lifecyclePage=region("header-lifecycle-page")
+assert(UI:RegisterPage("header.lifecycle",lifecyclePage,"Header lifecycle"))
+assert(UI:RegisterPageContextHeader("header.lifecycle","lifecycle",pendingHeader)and driver.contextHeaders["header.lifecycle"],"a page owns a separate context header registration")
+UI:UnregisterPage("header.lifecycle");assert(not driver.contextHeaders["header.lifecycle"],"page teardown removes its context header with the page")
 
 local builds,refreshes=0,0
 assert(UI:RegisterView({id="example.view",owner="example",localeName="Example",titleKey="TITLE",build=function(parentFrame)builds=builds+1;return region("view",parentFrame)end,refresh=function()refreshes=refreshes+1 end}))
@@ -113,9 +117,11 @@ assert(UI:UnregisterViewOwner("example")==2 and not UI:GetView("example.view"),"
 
 local function read(path)local file=assert(io.open(root..path,"rb"));local value=file:read("*a");file:close();return value end
 local managerSource=read("UI/Framework/UIManager.lua");local windowSource=read("UI/Framework/MainWindow.lua")
-for _,contract in ipairs({"RegisterPageToolbar","UnregisterPageToolbar","pageToolbars"})do assert(managerSource:find(contract,1,true)and windowSource:find(contract,1,true),"generic page toolbar contract missing: "..contract)end
-assert(not managerSource:find("GuildRoster",1,true)and not managerSource:find("guildRoster",1,true)and not windowSource:find("GuildRoster",1,true)and not windowSource:find("guildRoster",1,true),"core UI toolbar remains independent from the guild roster feature")
+for _,contract in ipairs({"RegisterPageContextHeader","UnregisterPageContextHeader","pageContextHeaders"})do assert(managerSource:find(contract,1,true)and windowSource:find(contract,1,true),"generic page context header contract missing: "..contract)end
+assert(not managerSource:find("GuildRoster",1,true)and not managerSource:find("guildRoster",1,true)and not windowSource:find("GuildRoster",1,true)and not windowSource:find("guildRoster",1,true),"core UI context header remains independent from the guild roster feature")
 local guildSource=read("../Holy_Storm_Guild/Guild.lua")
-assert(not guildSource:find("CreateFilterBar",1,true)and guildSource:find("RegisterPageToolbar",1,true),"the roster registers only its toolbar controls and has no duplicate content filter bar")
+local characterSource=read("../Holy_Storm_Characters/UI/CharacterOverview.lua")
+assert(not guildSource:find("CreateFilterBar",1,true)and guildSource:find("RegisterPageContextHeader",1,true),"the roster registers its controls in the central header and has no duplicate content filter bar")
+assert(characterSource:find('RegisterPageContextHeader("character"',1,true)and characterSource:find("CreateHeaderBar",1,true),"Character Overview retains its existing HeaderBar through the same central context slot")
 
 print("UI layout, table, resize, empty state, localization and declarative view tests passed")

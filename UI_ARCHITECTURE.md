@@ -197,6 +197,23 @@ ungültig, werden Seite und Navigation abgehängt und der Frame verborgen. Bei
 erneuter Verfügbarkeit wird derselbe Frame wiederverwendet. Deregistrierung
 entfernt Events, Navigation und Frame über den Destroy-Lifecycle.
 
+## Seitenabhängiger Kontext-Header
+
+`MainWindow` stellt unterhalb der Titelleiste einen optionalen Kontext-Header
+oberhalb des Inhaltsbereichs bereit. `UIManager` verwaltet die seitenbezogene
+Registrierung; die UI kennt keine Fachmodule. `RegisterPageContextHeader(id,
+owner, definition)` nimmt `build(parent, driver)`, `height(width)` und
+`layout(frame, width, height)` entgegen. Header und Content sind Geschwister im
+Hauptfenster-Inset. Der Header liegt damit außerhalb eines Scroll-Childs.
+
+Beim Seitenwechsel zeigt `MainWindow` nur den Header der aktiven Seite und
+verschiebt den Content um dessen gemessene Höhe. Seiten ohne Header geben den
+Platz vollständig frei. Fenstergrößenänderungen rufen die Header-Layoutfunktion
+auf; es gibt keinen zusätzlichen Update-Loop. `CharacterOverview` verwendet
+seinen bestehenden `HeaderBar` für Identität, Status und Aktualisieren. Das
+Gildenroster füllt denselben Slot mit Suche und Filtern. Headerinhalte und
+Filterlogik bleiben jeweils beim zuständigen Feature-Modul.
+
 ## Availability und optionale Module
 
 `requires.module` und `requires.capability` verwenden ausschließlich die

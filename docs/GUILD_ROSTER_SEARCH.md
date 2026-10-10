@@ -1,26 +1,28 @@
-# Guild roster search and toolbar
+# Guild roster search and page context header
 
-The GuildRoster module owns search state, quick-filter options, rule fields, and the controls it contributes. The UI framework owns the optional page toolbar slot and the content viewport. The framework has no GuildRoster dependency.
+The GuildRoster module owns search state, quick-filter options, rule fields, and the controls it contributes. `UIManager` owns page registrations and forwards the optional context-header contract. `MainWindow` owns the shared context-header slot and content viewport; neither framework layer depends on GuildRoster.
 
-This change versions GuildRoster at 2.3.0, UIManager at 2.1.0, MainWindow at 2.5.0, and RuleEngine at 4.1.0.
+GuildRoster is now version 2.4.0, CharacterOverview 2.1.0, UIManager 2.2.0, and MainWindow 2.6.0. RuleEngine remains at 4.1.0.
 
-## Page toolbar contract
+## Window and page header structure
 
-`HolyStorm.UI:RegisterPageToolbar(pageId, owner, definition)` registers a page-owned toolbar. The definition supplies:
+The title is rendered by `MainWindow`. Directly below it, the window has a page context-header slot. The slot and page content are sibling frames under the window inset, so the slot does not scroll with a page's scroll child. `HolyStorm.UI:RegisterPageContextHeader(pageId, owner, definition)` lets a page provide its own header without adding feature dependencies to the framework. The definition supplies:
 
-- `build(parent, driver)`: create and retain the feature's controls under the supplied toolbar frame.
-- `height(width)`: return the toolbar height in UI units for the current available width.
-- `layout(frame, width, height)`: position feature controls after a resize.
+- `build(parent, driver)`: create or mount the page-owned header controls.
+- `height(width)`: return the required height for the available window width.
+- `layout(frame, width, height)`: reflow controls after the window is resized.
 
-The driver places the slot below the Holy Storm title and above page content. Page content moves down only while its page has a registered toolbar. Home, Options, and pages without a toolbar return to the original content inset. Toolbar frames are siblings of the scrollable content region and never enter its scroll child. Unregistering the page also releases its toolbar.
+The driver activates one header with its page, hides the previous one, and moves the content viewport below the active header. Pages without a context header use the full original content area. Unregistering a page also removes its header registration and frame.
 
-## Guild Roster behavior
+CharacterOverview now mounts its existing `HolyStormHeaderBar` (portrait, character name, short details, data status, and refresh action) in this slot at 40 UI units. Its established data and refresh behavior is unchanged. GuildRoster mounts its search and filter controls in the same slot. Other pages do not reserve header space unless they register a header.
 
-The roster contributes its search field, saved-filter multi-selector, Save and Manage actions, status/rank/class/Holy Storm selectors, refresh and reset controls, and result count. The toolbar uses three width bands and the framework recalculates its height when the window changes size. The roster header and row scroll frame occupy the remaining page content.
+## Guild roster controls and layout
 
-Quick filters and the search rule combine with every selected saved filter using AND. Each saved filter keeps its existing RuleEngine tree logic. Saved selections use FilterManager's existing `guildRoster` context; a saved combined filter is written through `FilterManager:SaveFilter(..., "local")`, so it stays in the user's local profile and is not synchronized.
+The roster contributes its search field and clear action, saved-filter multi-selector, Save and Manage actions, status/rank/class/Holy Storm selectors, refresh and reset controls, and result count. The header uses three width bands and the framework recalculates its height on window resize. The roster column labels and member list occupy the entire remaining page content, including the vertical scroll viewport.
 
-Search covers the fields already visible in the roster: character name, realm, rank, class, level, zone, and a currently known Holy Storm version. Case folding includes ASCII and common Latin-1 uppercase letters, `Ÿ`, and capital sharp S; it does not perform full Unicode normalization. Public notes, officer notes, private profile fields, and full character records are not searchable. Character records are read once while a roster snapshot is built and are attached to the local row context so existing advanced rules do not trigger per-keystroke reads. Typing uses a cancellable short debounce and does not request a roster refresh, network transfer, or global task.
+Quick filters and the search rule combine with every selected saved filter using AND. Each quick-filter category keeps its established selection semantics; every saved filter keeps its RuleEngine tree logic. Saved selections use FilterManager's existing `guildRoster` context. A combined filter is written through `FilterManager:SaveFilter(..., "local")`, so it stays in the user's local profile and is not synchronized.
+
+Search covers fields already visible in the roster: character name, realm, rank, class, level, zone, and a currently known Holy Storm version. Case folding includes ASCII and common Latin-1 uppercase letters, `Å¸`, and capital sharp S; it does not perform full Unicode normalization. Public notes, officer notes, private profile fields, and full character records are not searchable. Character records are read once while a roster snapshot is built and attached to the local row context, so advanced rules do not trigger per-keystroke store reads. Typing uses a cancellable short debounce and does not request a roster refresh, network transfer, or global task.
 
 Presence versions come from `Sync:GetKnownVersion`. A known version is `RECOGNIZED`; no current version is `UNKNOWN`. The Sync store does not distinguish an addon that is absent from one whose presence has not been received or has expired, so absence is never treated as proof of `NOT_RECOGNIZED`. The selector retains a separate not-recognized value for sources that can reliably provide that fact later.
 
@@ -28,4 +30,4 @@ The existing pooled rows, sort order, left-click character action, right-click m
 
 ## Regression coverage
 
-Run `lua tools/test_guild_roster_search.lua`, `lua tools/test_ui_framework.lua`, and `lua tools/test_mainwindow_text.lua` for filter semantics, profile persistence contracts, cached-row performance, responsive layout, central toolbar lifecycle, and content-space release. `tools/test_localization_contract.lua` checks English/German key parity.
+Run `lua tools/test_guild_roster_search.lua`, `lua tools/test_ui_framework.lua`, `lua tools/test_mainwindow_text.lua`, and `lua tools/test_character_tabs.lua` for filter semantics, profile persistence, cached-row performance, responsive control placement, context-header ownership and lifecycle, CharacterOverview header retention, and content-space release. `tools/test_localization_contract.lua` checks English/German key parity.

@@ -1,10 +1,10 @@
-local addonVersion = "2.5.0"
+local addonVersion = "2.6.0"
 local HolyStorm = LibStub("AceAddon-3.0"):GetAddon("Holy_Storm")
 local L = LibStub("AceLocale-3.0"):GetLocale("Holy_Storm_UI")
 
 local UI = HolyStorm:RegisterRequiredModule("UI")
 UI.dashboardProviders = {}
-UI.pageToolbars = UI.pageToolbars or {}
+UI.pageContextHeaders = UI.pageContextHeaders or {}
 HolyStorm:ApplyModuleMetadata(UI, {
     displayName = L["DISPLAY_NAME"], internalName = "ui", version = addonVersion,
     category = "required", description = L["DESCRIPTION"], permissions = { { id = "ui-render", category = "Core" } },
@@ -57,8 +57,8 @@ function UI:OnInitialize()
     local content = CreateFrame("Frame", nil, frame)
     content:SetPoint("TOPLEFT", inset, "TOPLEFT", 5, -5)
     content:SetPoint("BOTTOMRIGHT", inset, "BOTTOMRIGHT", -5, 30)
-    local toolbarSlot=CreateFrame("Frame",nil,inset)
-    toolbarSlot:SetPoint("TOPLEFT",inset,"TOPLEFT",5,-5);toolbarSlot:SetPoint("TOPRIGHT",inset,"TOPRIGHT",-5,-5);toolbarSlot:SetHeight(1);toolbarSlot:Hide()
+    local contextHeaderSlot=CreateFrame("Frame",nil,inset)
+    contextHeaderSlot:SetPoint("TOPLEFT",inset,"TOPLEFT",5,-5);contextHeaderSlot:SetPoint("TOPRIGHT",inset,"TOPRIGHT",-5,-5);contextHeaderSlot:SetHeight(1);contextHeaderSlot:Hide()
 
     local scroll = aceGUI:Create("ScrollFrame")
     scroll:SetLayout("List")
@@ -164,7 +164,7 @@ function UI:OnInitialize()
     resize:SetScript("OnMouseUp", function() frame:StopMovingOrSizing(); UI:SaveWindowSize() end)
 
     self.frame, self.content, self.scroll, self.page, self.pages = frame, content, scroll, page, {}
-    self.contentInset,self.toolbarSlot,self.activeToolbarPage=inset,toolbarSlot,nil
+    self.contentInset,self.contextHeaderSlot,self.activeContextHeaderPage=inset,contextHeaderSlot,nil
     self.dashboardElements, self.dashboardWidgets, self.windowTitle, self.status = dashboard, dashboardWidgets, title, status
     self.syncActivityButton, self.syncActivityLabel, self.syncSpinner = syncActivity, syncLabel, syncSpinner
     self.syncActivityTooltip = syncTooltip
@@ -176,9 +176,9 @@ function UI:OnInitialize()
     frame:HookScript("OnShow", function() UI:SetRightDockVisible(true) end)
     frame:HookScript("OnHide", function() UI:SetRightDockVisible(false) end)
     self:SetRightDockVisible(false)
-    frame:HookScript("OnSizeChanged",function()UI:LayoutPageToolbar()end)
-    toolbarSlot:HookScript("OnSizeChanged",function(_,width)
-        if width~=UI.toolbarWidth then UI.toolbarWidth=width;UI:LayoutPageToolbar()end
+    frame:HookScript("OnSizeChanged",function()UI:LayoutPageContextHeader()end)
+    contextHeaderSlot:HookScript("OnSizeChanged",function(_,width)
+        if width~=UI.contextHeaderWidth then UI.contextHeaderWidth=width;UI:LayoutPageContextHeader()end
     end)
     HolyStorm.UI:SetDriver(self)
     self:RefreshSyncActivity()
@@ -272,63 +272,63 @@ function UI:RegisterPage(id, pageFrame, title, onShow)
     pageFrame:Hide()
 end
 
-function UI:EnsurePageToolbar(id)
-    local definition=self.pageToolbars[id]
-    if not definition or definition.frame or not self.toolbarSlot then return definition and definition.frame~=nil end
-    local content=CreateFrame("Frame",nil,self.toolbarSlot);content:SetAllPoints(self.toolbarSlot);content:Hide()
+function UI:EnsurePageContextHeader(id)
+    local definition=self.pageContextHeaders[id]
+    if not definition or definition.frame or not self.contextHeaderSlot then return definition and definition.frame~=nil end
+    local content=CreateFrame("Frame",nil,self.contextHeaderSlot);content:SetAllPoints(self.contextHeaderSlot);content:Hide()
     definition.frame=content
-    local ok=HolyStorm.Utils.SafeCall("ui.toolbar.build:"..id,definition.build,content,self)
+    local ok=HolyStorm.Utils.SafeCall("ui.context-header.build:"..id,definition.build,content,self)
     if not ok then content:Hide();content:SetParent(nil);definition.frame=nil;return false end
     return true
 end
 
-function UI:RegisterPageToolbar(id,owner,definition)
-    if type(id)~="string"or id==""or type(owner)~="string"or owner==""or type(definition)~="table"or type(definition.build)~="function"or type(definition.layout)~="function"or type(definition.height)~="function"then return false,"INVALID_PAGE_TOOLBAR"end
-    if self.pageToolbars[id]then return false,self.pageToolbars[id].owner==owner and"PAGE_TOOLBAR_EXISTS"or"PAGE_TOOLBAR_OWNER_CONFLICT"end
-    self.pageToolbars[id]={owner=owner,build=definition.build,layout=definition.layout,height=definition.height}
-    self:EnsurePageToolbar(id)
-    if not self.pageToolbars[id].frame and self.toolbarSlot then self.pageToolbars[id]=nil;return false,"PAGE_TOOLBAR_BUILD_FAILED"end
-    if self.activeToolbarPage==id then self:LayoutPageToolbar()end
+function UI:RegisterPageContextHeader(id,owner,definition)
+    if type(id)~="string"or id==""or type(owner)~="string"or owner==""or type(definition)~="table"or type(definition.build)~="function"or type(definition.layout)~="function"or type(definition.height)~="function"then return false,"INVALID_PAGE_CONTEXT_HEADER"end
+    if self.pageContextHeaders[id]then return false,self.pageContextHeaders[id].owner==owner and"PAGE_CONTEXT_HEADER_EXISTS"or"PAGE_CONTEXT_HEADER_OWNER_CONFLICT"end
+    self.pageContextHeaders[id]={owner=owner,build=definition.build,layout=definition.layout,height=definition.height}
+    self:EnsurePageContextHeader(id)
+    if not self.pageContextHeaders[id].frame and self.contextHeaderSlot then self.pageContextHeaders[id]=nil;return false,"PAGE_CONTEXT_HEADER_BUILD_FAILED"end
+    if self.activeContextHeaderPage==id then self:LayoutPageContextHeader()end
     return true
 end
 
-function UI:UnregisterPageToolbar(id,owner)
-    local definition=self.pageToolbars[id]
+function UI:UnregisterPageContextHeader(id,owner)
+    local definition=self.pageContextHeaders[id]
     if not definition then return false end
     if owner and definition.owner~=owner then return false,"OWNER_MISMATCH"end
     if definition.frame then definition.frame:Hide();definition.frame:SetParent(nil)end
-    self.pageToolbars[id]=nil
-    if self.activeToolbarPage==id then self.activeToolbarPage=nil;self:LayoutPageToolbar()end
+    self.pageContextHeaders[id]=nil
+    if self.activeContextHeaderPage==id then self.activeContextHeaderPage=nil;self:LayoutPageContextHeader()end
     return true
 end
 
-function UI:SetActiveToolbarPage(id)
-    self.activeToolbarPage=id
-    self:LayoutPageToolbar()
+function UI:SetActiveContextHeaderPage(id)
+    self.activeContextHeaderPage=id
+    self:LayoutPageContextHeader()
 end
 
-function UI:LayoutPageToolbar()
-    local slot,inset,content=self.toolbarSlot,self.contentInset,self.content
+function UI:LayoutPageContextHeader()
+    local slot,inset,content=self.contextHeaderSlot,self.contentInset,self.content
     if not slot or not inset or not content then return false end
-    local active=self.activeToolbarPage and self.pageToolbars[self.activeToolbarPage]
-    for id,definition in pairs(self.pageToolbars)do if definition.frame then definition.frame:SetShown(definition==active)end end
-    if not active or not self:EnsurePageToolbar(self.activeToolbarPage)then
+    local active=self.activeContextHeaderPage and self.pageContextHeaders[self.activeContextHeaderPage]
+    for id,definition in pairs(self.pageContextHeaders)do if definition.frame then definition.frame:SetShown(definition==active)end end
+    if not active or not self:EnsurePageContextHeader(self.activeContextHeaderPage)then
         slot:Hide();content:ClearAllPoints();content:SetPoint("TOPLEFT",inset,"TOPLEFT",5,-5);content:SetPoint("BOTTOMRIGHT",inset,"BOTTOMRIGHT",-5,30)
         return true
     end
     local width=math.max(1,slot:GetWidth()or content:GetWidth()or 1)
-    local ok,height=HolyStorm.Utils.SafeCall("ui.toolbar.height:"..self.activeToolbarPage,active.height,width)
+    local ok,height=HolyStorm.Utils.SafeCall("ui.context-header.height:"..self.activeContextHeaderPage,active.height,width)
     height=ok and math.max(1,math.min(240,tonumber(height)or 1))or 1
     slot:SetHeight(height);slot:Show();active.frame:Show()
     content:ClearAllPoints();content:SetPoint("TOPLEFT",inset,"TOPLEFT",5,-(11+height));content:SetPoint("BOTTOMRIGHT",inset,"BOTTOMRIGHT",-5,30)
-    HolyStorm.Utils.SafeCall("ui.toolbar.layout:"..self.activeToolbarPage,active.layout,active.frame,width,height)
+    HolyStorm.Utils.SafeCall("ui.context-header.layout:"..self.activeContextHeaderPage,active.layout,active.frame,width,height)
     return true
 end
 
 function UI:UnregisterPage(id)
     local page=self.pages[id]
     if not page then return false end
-    self:UnregisterPageToolbar(id)
+    self:UnregisterPageContextHeader(id)
     page.frame:Hide(); self.pages[id]=nil; return true
 end
 
@@ -340,7 +340,7 @@ function UI:ShowPage(id)
     local page = self.pages[id]
     if not page then return end
     if self.optionsContainer then self.optionsContainer.frame:Hide() end
-    self.scroll.frame:Hide(); self:HideRegisteredPages(); self.frame:Show();self:SetActiveToolbarPage(id)
+    self.scroll.frame:Hide(); self:HideRegisteredPages(); self.frame:Show();self:SetActiveContextHeaderPage(id)
     self.windowTitle:SetText(page.title); self:SetRightDockSelected(id); page.frame:Show()
     if page.onShow then page.onShow() end
 end
@@ -363,7 +363,7 @@ end
 function UI:ResetWindowPosition() HolyStorm.Database:Set("window.position", nil, "profile"); if self.frame then self.frame:ClearAllPoints(); self.frame:SetPoint("CENTER") end end
 function UI:ResetWindowSize() HolyStorm.Database:Set("window.size", nil, "profile"); if self.frame then self.frame:SetSize(900, 560) end end
 function UI:Open() if self.frame then if not self.frame:IsShown() then self:LoadWindowState() end; self.frame:Show(); self:ShowModules() end end
-function UI:ShowModules() self:SetActiveToolbarPage(nil);if self.optionsContainer then self.optionsContainer.frame:Hide() end; self:HideRegisteredPages(); self.scroll.frame:Show(); self.page.frame:Show(); self.windowTitle:SetText(L["WINDOW_TITLE"]); self:SetReadyStatus(); self:SetRightDockSelected("home"); self:ShowNewsPortal() end
+function UI:ShowModules() self:SetActiveContextHeaderPage(nil);if self.optionsContainer then self.optionsContainer.frame:Hide() end; self:HideRegisteredPages(); self.scroll.frame:Show(); self.page.frame:Show(); self.windowTitle:SetText(L["WINDOW_TITLE"]); self:SetReadyStatus(); self:SetRightDockSelected("home"); self:ShowNewsPortal() end
 function UI:RegisterDashboardProvider(id,provider) if type(id)~="string" or type(provider)~="function" then return false end; self.dashboardProviders[id]=provider; return true end
 function UI:RefreshDashboardProviders() return self:RefreshDashboard() end
 function UI:ShowNewsPortal() for _,element in ipairs(self.dashboardElements or{})do element:Show()end;return self:RefreshDashboard()end
@@ -374,5 +374,5 @@ function UI:ShowOptions(appName)
         self.optionsContainer:SetLayout("Fill"); self.optionsContainer.frame:SetParent(self.content); self.optionsContainer.frame:SetAllPoints(self.content)
         LibStub("AceConfigDialog-3.0"):Open(appName, self.optionsContainer)
     end
-    self:SetActiveToolbarPage(nil);self:HideRegisteredPages(); self.scroll.frame:Hide(); self.frame:Show(); self.windowTitle:SetText(L["WINDOW_TITLE_OPTIONS"]); self:SetRightDockSelected("options"); self.optionsContainer.frame:Show()
+    self:SetActiveContextHeaderPage(nil);self:HideRegisteredPages(); self.scroll.frame:Hide(); self.frame:Show(); self.windowTitle:SetText(L["WINDOW_TITLE_OPTIONS"]); self:SetRightDockSelected("options"); self.optionsContainer.frame:Show()
 end

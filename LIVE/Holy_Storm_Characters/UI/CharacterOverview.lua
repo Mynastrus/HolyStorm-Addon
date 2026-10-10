@@ -1,4 +1,4 @@
-local addonVersion="2.0.2"
+local addonVersion="2.1.0"
 local HolyStorm=LibStub("AceAddon-3.0"):GetAddon("Holy_Storm")
 local L=LibStub("AceLocale-3.0"):GetLocale("Holy_Storm_CharacterUI")
 local Page=HolyStorm:RegisterRequiredModule("CharacterOverview")
@@ -200,6 +200,11 @@ function Page:InitializeUI()
  local function refreshActiveBlock()if C.context then C:RequestRefresh(C.context.characterUUID,(C:GetTab(C.activeTab)or{}).blocks,"MANUAL")end end
  self.refreshButton:SetScript("OnEnter",function(button)GameTooltip:SetOwner(button,"ANCHOR_LEFT");GameTooltip:SetText(L["REFRESH"]);local definition=C:GetTab(C.activeTab);local block=definition and definition.blocks and definition.blocks[1];local state=block and C.context and C:GetDataStatus(C.context.characterUUID,block);local prompt=state=="MISSING"and L["SNAPSHOT_SCAN_MISSING"]or state=="STALE"and L["SNAPSHOT_SCAN_STALE"]or state=="ERROR"and L["SNAPSHOT_SCAN_ERROR"]or state=="DIRTY"and L["SNAPSHOT_DIRTY"]or state=="REFRESHING"and L["SNAPSHOT_REFRESHING"];if prompt then GameTooltip:AddLine(prompt,.85,.88,.94,true)end;GameTooltip:Show()end);self.refreshButton:SetScript("OnLeave",function()GameTooltip:Hide()end);self.refreshButton:SetScript("OnClick",refreshActiveBlock)
  self.statusAction=CreateFrame("Button",nil,headerBar.frame);self.statusAction:SetAllPoints(headerBar.updated);self.statusAction:EnableMouse(false);self.statusAction:SetScript("OnClick",refreshActiveBlock);self.statusAction:SetScript("OnEnter",function(button)local definition=C:GetTab(C.activeTab);local block=definition and definition.blocks and definition.blocks[1];local state=block and C.context and C:GetDataStatus(C.context.characterUUID,block);local prompt=state=="MISSING"and L["SNAPSHOT_SCAN_MISSING"]or state=="STALE"and L["SNAPSHOT_SCAN_STALE"]or state=="ERROR"and L["SNAPSHOT_SCAN_ERROR"]or L["REFRESH"];GameTooltip:SetOwner(button,"ANCHOR_LEFT");GameTooltip:SetText(prompt);GameTooltip:Show()end);self.statusAction:SetScript("OnLeave",function()GameTooltip:Hide()end)
+ local headerRegistered,headerReason=HolyStorm.UI:RegisterPageContextHeader("character","characters",{
+  height=function()return 40 end,
+  build=function(parent)headerBar.frame:SetParent(parent);headerBar.frame:ClearAllPoints();headerBar.frame:SetAllPoints(parent)end,
+  layout=function(parent)headerBar.frame:ClearAllPoints();headerBar.frame:SetAllPoints(parent)end,
+ });assert(headerRegistered,"Character context header registration failed: "..tostring(headerReason))
  self.pageLayout=HolyStorm.UI.Components:CreateColumn(page,{frame=page,padding={left=12,right=12,top=8,bottom=10}})
   local tabGroup=HolyStorm.UI.Components:CreateTabGroup(page);tabGroup.frame:Show();tabGroup:SetCallback("OnGroupSelected",function(_,_,tabId)if C.context then C:SelectTab(tabId)end end);self.pageLayout:Add(tabGroup,{weight=1});self.tabGroup=tabGroup;self.tabHost=tabGroup:GetContentFrame();self.tabHost:Show();self:BuildTabs()
  page:HookScript("OnShow",function()Page:SetHeaderVisible(true)end);page:HookScript("OnHide",function()Page:SetHeaderVisible(false)end);local refresh=function()Page:SetHeaderVisible(true);if C.context then C:RefreshHeader();C:SelectTab(C.activeTab or"summary")end end;assert(HolyStorm.UI:RegisterView({id="character",owner="characters",title=L["WINDOW_TITLE"],page=page,refresh=refresh}))

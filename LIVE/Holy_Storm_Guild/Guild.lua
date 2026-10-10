@@ -1,4 +1,4 @@
-local addonVersion = "2.3.0"
+local addonVersion = "2.4.0"
 local HolyStorm = LibStub("AceAddon-3.0"):GetAddon("Holy_Storm")
 local L = LibStub("AceLocale-3.0"):GetLocale("Holy_Storm_GuildRoster")
 if HolyStorm.PermissionRegistry then HolyStorm.PermissionRegistry:RegisterLegacyAlias("guild.roster.read","guild-roster-read");HolyStorm.PermissionRegistry:RegisterLegacyAlias("roster.manage","roster-manage")end
@@ -283,7 +283,7 @@ function GuildRoster:OpenSaveFilterDialog()
     StaticPopup_Show("HOLYSTORM_SAVE_ROSTER_FILTER")
 end
 
-function GuildRoster:CreateToolbar(parent)
+function GuildRoster:CreateContextHeader(parent)
     local policyUI=HolyStorm.PolicyUI
     local search=policyUI:Edit(parent,220,function(edit)
         if GuildRoster.isUpdatingControls or edit.isPlaceholder then return end
@@ -359,7 +359,7 @@ function GuildRoster:CreateToolbar(parent)
     self:RefreshSavedFilterMenuText();self:RefreshQuickFilterLabels()
 end
 
-function GuildRoster:LayoutToolbar(parent,width,height)
+function GuildRoster:LayoutContextHeader(parent,width,height)
     local narrow=width<820
     local compact=width<650
     local function place(widget,x,y,w,h,dropdown)
@@ -404,17 +404,17 @@ function GuildRoster:LayoutToolbar(parent,width,height)
     end
 end
 
-function GuildRoster:GetToolbarHeight(width)
+function GuildRoster:GetContextHeaderHeight(width)
     if width<650 then return 150 elseif width<820 then return 92 else return 62 end
 end
 
-function GuildRoster:RegisterToolbar()
-    local ok,reason=HolyStorm.UI:RegisterPageToolbar("guildRoster","GuildRoster",{
-        height=function(width)return GuildRoster:GetToolbarHeight(width)end,
-        build=function(parent)GuildRoster:CreateToolbar(parent)end,
-        layout=function(parent,width,height)GuildRoster:LayoutToolbar(parent,width,height)end,
+function GuildRoster:RegisterContextHeader()
+    local ok,reason=HolyStorm.UI:RegisterPageContextHeader("guildRoster","GuildRoster",{
+        height=function(width)return GuildRoster:GetContextHeaderHeight(width)end,
+        build=function(parent)GuildRoster:CreateContextHeader(parent)end,
+        layout=function(parent,width,height)GuildRoster:LayoutContextHeader(parent,width,height)end,
     })
-    if not ok then HolyStorm.Utils.SafeCall("guild.toolbar.register",function()error(tostring(reason))end)end
+    if not ok then HolyStorm.Utils.SafeCall("guild.context-header.register",function()error(tostring(reason))end)end
 end
 
 function GuildRoster:CreateColumn(parent, left, right)
@@ -606,7 +606,7 @@ function GuildRoster:InitializeUI()
     self.page, self.ui, self.scroll, self.scrollContent, self.rows,self.emptyState = page, UI, scroll, content, {},empty
     self.sourceMembers,self.visibleMembers={},{}
     HolyStorm.UI:RegisterPage("guildRoster", page, L["WINDOW_TITLE"], function() GuildRoster:Refresh() end, { "HS_ROSTER_UPDATED", "HS_SYNC_VERSION_UPDATED", "HS_FILTER_UPDATED", "HS_FILTER_DELETED", "HS_ACTIVE_FILTERS_UPDATED" })
-    self:RegisterToolbar()
+    self:RegisterContextHeader()
     HolyStorm.UI:AddNavigation("guildRoster", 3, "Interface\\Icons\\INV_Misc_GroupLooking", L["NAVIGATION_TITLE"], L["NAVIGATION_DESCRIPTION"], function() GuildRoster:RequestAndRefresh(); HolyStorm.UI:ShowPage("guildRoster") end)
 end
 

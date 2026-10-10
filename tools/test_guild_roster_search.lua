@@ -1,4 +1,4 @@
--- Offline behavior and toolbar-layout regressions for the guild roster search.
+-- Offline behavior and context-header layout regressions for the guild roster search.
 local root=(arg[0]:gsub("tools[/\\]test_guild_roster_search.lua$",""))
 local function copy(value,seen)
     if type(value)~="table"then return value end
@@ -153,23 +153,26 @@ assert(GuildRoster.filterState.search==""and GuildRoster.filterState.status=="AL
 local function layoutWidget(name)
     return{name=name,points={},ClearAllPoints=function(self)self.points={}end,SetPoint=function(self,_,_,_,x,y)self.points={x=x,y=y}end,SetSize=function(self,w,h)self.width,self.height=w,h end,SetWidth=function(self,w)self.width=w end,SetHeight=function(self,h)self.height=h end}
 end
-for _,width in ipairs({900,700,600})do
+-- Physical window widths can differ at the same UI scale; these values also
+-- model the effective UI-unit widths seen under Retail's supported scales.
+for _,width in ipairs({900,820,740,700,650,600,520})do
     local names={"searchBox","clearSearchButton","savedFilterMenu","saveFilterButton","manageFiltersButton","refreshButton","resetFiltersButton","statusMenu","rankMenu","classMenu","addonStatusMenu","resultLabel"}
     for _,name in ipairs(names)do GuildRoster[name]=layoutWidget(name)end
-    local height=GuildRoster:GetToolbarHeight(width);GuildRoster:LayoutToolbar({},width,height)
-    assert((width>=820 and height==62)or(width>=650 and width<820 and height==92)or(width<650 and height==150),"toolbar height adapts to the available window width")
+    local height=GuildRoster:GetContextHeaderHeight(width);GuildRoster:LayoutContextHeader({},width,height)
+    assert((width>=820 and height==62)or(width>=650 and width<820 and height==92)or(width<650 and height==150),"context header height adapts to the available window width")
     local dropdowns={savedFilterMenu=true,statusMenu=true,rankMenu=true,classMenu=true,addonStatusMenu=true};local rows={}
     for _,name in ipairs(names)do
-        local widget=GuildRoster[name];assert(widget.points and widget.points.y<0,"every toolbar control is positioned for the active width: "..name)
+        local widget=GuildRoster[name];assert(widget.points and widget.points.y<0,"every context header control is positioned for the active width: "..name)
         local x=widget.points.x+(dropdowns[name]and 16 or 0);local y=widget.points.y
-        assert(x>=0 and x+widget.width<=width+0.01,"toolbar control stays inside the available width: "..name)
+        assert(x>=0 and x+widget.width<=width+0.01,"context header control stays inside the available width: "..name)
+        assert(-y+widget.height<=height+0.01,"context header control stays inside its responsive height: "..name)
         rows[y]=rows[y]or{};rows[y][#rows[y]+1]={name=name,left=x,right=x+widget.width}
     end
-    for _,row in pairs(rows)do table.sort(row,function(a,b)return a.left<b.left end);for index=2,#row do assert(row[index-1].right<=row[index].left+0.01,"toolbar controls do not overlap: "..row[index-1].name.." / "..row[index].name)end end
+    for _,row in pairs(rows)do table.sort(row,function(a,b)return a.left<b.left end);for index=2,#row do assert(row[index-1].right<=row[index].left+0.01,"context header controls do not overlap: "..row[index-1].name.." / "..row[index].name)end end
 end
 
 -- A search for one character cannot reuse a previous character's row object or filter result.
 GuildRoster.activeFilterDefinitions={};GuildRoster.filterState={search="",status="ALL",rank="ALL",class="ALL",addonStatus="RECOGNIZED"};GuildRoster.quickFilter=GuildRoster:BuildQuickFilter(GuildRoster.filterState)
 assert(GuildRoster:MatchesMember(recognized),"the first character matches the current filter")
 assert(not GuildRoster:MatchesMember(unknown),"switching to a different character reevaluates its own addon status")
-print("Guild roster search, saved-filter composition, privacy, unknown states, performance and responsive toolbar tests passed")
+print("Guild roster search, saved-filter composition, privacy, unknown states, performance and responsive context header tests passed")

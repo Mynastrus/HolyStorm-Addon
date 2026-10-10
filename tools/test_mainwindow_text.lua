@@ -12,7 +12,7 @@ local function region(kind,parent,template)
  function object:GetWidth()return self.width end
  function object:GetHeight()return self.height end
  function object:SetPoint(...)self.points=self.points or{};self.points[#self.points+1]={...}end
- function object:SetAllPoints()end
+ function object:SetAllPoints(target)self.allPoints=target or self.parent end
  function object:ClearAllPoints()self.points={}end
  function object:SetScript(event,callback)self.scripts[event]=callback end
  function object:HookScript(event,callback)self.scripts[event]=callback end
@@ -109,20 +109,31 @@ module.SaveWindowPosition=function()end
 module:OnInitialize()
 
 assert(dashboardBuilt and module.dashboardRefreshed,"MainWindow creates the existing dashboard and proceeds through initialization")
-local toolbarBuilds,toolbarLayouts=0,0
-assert(module.toolbarSlot and module.toolbarSlot.parent==module.contentInset and module.content.parent==module.toolbarSlot.parent,"the toolbar slot is a framework sibling above the page content")
-assert(module:RegisterPageToolbar("toolbar.page","test-owner",{
- height=function(width)return width<800 and 80 or 50 end,
- build=function(parent)toolbarBuilds=toolbarBuilds+1;assert(parent.parent==module.toolbarSlot,"toolbar contents are parented to the central slot")end,
- layout=function(_,width,height)toolbarLayouts=toolbarLayouts+1;assert(height==(width<800 and 80 or 50),"toolbar relayout receives current dimensions")end,
-}))
-module:SetActiveToolbarPage("toolbar.page")
-assert(toolbarBuilds==1 and toolbarLayouts==1 and module.toolbarSlot:IsShown()and module.toolbarSlot:GetHeight()==50,"page activation allocates a non-scrolling toolbar")
-assert(module.content.points[1][5]==-61,"page content moves below the toolbar with a clear gap")
-module.toolbarSlot:SetWidth(700);module:LayoutPageToolbar()
-assert(toolbarLayouts==2 and module.toolbarSlot:GetHeight()==80 and module.content.points[1][5]==-91,"resizing recalculates toolbar height and page content position")
-module:SetActiveToolbarPage("page.without.toolbar")
-assert(not module.toolbarSlot:IsShown()and module.content.points[1][5]==-5,"switching to a page without a toolbar releases its space")
+local headerBuilds,headerLayouts=0,0
+assert(module.contextHeaderSlot and module.contextHeaderSlot.parent==module.contentInset and module.content.parent==module.contextHeaderSlot.parent,"the page context header slot is a framework sibling above the page content")
+local function headerDefinition(baseHeight)
+ return{
+  height=function(width)return width<800 and baseHeight+30 or baseHeight end,
+  build=function(parent)headerBuilds=headerBuilds+1;assert(parent.parent==module.contextHeaderSlot,"header contents are parented to the central context slot")end,
+  layout=function(_,width,height)headerLayouts=headerLayouts+1;assert(height==(width<800 and baseHeight+30 or baseHeight),"context header relayout receives current dimensions")end,
+ }
+end
+assert(module:RegisterPageContextHeader("character","characters",headerDefinition(40)))
+assert(module:RegisterPageContextHeader("guildRoster","GuildRoster",headerDefinition(50)))
+local characterPage=CreateFrame("Frame",nil,module.content);local rosterPage=CreateFrame("Frame",nil,module.content);local plainPage=CreateFrame("Frame",nil,module.content)
+module:RegisterPage("character",characterPage,"Character");module:RegisterPage("guildRoster",rosterPage,"Roster");module:RegisterPage("plain",plainPage,"Plain")
+module.SetRightDockSelected=function()end
+module:ShowPage("character")
+local characterHeader=module.pageContextHeaders.character.frame;local rosterHeader=module.pageContextHeaders.guildRoster.frame
+assert(headerBuilds==2 and headerLayouts==1 and module.contextHeaderSlot:IsShown()and module.contextHeaderSlot:GetHeight()==40 and characterHeader:IsShown()and not rosterHeader:IsShown(),"Character Overview activates its own non-scrolling context header")
+assert(module.content.points[1][5]==-51 and module.content.points[2][1]=="BOTTOMRIGHT"and module.content.points[2][4]==-5 and module.content.points[2][5]==30 and module.scroll.frame.allPoints==module.content,"Character content begins below its context header and keeps the complete remaining window height")
+module:ShowPage("guildRoster")
+assert(headerLayouts==2 and module.contextHeaderSlot:GetHeight()==50 and not characterHeader:IsShown()and rosterHeader:IsShown()and module.content.points[1][5]==-61,"switching to the roster replaces the Character header and moves content below the roster header")
+module.contextHeaderSlot:SetWidth(700);module.contextHeaderSlot.scripts.OnSizeChanged(module.contextHeaderSlot,700)
+assert(headerLayouts==3 and module.contextHeaderSlot:GetHeight()==80 and module.content.points[1][5]==-91,"resizing recalculates roster header height and page content position")
+module:ShowPage("plain")
+assert(not module.contextHeaderSlot:IsShown()and not characterHeader:IsShown()and not rosterHeader:IsShown()and module.content.points[1][5]==-5 and module.content.points[2][5]==30,"switching to a page without a context header releases its space")
+module:ShowModules()
 assert(module.windowTitle and module.windowTitle.text==locale.WINDOW_TITLE,"the localized Holy Storm window title is assigned")
 local refreshButton
 for _,frame in ipairs(frames)do if frame.template=="UIPanelButtonTemplate"then refreshButton=frame;break end end
