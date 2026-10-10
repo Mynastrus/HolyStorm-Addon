@@ -58,6 +58,7 @@ function Tooltips:ShowTable(id,owner,options)
    end
   end
   tooltip:Show()
+  if type(options.positioner)=="function"then pcall(options.positioner,owner,tooltip)end
  end)
  if not ok then pcall(library.Release,library,tooltip);return false end
  self.active[key]={library=library,tooltip=tooltip,owner=owner}

@@ -4,6 +4,7 @@
 
 ### English
 
+- Fixed the Dashboard profile rows' vertical anchors. The heading and all available name, birthday and role rows now form one clipped, resize-safe block inside the Character header. Dashboard GameTooltip and LibQTip card tooltips now choose among all four screen sides, avoid other Dashboard cards where space permits, and remain screen-clamped.
 - Fixed the Dashboard profile overlay: profile and character identity now share the header-content parent, and measured responsive widths prevent the identity text from extending underneath the profile card. Icons compact or hide at narrow widths, while full profile details remain available on hover.
 - Positioned Dashboard tooltips against available screen space, clamped native Character table tooltips, and close stale native/profile tooltips when the selected character or rendered profile data changes.
 - Fixed the Delves summary's doubled `DELVES_DELVES_SUMMARY` lookup and expanded the localization contract to validate literal keys behind prefix proxies in both locales. Updated the preferred-role label for compact cards.
@@ -30,6 +31,7 @@
 
 ### Deutsch
 
+- Die vertikalen Anker der Profilzeilen sind korrigiert. Überschrift sowie Name, Geburtstag und Rolle bleiben zusammenhängend und innerhalb des Charakter-Headers; beim Ändern der Fensterbreite wird das Layout neu berechnet. Dashboard-Tooltips für GameTooltip und LibQTip prüfen alle vier Bildschirmseiten, meiden nach Möglichkeit andere Karten und bleiben am sichtbaren Bildschirm begrenzt.
 - Die Überlagerung der Profilkarte ist behoben: Profil und Charakteridentität verwenden jetzt denselben Header-Inhaltsbereich. Die gemessenen responsiven Breiten verhindern, dass Identitätstext unter die Profilkarte läuft. Bei geringer Breite werden Icons verkleinert oder das Spezialisierungsicon ausgeblendet; vollständige Profildetails bleiben im Tooltip zugänglich.
 - Dashboard-Tooltips berücksichtigen den verfügbaren Bildschirmplatz. Native Tooltips der Charaktertabellen werden am Bildschirm gehalten; veraltete Profil- und native Tooltips schließen beim Charakter- oder Datenwechsel.
 - Der doppelte Locale-Zugriff `DELVES_DELVES_SUMMARY` ist korrigiert. Der Localization Contract prüft nun auch literale Schlüssel über Präfix-Proxies in beiden Sprachen. Die Rollenbezeichnung wurde für kompakte Karten verkürzt.

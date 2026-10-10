@@ -7,6 +7,7 @@ local function newTooltip(key)
  function tip:ClearAllPoints()end
  function tip:SetPoint(point,owner,relativePoint,x,y)self.owner,self.anchor,self.relativePoint,self.x,self.y=owner,point,relativePoint,x,y end
  function tip:SmartAnchorTo(owner)self.owner,self.anchor=owner,"SMART"end
+ function tip:SetClampedToScreen(value)self.clamped=value end
  function tip:AddHeader(...)self.headers[#self.headers+1]={...};return #self.headers end
  function tip:AddSeparator()self.separated=true end
  function tip:AddLine(...)self.lines[#self.lines+1]={...};return #self.lines end
@@ -42,10 +43,11 @@ local raidToc=assert(io.open(repository.."LIVE/Holy_Storm_Raids/Holy_Storm_Raids
 assert(not raidToc:find("LibQTip",1,true),"Raid does not embed a second library copy")
 local tooltipAdapter=assert(io.open(repository.."LIVE/Holy_Storm_Characters/UI/StoredFeatureTabs.lua","rb")):read("*a")
 assert(not tooltipAdapter:find("HS_Player_DB",1,true)and not tooltipAdapter:find("HolyStormDB",1,true),"Raid tooltip does not access raw SavedVariables")
-local owner={};local rows={{cells={"Boss A","M",12},colors={[2]={r=.7,g=.3,b=1}}}}
-assert(HolyStorm.Tooltips:ShowTable("raid-best",owner,{anchor={point="LEFT",relativePoint="RIGHT",x=8,y=0},columns={{align="LEFT"},{align="CENTER"},{align="RIGHT"},},headers={{"Boss","Best","Kills"}},separator=true,rows=rows}))
+local owner={};local rows={{cells={"Boss A","M",12},colors={[2]={r=.7,g=.3,b=1}}}};local positionedOwner,positionedTooltip
+assert(HolyStorm.Tooltips:ShowTable("raid-best",owner,{anchor={point="LEFT",relativePoint="RIGHT",x=8,y=0},positioner=function(activeOwner,tooltip)positionedOwner,positionedTooltip=activeOwner,tooltip;tooltip.customPositioned=true end,columns={{align="LEFT"},{align="CENTER"},{align="RIGHT"},},headers={{"Boss","Best","Kills"}},separator=true,rows=rows}))
 local tip=active["HolyStorm:raid-best"]
 assert(tip.owner==owner and tip.anchor=="LEFT"and tip.relativePoint=="RIGHT"and tip.x==8 and tip.columnCount==3 and tip.justification[2]=="CENTER","owner, anchor and column layout")
+assert(positionedOwner==owner and positionedTooltip==tip and tip.shown and tip.customPositioned and tip.clamped,"optional shared positioning runs after LibQTip is shown, with screen clamping enabled")
 assert(tip.headers[1][1]=="Boss"and tip.lines[1][1]=="Boss A"and tip.lines[1][3]==12 and tip.colors["1:2"][1]==.7,"headers, cells and colors")
 assert(window.OnHide,"main window hide is hooked")
 assert(HolyStorm.Tooltips:ShowTable("raid-best",owner,{columns={{align="LEFT"}},rows={{"again"}}})and released==1,"reacquisition releases the previous tooltip")

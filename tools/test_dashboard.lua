@@ -91,27 +91,51 @@ local layout450=UI:CalculateDashboardLayout(860,450);assert(layout450.navButtonW
 assert(layout450.headerHeight>=75 and layout450.headerHeight<=90,"identity header remains compact at the standard window size")
 assert(UI:CalculateDashboardProfileHeight(0)==34 and UI:CalculateDashboardProfileHeight(1)==51 and UI:CalculateDashboardProfileHeight(3)==85,"profile panel height grows only with actual profile rows")
 assert(UI:CalculateDashboardProfileWidth(900)==300 and UI:CalculateDashboardProfileWidth(650)==247 and UI:CalculateDashboardProfileWidth(560)==220,"profile width scales with available content width and keeps a compact readable floor")
+assert(UI:CalculateDashboardProfileTextWidth(120)==75 and UI:CalculateDashboardProfileTextWidth(220)==175 and UI:CalculateDashboardProfileTextWidth(300)==255,"profile title and row widths reserve both the icon and right inset at narrow and wide sizes")
 for _,width in ipairs({900,650,560,500,280})do local header=UI:CalculateDashboardHeaderLayout(width,true);assert(header.profileWidth+10+header.identityWidth==width and header.textWidth>=1 and header.textLeft+header.textWidth<=header.identityWidth,"profile and identity bounds stay disjoint at header width "..width)end
 local noProfileHeader=UI:CalculateDashboardHeaderLayout(560,false);assert(noProfileHeader.profileWidth==0 and noProfileHeader.identityWidth==556 and noProfileHeader.textWidth>0,"missing profile releases the right header area for character identity")
 assert(not UI:CalculateDashboardHeaderLayout(280,true).showSpecIcon and UI:CalculateDashboardHeaderLayout(280,true).classSize==44,"very narrow headers hide the secondary icon without distorting the portrait")
 local dashboardSource=read(uiRoot.."UI/Framework/Dashboard.lua")
-assert(dashboardSource:find('profile:SetHeight(self:CalculateDashboardProfileHeight(#self.dashboardModel.profileRows))',1,true)and dashboardSource:find('row.icon:SetPoint("LEFT",frame,"LEFT",12,-(25+(index-1)*17))',1,true),"profile fields are anchored to the content-sized card rather than the tab region")
+assert(dashboardSource:find('profile:SetHeight(self:CalculateDashboardProfileHeight(#self.dashboardModel.profileRows))',1,true)and dashboardSource:find('row.icon:SetPoint("TOPLEFT",frame,"TOPLEFT",12,-(25+(index-1)*17))',1,true),"profile fields are anchored from the card's top inset rather than its vertical center")
 assert(dashboardSource:find('CreateFrame("Button",nil,headerContent,"BackdropTemplate")',1,true)and dashboardSource:find('identityText:SetWidth(headerLayout.textWidth)',1,true)and not dashboardSource:find('math.max(120,identity.frame:GetWidth()-150)',1,true),"profile and identity share their header parent and use the measured non-overflowing identity width")
 assert(dashboardSource:find('profile:SetShown(profileAvailable);profile:EnableMouse(profileAvailable==true)',1,true)and dashboardSource:find('profile:SetClipsChildren(true)',1,true),"unavailable profile data leaves no visible or interactive overlay")
 assert(dashboardSource:find('profile:SetPoint("TOPRIGHT",headerContent,"TOPRIGHT"',1,true)and not dashboardSource:find('profile:SetPoint("TOP",headerContent,"TOP"',1,true),"profile uses one top-right anchor rather than conflicting horizontal constraints")
+assert(dashboardSource:find('profile.title:SetWidth(math.max(1,headerLayout.profileWidth-24))',1,true)and dashboardSource:find('row.text:SetWidth(self:CalculateDashboardProfileTextWidth(headerLayout.profileWidth))',1,true),"profile text widths are recalculated when the dashboard header resizes")
 assert(dashboardSource:find('local function styleDashboardHeading(region)',1,true)and dashboardSource:find('local function styleDashboardBody(region)',1,true)and dashboardSource:find('styleDashboardHeading(frame.title)',1,true)and dashboardSource:find('styleDashboardBody(row.text)',1,true),"profile heading and body use shared canonical dashboard styles")
 assert(dashboardSource:find('frame.icon:SetPoint("TOPLEFT",frame,"TOPLEFT",12,-7)',1,true)and dashboardSource:find('frame.title:SetPoint("TOPLEFT",frame,"TOPLEFT",38,-9)',1,true),"provider header icons and labels are anchored inside their owning card")
 assert(dashboardSource:find('DASHBOARD_GUILD_RANK_SHORT',1,true),"character identity shows the localized rank value without a redundant label")
+assert(dashboardSource:find('positioner=function(activeOwner,tooltip)UI:PositionDashboardTooltip(activeOwner,tooltip)end',1,true),"LibQTip Dashboard cards use the shared screen-aware tooltip positioner")
 do
- local oldTooltip,oldParent=GameTooltip,UIParent
- local tooltip={width=300,height=160}
- function tooltip:GetWidth()return self.width end;function tooltip:GetHeight()return self.height end
- function tooltip:ClearAllPoints()self.point=nil end;function tooltip:SetPoint(...)self.point={...}end
- GameTooltip=tooltip;UIParent={GetWidth=function()return 1920 end,GetHeight=function()return 1080 end}
- local function owner(left,right,top,bottom)return{GetLeft=function()return left end,GetRight=function()return right end,GetTop=function()return top end,GetBottom=function()return bottom end}end
- local _,side,x,y=UI:PositionDashboardTooltip(owner(1800,1880,1060,1000));assert(side=="LEFT"and x==1492 and y==1072,"near-right and top-edge dashboard tooltip flips left and remains on screen")
- local _,bottomSide,bottomX,bottomY=UI:PositionDashboardTooltip(owner(10,50,40,0));assert(bottomSide=="RIGHT"and bottomX==58 and bottomY==168,"near-left and bottom-edge dashboard tooltip opens right and clamps vertically")
- GameTooltip,UIParent=oldTooltip,oldParent
+	local oldTooltip,oldParent=GameTooltip,UIParent;local oldCanvas,oldPrimary,oldSecondary,oldProfile,oldHeader,oldNav,oldWidgets=UI.dashboardCanvas,UI.primaryCards,UI.secondaryCards,UI.profilePanel,UI.headerPanel,UI.navFrame,UI.widgetFrames
+	local tooltip={width=300,height=160}
+	function tooltip:GetWidth()return self.width end;function tooltip:GetHeight()return self.height end
+	function tooltip:SetClampedToScreen(value)self.clamped=value end
+	function tooltip:ClearAllPoints()self.point=nil end;function tooltip:SetPoint(...)self.point={...}end
+	GameTooltip=tooltip;UI.dashboardCanvas=nil;UI.primaryCards=nil;UI.secondaryCards=nil;UI.profilePanel=nil;UI.headerPanel=nil;UI.navFrame=nil;UI.widgetFrames=nil
+	local function owner(left,right,top,bottom)return{GetLeft=function()return left end,GetRight=function()return right end,GetTop=function()return top end,GetBottom=function()return bottom end}end
+	local function screen(width,height)UIParent={GetWidth=function()return width end,GetHeight=function()return height end}end
+	screen(1920,1080)
+	local _,leftSide,leftX,leftY=UI:PositionDashboardTooltip(owner(1800,1880,1060,1000));assert(leftSide=="LEFT"and leftX==1492 and leftY==1072,"near-right and top-edge tooltip flips left and clamps vertically")
+	local _,rightSide,rightX,rightY=UI:PositionDashboardTooltip(owner(20,80,600,500));assert(rightSide=="RIGHT"and rightX==88 and rightY==630,"open space to the right wins for a centered card")
+	screen(320,800);tooltip.width=200;tooltip.height=100
+	local _,topSide,topX,topY=UI:PositionDashboardTooltip(owner(110,210,300,200));assert(topSide=="TOP"and topX==60 and topY==408,"a narrow scaled viewport uses the clear space above when both horizontal sides are too small")
+	local _,bottomSide,bottomX,bottomY=UI:PositionDashboardTooltip(owner(110,210,700,600));assert(bottomSide=="BOTTOM"and bottomX==60 and bottomY==592,"tooltip placement checks available space below as well")
+	assert(tooltip.clamped==true,"native GameTooltip remains clamped to the screen")
+
+	local function rect(left,right,top,bottom)return{GetLeft=function()return left end,GetRight=function()return right end,GetTop=function()return top end,GetBottom=function()return bottom end,IsShown=function()return true end}end
+	local scaleChoices={.75,1,1.25}
+	for _,scale in ipairs(scaleChoices)do
+		local factor=1/scale;screen(1920*factor,1080*factor);tooltip.width=300*factor;tooltip.height=160*factor
+		local canvas=rect(510*factor,1410*factor,900*factor,200*factor);local equipment=rect(520*factor,800*factor,700*factor,606*factor);local mythic=rect(807*factor,1097*factor,700*factor,606*factor);local raid=rect(1104*factor,1400*factor,700*factor,606*factor)
+		UI.dashboardCanvas=canvas;UI.primaryCards={equipment=equipment,mythicPlus=mythic,raid=raid};UI.secondaryCards={}
+		local _,cardSide,cardX,cardY=UI:PositionDashboardTooltip(equipment)
+		assert(cardSide=="LEFT"and cardX>=8 and cardX+tooltip.width<=UIParent:GetWidth()-8 and cardY>=tooltip.height+8 and cardY<=UIParent:GetHeight()-8,"equipment tooltip uses open space outside the full card row at UI scale "..scale)
+		local function overlaps(x,y,w,h,other)return math.min(x+w,other:GetRight())>math.max(x,other:GetLeft())and math.min(y,other:GetTop())>math.max(y-h,other:GetBottom())end
+		assert(not overlaps(cardX,cardY,tooltip.width,tooltip.height,mythic)and not overlaps(cardX,cardY,tooltip.width,tooltip.height,raid),"equipment tooltip avoids the adjacent Mythic+ and Raid cards")
+		local _,mythicSide,mx,my=UI:PositionDashboardTooltip(mythic);assert(mythicSide=="TOP"and not overlaps(mx,my,tooltip.width,tooltip.height,equipment)and not overlaps(mx,my,tooltip.width,tooltip.height,raid),"Mythic+ tooltip avoids both neighboring metric cards at UI scale "..scale)
+	end
+	UI.dashboardCanvas,UI.primaryCards,UI.secondaryCards,UI.profilePanel,UI.headerPanel,UI.navFrame,UI.widgetFrames=oldCanvas,oldPrimary,oldSecondary,oldProfile,oldHeader,oldNav,oldWidgets
+	GameTooltip,UIParent=oldTooltip,oldParent
 end
 GameFontNormal={name="GameFontNormal"};GameFontHighlightSmall={name="GameFontHighlightSmall"}
 local dimColor={.2,.2,.2,0}
@@ -120,18 +144,32 @@ local function mockRegion()
  function region:SetFontObject(value)self.state.font=value;self.state.color=dimColor;self.state.alpha=0 end
  function region:SetTextColor(r,g,b,a)self.state.color={r,g,b,a}end
  function region:SetAlpha(value)self.state.alpha=value end
- function region:SetText(value)self.state.text=value end
- function region:ClearAllPoints()end;function region:SetPoint()end;function region:SetJustifyH()end;function region:SetWordWrap()end
- function region:SetSize()end;function region:SetTexture(value)self.state.texture=value end;function region:SetTexCoord()end;function region:Show()self.state.shown=true end;function region:Hide()self.state.shown=false end
+	function region:SetText(value)self.state.text=value end
+	function region:ClearAllPoints()self.state.points={}end;function region:SetPoint(...)self.state.points=self.state.points or{};self.state.points[#self.state.points+1]={...}end;function region:SetJustifyH()end;function region:SetWordWrap(value)self.state.wordWrap=value end;function region:SetNonSpaceWrap(value)self.state.nonSpaceWrap=value end;function region:SetMaxLines(value)self.state.maxLines=value end
+ function region:SetSize()end;function region:SetWidth(value)self.state.width=value end;function region:SetTexture(value)self.state.texture=value end;function region:SetTexCoord()end;function region:Show()self.state.shown=true end;function region:Hide()self.state.shown=false end
  return region
 end
 local profileMock={title=mockRegion(),rows={}}
 function profileMock:SetAlpha(value)self.alpha=value end
+function profileMock:GetWidth()return 220 end
 function profileMock:CreateTexture()return mockRegion()end
 function profileMock:CreateFontString()return mockRegion()end
 UI.profilePanel=profileMock;UI:UpdateProfilePanel(model)
 assert(profileMock.alpha==1 and profileMock.title.state.font==GameFontNormal and profileMock.title.state.color[1]==1 and profileMock.title.state.alpha==1,"profile heading reapplies its canonical gold style after font-object assignment")
 assert(profileMock.rows[1].text.state.font==GameFontHighlightSmall and profileMock.rows[1].text.state.color[1]==.92 and profileMock.rows[1].text.state.alpha==1 and profileMock.rows[1].icon.state.alpha==1,"profile rows and icons finish refresh in the canonical visible state")
+assert(#profileMock.rows==3 and profileMock.title.state.text==locale.DASHBOARD_PROFILE_TITLE,"the complete profile displays its heading and all three configured rows")
+assert(profileMock.title.state.width==196 and profileMock.title.state.wordWrap==false and profileMock.title.state.maxLines==1,"profile title stays within the panel's horizontal inset")
+for index,row in ipairs(profileMock.rows)do local point=row.icon.state.points[1];local textPoint=row.text.state.points[1];assert(row.icon.state.shown and row.text.state.shown and point[1]=="TOPLEFT"and point[2]==profileMock and point[5]==-(25+(index-1)*17),"profile row "..index.." stays top-anchored and visible in order");assert(#row.text.state.points==1 and textPoint[1]=="LEFT"and textPoint[2]==row.icon and row.text.state.width==175,"profile row "..index.." text aligns to its icon and stays inside the right inset")end
+assert(profileMock.rows[1].text.state.wordWrap==false and profileMock.rows[1].text.state.nonSpaceWrap==false and profileMock.rows[1].text.state.maxLines==1,"profile text stays on one line within its measured width")
+local priorContext=context;local priorUnitGUID=UnitGUID;local priorSummary=HolyStorm.CharacterUI.GetDashboardSummary;local priorResolve=HolyStorm.CharacterUI.ResolveContext;local selectedGUID="Player-Other";UnitGUID=function()return selectedGUID end
+HolyStorm.CharacterUI.GetDashboardSummary=function(_,guid)assert(guid==selectedGUID);return latestSnapshot end;HolyStorm.CharacterUI.ResolveContext=function(_,guid)assert(guid==selectedGUID);return context end
+context={characterUUID="Player-Other",accountUUID="Account-1",record={profile={}}};local switched=UI:BuildDashboardModel();assert(switched.guid=="Player-Other"and#switched.profileRows==2 and switched.profileRows[1].kind=="name"and switched.profileRows[2].kind=="birthday","switching to a character with missing profile fields keeps the available account rows")
+UI:UpdateProfilePanel(switched);assert(profileMock.rows[1].text.state.shown and profileMock.rows[2].text.state.shown and not profileMock.rows[3].text.state.shown and not profileMock.rows[3].icon.state.shown,"character switch hides stale role data while preserving the available rows")
+context={characterUUID="Player-Local",accountUUID="Account-1",record={profile={}}};HolyStorm.Data.PlayerStore.Get=function()return{metadata={displayName="Richard"}}end;local sparse=UI:BuildDashboardModel();assert(#sparse.profileRows==1 and sparse.profileRows[1].kind=="name","profile with birthday and role absent returns only its configured name")
+UI:UpdateProfilePanel(sparse);assert(profileMock.rows[1].text.state.shown and not profileMock.rows[2].text.state.shown,"partial profile keeps its available value visible without stale fields")
+HolyStorm.Data.PlayerStore.Get=function()return{metadata={}}end;local emptyProfile=UI:BuildDashboardModel();assert(not emptyProfile.profileAvailable and#emptyProfile.profileRows==0,"profile with all optional fields absent is unavailable")
+UI:UpdateProfilePanel(emptyProfile);assert(not profileMock.rows[1].text.state.shown and not profileMock.rows[1].icon.state.shown,"switching to a character with no profile information clears every old row")
+selectedGUID="Player-Local";context=priorContext;HolyStorm.CharacterUI.GetDashboardSummary=priorSummary;HolyStorm.CharacterUI.ResolveContext=priorResolve;UnitGUID=priorUnitGUID;HolyStorm.Data.PlayerStore.Get=function()return{metadata={displayName="Richard",birthdate="14 March"}}end;UI:UpdateProfilePanel(model)
 local compactLayout=UI:CalculateDashboardLayout(600,380);assert(compactLayout.navButtonWidth<89,"narrow layouts have a clear icon-only tab threshold")
 local none,zeroColumns=UI:CalculateDashboardProviderLayout(0,800);local one,oneColumn=UI:CalculateDashboardProviderLayout(1,800);local two,twoColumns=UI:CalculateDashboardProviderLayout(2,800);local three,threeColumns=UI:CalculateDashboardProviderLayout(3,800)
 assert(#none==0 and zeroColumns==0 and oneColumn==1 and one[1].width==800,"no providers leave no placeholder; one widget uses the full row")

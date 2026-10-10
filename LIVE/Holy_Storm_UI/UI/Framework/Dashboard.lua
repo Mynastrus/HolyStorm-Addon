@@ -177,6 +177,9 @@ end
 function UI:CalculateDashboardProfileHeight(rowCount)
  return 34+math.max(0,tonumber(rowCount)or 0)*17
 end
+function UI:CalculateDashboardProfileTextWidth(profileWidth)
+ return math.max(1,(tonumber(profileWidth)or 1)-45)
+end
 function UI:CalculateDashboardProfileWidth(width)
  width=math.max(1,tonumber(width)or 900)
  return math.min(300,math.max(220,width*.38),math.max(1,width-160))
@@ -192,23 +195,52 @@ function UI:CalculateDashboardHeaderLayout(width,profileAvailable)
  if specSize>0 then textLeft=textLeft+specGap+specSize end
  return{profileWidth=profileWidth,identityWidth=identityWidth,classSize=classSize,specSize=specSize,classLeft=classLeft,specGap=specGap,textGap=textGap,textLeft=textLeft,textWidth=math.max(1,identityWidth-textLeft-4),showSpecIcon=specSize>0}
 end
-function UI:PositionDashboardTooltip(owner)
- local tooltip=GameTooltip;local screen=UIParent
- if not tooltip or not owner then return false end
- local left,right,top,bottom=owner.GetLeft and owner:GetLeft(),owner.GetRight and owner:GetRight(),owner.GetTop and owner:GetTop(),owner.GetBottom and owner:GetBottom()
- local screenWidth=screen and screen.GetWidth and screen:GetWidth();local screenHeight=screen and screen.GetHeight and screen:GetHeight()
- local tooltipWidth=tooltip.GetWidth and tooltip:GetWidth()or 0;local tooltipHeight=tooltip.GetHeight and tooltip:GetHeight()or 0
- if screen and left and right and top and bottom and screenWidth and screenHeight and tooltip.ClearAllPoints and tooltip.SetPoint then
-  local gap=8;local side=screenWidth-right>=tooltipWidth+gap and"RIGHT"or"LEFT"
-  local x=side=="RIGHT"and(right+gap)or(left-tooltipWidth-gap)
-  x=math.max(8,math.min(math.max(8,screenWidth-tooltipWidth-8),x))
-  local y=(top+bottom+tooltipHeight)/2
-  y=math.max(tooltipHeight+8,math.min(math.max(tooltipHeight+8,screenHeight-8),y))
-  tooltip:ClearAllPoints();tooltip:SetPoint("TOPLEFT",screen,"BOTTOMLEFT",x,y)
-  return true,side,x,y
- end
- tooltip:ClearAllPoints();tooltip:SetPoint("LEFT",owner,"RIGHT",8,0)
- return true,"RIGHT"
+function UI:PositionDashboardTooltip(owner,tooltip)
+	tooltip=tooltip or GameTooltip;local screen=UIParent
+	if not tooltip or not owner then return false end
+	if tooltip.SetClampedToScreen then tooltip:SetClampedToScreen(true)end
+	local function bounds(frame)
+		if not frame or not frame.GetLeft or not frame.GetRight or not frame.GetTop or not frame.GetBottom then return nil end
+		local left,right,top,bottom=frame:GetLeft(),frame:GetRight(),frame:GetTop(),frame:GetBottom()
+		if not left or not right or not top or not bottom then return nil end
+		return{left=left,right=right,top=top,bottom=bottom}
+	end
+	local function clamp(value,minimum,maximum)if maximum<minimum then return minimum end;return math.max(minimum,math.min(maximum,value))end
+	local source=bounds(owner);local screenWidth=screen and screen.GetWidth and screen:GetWidth();local screenHeight=screen and screen.GetHeight and screen:GetHeight()
+	local tooltipWidth=tooltip.GetWidth and tooltip:GetWidth()or 0;local tooltipHeight=tooltip.GetHeight and tooltip:GetHeight()or 0
+	if not tooltip.ClearAllPoints or not tooltip.SetPoint then return false end
+	if not screen or not source or not screenWidth or not screenHeight then
+		tooltip:ClearAllPoints();tooltip:SetPoint("LEFT",owner,"RIGHT",8,0);return true,"RIGHT"
+	end
+	local gap,edge=8,8;local canvas=bounds(self.dashboardCanvas);local obstacles={}
+	local function addObstacle(frame)
+		if not frame then return end
+		if frame.IsShown and not frame:IsShown()then return end
+		local rect=bounds(frame);if rect then obstacles[#obstacles+1]=rect end
+	end
+	addObstacle(owner);addObstacle(self.profilePanel);addObstacle(self.headerPanel);addObstacle(self.navFrame)
+	for _,group in ipairs({self.primaryCards or{},self.secondaryCards or{}})do for _,frame in pairs(group)do addObstacle(frame)end end
+	for _,frame in ipairs(self.widgetFrames or{})do addObstacle(frame)end
+	local best
+	local function consider(base,side,order)
+		local x,y,available
+		if side=="RIGHT"then x=base.right+gap;y=(source.top+source.bottom+tooltipHeight)/2;available=screenWidth-edge-x-tooltipWidth
+		elseif side=="LEFT"then x=base.left-gap-tooltipWidth;y=(source.top+source.bottom+tooltipHeight)/2;available=x-edge
+		elseif side=="TOP"then x=(source.left+source.right-tooltipWidth)/2;y=base.top+gap+tooltipHeight;available=screenHeight-edge-y
+		else x=(source.left+source.right-tooltipWidth)/2;y=base.bottom-gap;available=y-tooltipHeight-edge end
+		x=clamp(x,edge,screenWidth-tooltipWidth-edge);y=clamp(y,tooltipHeight+edge,screenHeight-edge)
+		local fits=available>=-0.001 and x>=edge and x+tooltipWidth<=screenWidth-edge and y>=tooltipHeight+edge and y<=screenHeight-edge
+		local rect={left=x,right=x+tooltipWidth,top=y,bottom=y-tooltipHeight};local overlap=0
+		for _,other in ipairs(obstacles)do local w=math.max(0,math.min(rect.right,other.right)-math.max(rect.left,other.left));local h=math.max(0,math.min(rect.top,other.top)-math.max(rect.bottom,other.bottom));overlap=overlap+w*h end
+		local dx=math.max(0,source.left-rect.right,rect.left-source.right);local dy=math.max(0,source.bottom-rect.top,rect.bottom-source.top)
+		local candidate={side=side,x=x,y=y,fits=fits,overlap=overlap,distance=dx+dy,order=order}
+		if not best or(candidate.fits and not best.fits)or(candidate.fits==best.fits and(candidate.overlap<best.overlap or(candidate.overlap==best.overlap and(candidate.distance<best.distance or(candidate.distance==best.distance and order<best.order)))))then best=candidate end
+	end
+	local directions={"RIGHT","LEFT","TOP","BOTTOM"}
+	if canvas then for order,side in ipairs(directions)do consider(canvas,side,order)end end
+	for order,side in ipairs(directions)do consider(source,side,order+4)end
+	tooltip:ClearAllPoints();tooltip:SetPoint("TOPLEFT",screen,"BOTTOMLEFT",best.x,best.y)
+	return true,best.side,best.x,best.y
 end
 function UI:CalculateDashboardWidgetHeight(providers,availableHeight)
  local count=math.min(3,#(providers or{}));if count==0 then return 0 end
@@ -333,6 +365,8 @@ function UI:LayoutDashboard()
   profile:ClearAllPoints();profile:SetWidth(headerLayout.profileWidth)
   profile:SetHeight(self:CalculateDashboardProfileHeight(#self.dashboardModel.profileRows));profile:SetClipsChildren(true)
   profile:SetPoint("TOPRIGHT",headerContent,"TOPRIGHT",-2,-(headerContent:GetHeight()-profile:GetHeight())/2)
+  profile.title:SetWidth(math.max(1,headerLayout.profileWidth-24))
+  for _,row in ipairs(profile.rows)do row.text:SetWidth(self:CalculateDashboardProfileTextWidth(headerLayout.profileWidth))end
  end
  local identity=self.dashboardWidgets.identity;identity.frame:SetParent(headerContent);identity.frame:ClearAllPoints();identity.frame:SetPoint("TOPLEFT",headerContent,"TOPLEFT",0,0);if profileAvailable then identity.frame:SetPoint("BOTTOMRIGHT",profile,"BOTTOMLEFT",-8,0)else identity.frame:SetPoint("BOTTOMRIGHT",headerContent,"BOTTOMRIGHT",-4,0)end;identity.frame:Show()
  identity.frame:SetClipsChildren(true)
@@ -375,13 +409,13 @@ function UI:LayoutDashboard()
 end
 
 function UI:UpdateProfilePanel(model)
- local frame=self.profilePanel;frame:SetAlpha(1);frame.title:SetText(L["DASHBOARD_PROFILE_TITLE"]);styleDashboardHeading(frame.title);frame.title:ClearAllPoints();frame.title:SetPoint("TOPLEFT",frame,"TOPLEFT",12,-8)
+ local frame=self.profilePanel;frame:SetAlpha(1);frame.title:SetText(L["DASHBOARD_PROFILE_TITLE"]);styleDashboardHeading(frame.title);frame.title:ClearAllPoints();frame.title:SetPoint("TOPLEFT",frame,"TOPLEFT",12,-8);frame.title:SetWidth(math.max(1,(frame.GetWidth and frame:GetWidth()or 300)-24));keepOneLine(frame.title)
  for _,row in ipairs(frame.rows)do row.icon:Hide();row.text:Hide()end
  local rows=model.profileRows or{}
  for index,value in ipairs(rows)do
   local row=frame.rows[index]
   if not row then row={icon=frame:CreateTexture(nil,"ARTWORK"),text=frame:CreateFontString(nil,"OVERLAY","GameFontHighlightSmall")};row.icon:SetSize(17,17);frame.rows[index]=row end
-  row.icon:ClearAllPoints();row.icon:SetPoint("LEFT",frame,"LEFT",12,-(25+(index-1)*17));row.text:ClearAllPoints();row.text:SetPoint("LEFT",row.icon,"RIGHT",6,0);row.text:SetPoint("RIGHT",frame,"RIGHT",-10,0);row.text:SetJustifyH("LEFT");row.text:SetWordWrap(false);row.text:SetText(value.text);styleDashboardBody(row.text)
+  row.icon:ClearAllPoints();row.icon:SetPoint("TOPLEFT",frame,"TOPLEFT",12,-(25+(index-1)*17));row.text:ClearAllPoints();row.text:SetPoint("LEFT",row.icon,"RIGHT",6,0);row.text:SetWidth(self:CalculateDashboardProfileTextWidth(frame.GetWidth and frame:GetWidth()or 300));row.text:SetJustifyH("LEFT");row.text:SetWordWrap(false);if row.text.SetNonSpaceWrap then row.text:SetNonSpaceWrap(false)end;if row.text.SetMaxLines then row.text:SetMaxLines(1)end;row.text:SetText(value.text);styleDashboardBody(row.text)
   if value.role then row.icon:SetTexture("Interface\\LFGFrame\\UI-LFG-ICON-ROLES");row.icon:SetTexCoord(unpack(value.role))elseif value.kind=="birthday"then row.icon:SetTexture("Interface\\Calendar\\UI-Calendar-Event-PVP");row.icon:SetTexCoord(0,1,0,1)elseif value.kind=="name"then row.icon:SetTexture("Interface\\FriendsFrame\\UI-Toast-FriendOnlineIcon");row.icon:SetTexCoord(0,1,0,1)else row.icon:SetTexture("Interface\\Icons\\INV_Misc_QuestionMark");row.icon:SetTexCoord(0,1,0,1)end
   row.icon:SetAlpha(1);row.icon:Show();row.text:Show()
  end
@@ -450,7 +484,7 @@ function UI:ShowMetricTooltip(kind,owner)
  if kind=="raid"then
   local rows=self:BuildRaidTooltipRows(model)
   local tooltips=HolyStorm.Tooltips
-  if#rows>0 and tooltips then return tooltips:ShowTable("raid-best",owner,{anchor={point="LEFT",relativePoint="RIGHT",x=8,y=0},columns={{align="LEFT"},{align="CENTER"},{align="RIGHT"}},headers={{raidLocale["RAID_COLUMN_BOSS"],raidLocale["RAID_COLUMN_BEST"],raidLocale["RAID_COLUMN_KILLS"]}},separator=true,rows=rows})end
+		if#rows>0 and tooltips then return tooltips:ShowTable("raid-best",owner,{anchor={point="LEFT",relativePoint="RIGHT",x=8,y=0},positioner=function(activeOwner,tooltip)UI:PositionDashboardTooltip(activeOwner,tooltip)end,columns={{align="LEFT"},{align="CENTER"},{align="RIGHT"}},headers={{raidLocale["RAID_COLUMN_BOSS"],raidLocale["RAID_COLUMN_BEST"],raidLocale["RAID_COLUMN_KILLS"]}},separator=true,rows=rows})end
  end
   showDashboardTooltip(owner,function(tooltip)
    tooltip:SetText(colorText(self.primaryCards[kind].title:GetText(),1,.78,.18))
