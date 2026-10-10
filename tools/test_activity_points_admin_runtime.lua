@@ -66,7 +66,7 @@ local function copy(value)
     local result={};for key,item in pairs(value)do result[copy(key)]=copy(item)end;return result
 end
 local modules={}
-local HolyStorm={Utils={DeepCopy=copy,SafeCall=function(_,callback,...)return pcall(callback,...)end},Data={GuildActivityPointsStore={GetGuild=function()return guild end},GuildStore={GetCurrent=function()return{roster={}}end}},GuildManagement={GetGuildId=function()return"guild"end},Events={},UI={}}
+local HolyStorm={Utils={DeepCopy=copy,SafeCall=function(_,callback,...)return pcall(callback,...)end},Data={GuildActivityPointsStore={GetGuild=function()return guild end,GetRules=function()return guild.rules end},GuildStore={GetCurrent=function()return{roster={}}end}},GuildManagement={GetGuildId=function()return"guild"end},Events={},UI={}}
 function HolyStorm:RegisterRequiredModule(id)local module={};modules[id]=module;return module end
 function HolyStorm:ApplyModuleMetadata(module,metadata)module.metadata=metadata end
 function HolyStorm.Events:Emit()end

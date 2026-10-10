@@ -28,7 +28,11 @@ One central policy classifies a snapshot as `FULL_GUILD`, `MAJORITY_GUILD`, `PAR
 
 DataManager schema `guild-activity` stores `guildManagement.activity.guilds[guildId]` with bounded authoritative account shards and small summary indexes. A shard contains immutable origin Character UUID, current owner/writer, revision/timestamp, characters, detailed events, daily/weekly buckets, lifetime facts, and an optional open session. UI reads summaries and range aggregates rather than copying/scanning the entire database.
 
+Capture writes use the `GuildActivityStore` schema-owner contract from DataManager and detach only the changed shard and summary before replacing those two values. This avoids copying the complete guild/activity root, which may contain every account's history. Duplicate detailed event IDs are checked through the targeted DataManager existence API before loading the shard. Summary lifetime data is projected from scalar aggregate fields; its per-character map is not copied and then discarded.
+
 Daily boundaries use Unix/UTC day buckets, avoiding local DST-length days. `GetAggregate(account, startAt, endAt, options)` supports arbitrary factual ranges and optional Character UUID; `GetHistory` adds type/provider/character filters and a bounded result; `GetOverview` uses summary indexes plus cached aggregates. Cache keys include shard revision and are invalidated after commits/imports. Partial weekly overlap is explicitly marked approximate.
+
+`HS_GUILD_ACTIVITY_UPDATED(accountUUID, change)` keeps the original account argument and may provide a change descriptor. Local detail captures pass the accepted event, and chat flushes pass daily aggregate facts; Activity Points processes those facts directly. State-only checkpoints do not replay history. Imports still trigger one full account reconciliation through `HS_GUILD_ACTIVITY_SYNCED`, preserving catch-up behavior for received snapshots.
 
 Recent online detail is retained for 90 days. Raid, Mythic+, and event occurrences remain detailed for 730 days. Daily aggregates remain for 180 days, then merge deterministically into Monday-aligned UTC weekly buckets retained for 520 weeks. Lifetime aggregates remain. Detail is additionally capped at 2,500 events per account. Moving a day to a week never re-adds lifetime facts, so repeated compaction cannot double count.
 
