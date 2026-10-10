@@ -1,8 +1,8 @@
-local addonVersion="1.1.0"
+local addonVersion="1.2.0"
 local HolyStorm=LibStub("AceAddon-3.0"):GetAddon("Holy_Storm")
 local L=LibStub("AceLocale-3.0"):GetLocale("Holy_Storm_Logs")
 local Logs=HolyStorm:RegisterRequiredModule("Logs")
-HolyStorm:ApplyModuleMetadata(Logs,{displayName=L["TITLE"],internalName="logs",version=addonVersion,category="required",description=L["DESCRIPTION"],permissions={"logs-view"},dependencies={"core","ui"},enabledByDefault=true})
+HolyStorm:ApplyModuleMetadata(Logs,{displayName=L["TITLE"],internalName="logs",version=addonVersion,category="required",description=L["DESCRIPTION"],permissions={{id="logs-view",category="Logs"},{id="logs-clear",category="Logs"}},dependencies={"core","ui"},enabledByDefault=true})
 
 local FILTER_KEYS={level=true,module=true,category=true,direction=true,event=true,search=true}
 local SEARCH_CONTEXT={"from","to","domain","objectId","messageKind","transmissionId","event","eventName"}

@@ -41,24 +41,11 @@ for _,relativePath in ipairs({
     for key in source:gmatch('L%["([^"\r\n]+)"%]')do requireKey(key,relativePath)end
 end
 
-local permissionIds,categories={},{}
-local registrySource=read(addonRoot.."Core/Permissions/PermissionRegistry.lua")
-local definitionBlock=assert(registrySource:match("local definitions%s*=%s*{(.-)}%s*Registry%.legacyIds"))
-for id,category in definitionBlock:gmatch('%["([^"]+)"%]%s*=%s*"([^"]+)"')do permissionIds[id]=true;categories[category]=true end
-
-for tocLine in io.lines(addonRoot.."Holy_Storm.toc")do
-    local relativePath=tocLine:gsub("\\","/")
-    if relativePath:match("^Modules/.+%.lua$")then
-        local source=read(addonRoot..relativePath)
-        for id,category in source:gmatch('id%s*=%s*"([a-z][a-z0-9%-]+)"%s*,%s*category%s*=%s*"([^"]+)"')do permissionIds[id]=true;categories[category]=true end
-    end
-end
+local categories={}
+-- Permission labels and categories are derived from the module contracts found
+-- below; the central registry intentionally contains no static inventory.
 
 local function permissionKey(prefix,id)return prefix..id:gsub("[^%w]","_"):upper()end
-for id in pairs(permissionIds)do
-    requireKey(permissionKey("PERMISSION_",id),"permission "..id)
-    requireKey(permissionKey("PERMISSION_DESC_",id),"permission "..id)
-end
 
 local function balancedTable(source,openIndex)
     local depth,quote,escaped,lineComment=0,nil,false,false
@@ -114,6 +101,7 @@ local function checkPermissionEntry(entry,source)
     if entry:match("^%s*permission%s*%(")then return end
     local id=entry:match("^%s*[\"']([a-z][a-z0-9%-]*)[\"']%s*$")or entry:match("id%s*=%s*[\"']([a-z][a-z0-9%-]*)[\"']")
     if not id then return end
+    local category=entry:match("category%s*=%s*[\"']([^\"']+)[\"']");if category then categories[category]=true end
     local labelKey=entry:match("labelKey%s*=%s*[\"']([^\"']+)[\"']")
     local descriptionKey=entry:match("descriptionKey%s*=%s*[\"']([^\"']+)[\"']")
     local hasLabel=entry:match("[%s,]label%s*=")~=nil
@@ -128,7 +116,7 @@ for path in sourceProcess:lines()do sourceFiles[#sourceFiles+1]=path end
 assert(sourceProcess:close(),"permission source enumeration failed")
 for _,path in ipairs(sourceFiles)do
     local source=read(path)
-    if source:find("RegisterModule",1,true)or source:find("ApplyModuleMetadata",1,true)or source:find("RegisterRequiredModule",1,true)then
+    if source:find("RegisterModule",1,true)or source:find("ApplyModuleMetadata",1,true)or source:find("RegisterRequiredModule",1,true)or source:find("local corePermissions",1,true)then
         local cursor=1
         while true do
             local first,last=source:find("permissions%s*=%s*{",cursor)
@@ -173,8 +161,8 @@ local managementSource=read(workspace.."/LIVE/Holy_Storm_Guild/GuildManagement.l
 for _,id in ipairs({"guild.notes","guild.absences","guild.activity","guild.activityPoints"})do assert(managementSource:find('"'..id..'"',1,true),"Guild Management must use stable permission category ID "..id)end
 assert(not read(uiRoot.."UI/Administration/Permissions.lua"):find('definition.category or"Core"):gsub',1,true),"Policy categories must not derive locale IDs from display text")
 for _,key in ipairs({
-    "GROUP_GUILD_LEADERSHIP","GROUP_OFFICERS","GROUP_GUILD_MEMBER",
-    "GROUP_DESC_GUILD_LEADERSHIP","GROUP_DESC_OFFICERS","GROUP_DESC_GUILD_MEMBER",
+    "GROUP_GUILD_LEADERSHIP","GROUP_OFFICERS","GROUP_GUILD_MEMBER","GROUP_ADMINISTRATOR",
+    "GROUP_DESC_GUILD_LEADERSHIP","GROUP_DESC_OFFICERS","GROUP_DESC_GUILD_MEMBER","GROUP_DESC_ADMINISTRATOR",
     "GENERAL","MEMBERS","PERMISSIONS","PERMISSION_MATRIX","RULES_FILTERS","MANAGERS","EFFECTIVE_MEMBERS","MODULE_SETTINGS","ANALYSIS","STATUS",
     "PERMISSION_ID","DEFAULT_GROUPS","MATRIX_FULL_ACCESS","MATRIX_ASSIGNED","MATRIX_EMPTY","PERMISSION_DETAIL_FORMAT",
     "MEMBERSHIP_MANUAL","MEMBERSHIP_SOURCE_FORMAT","CHARACTER_ID","EMPTY_MEMBERS","EMPTY_PERMISSIONS","GROUP_DELETE_IMPACT",

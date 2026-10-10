@@ -103,9 +103,9 @@ local beforeDenied=state.version;assert(not P:CommitChange({action="RESET"},{acc
 local partial=state.groups[ids.MEMBER];partial.characterMembers=nil;partial.accountMembers=nil;partial.guildRanks=nil;partial.filterIds=nil;partial.ruleIds=nil;partial.permissions=nil
 P:Invalidate("PARTIAL_LEGACY_GROUP");assert(P:Recalculate());assert(P:GetEffectiveGroups("acct-anna","Anna")[ids.MEMBER]);assert(next(P:GetEffectivePermissions("acct-anna","Anna"))==nil);P:UpgradeState(state)
 
--- Q: exactly three protected system groups survive reset; system membership is not mutable.
-assert(HolyStorm.Utils.TableCount(P:GetGroups())==3,"reset must restore exactly three system groups")
-assert(not P:DeleteGroup(ids.LEADERSHIP) and not P:DeleteGroup(ids.OFFICERS) and not P:DeleteGroup(ids.MEMBER))
+-- Q: protected system groups survive reset; system membership is not mutable.
+assert(HolyStorm.Utils.TableCount(P:GetGroups())==4,"reset must restore all four system groups")
+assert(not P:DeleteGroup(ids.LEADERSHIP) and not P:DeleteGroup(ids.OFFICERS) and not P:DeleteGroup(ids.MEMBER) and not P:DeleteGroup(ids.ADMINISTRATOR))
 local removedSystem,removedSystemReason=P:RemoveMembership(ids.MEMBER,"system","GUILD_MEMBER");assert(not removedSystem and removedSystemReason=="SYSTEM_MEMBERSHIP")
 
 -- R: character and guild-rank memberships remain distinct dynamic sources.
@@ -130,7 +130,7 @@ assert(R:Evaluate({field="character.level",operator=">=",value=80},P:BuildContex
 local nested={logic="AND",children={{field="character.level",operator=">=",value=80},{logic="NOT",children={{field="character.class",operator="=",value="MAGE"}}}}};assert(R:Evaluate(nested,P:BuildContext("acct-maristi","Maristi")));assert(not R:Validate({field="character.level",operator="contains",value="8"}))
 -- V: defaults initialize a newly known permission once and never overwrite a manual removal.
 assert(HolyStorm.PermissionRegistry:RegisterPermission({id="default-once",module="Test",category="Test",defaults={member=true}}));local defaultsMember=P:GetGroup(ids.MEMBER);assert(defaultsMember.permissions["default-once"]==true,"new permission default was not initialized");defaultsMember.permissions["default-once"]=nil;assert(P:SaveGroup(defaultsMember));assert(HolyStorm.PermissionRegistry:RegisterPermission({id="default-once",module="Test",category="Test",defaults={member=true}}));P:UpgradeState(state);assert(P:GetGroup(ids.MEMBER).permissions["default-once"]==nil,"module re-registration or upgrade overwrote an administrator change")
-local otherGuild=P:CreateState("realm:other");assert(next(otherGuild.filters)==nil and next(otherGuild.rules)==nil and HolyStorm.Utils.TableCount(otherGuild.groups)==3,"guild state leaked across guilds")
+local otherGuild=P:CreateState("realm:other");assert(next(otherGuild.filters)==nil and next(otherGuild.rules)==nil and HolyStorm.Utils.TableCount(otherGuild.groups)==4,"guild state leaked across guilds")
 assert(P:Recalculate(),"effective membership recalculation failed")
 fullCharacterReads,projectionReads,rosterSummaryReads=0,0,0
 assert(P:Recalculate(),"projected membership recalculation failed")
@@ -185,4 +185,31 @@ currentGuid="Klaus";local localDenied,localDeniedReason=P:SaveFilter({id="denied
 -- AC: invalid names/descriptions and unsafe rule references are rejected before persistence.
 assert(not P:SaveFilter({id="bad-name",name="   ",root={field="test.boolean",operator="true"}},"global"));assert(not P:SaveFilter({id="bad-description",name="Bad",description=string.rep("x",1025),root={field="test.boolean",operator="true"}},"global"));assert(P:CreateGroup({id="rule-reference",name="Rule Reference",permissions={}}));local ruleReference=P:GetGroup("rule-reference");ruleReference.ruleIds={"standalone-rule"};assert(P:SaveGroup(ruleReference));assert(not P:DeleteRule("standalone-rule","global"));ruleReference=P:GetGroup("rule-reference");ruleReference.ruleIds={};assert(P:SaveGroup(ruleReference));assert(P:DeleteRule("standalone-rule","global"))
 
-print("Permission engine scenarios A-AC passed")
+-- AD: the protected Administrator group grants registered rights only to explicit leader-managed members.
+assert(ids.ADMINISTRATOR=="guild-administrators");local administrator=P:GetGroup(ids.ADMINISTRATOR);assert(administrator and administrator.system and administrator.systemRule=="ADMINISTRATOR" and administrator.nameKey=="GROUP_ADMINISTRATOR")
+assert(next(administrator.characterMembers)==nil and next(administrator.accountMembers)==nil and next(administrator.guildRanks)==nil,"Administrator has no implicit members")
+assert(administrator.managerGroupIds[1]==ids.LEADERSHIP and administrator.permissions["future-permission"]==true,"Administrator is leader-managed and receives every registered permission")
+local fullAdminPermissions=HolyStorm.Utils.DeepCopy(state.groups[ids.ADMINISTRATOR].permissions);state.groups[ids.ADMINISTRATOR].permissions={ ["future-permission"]=true };HolyStorm.GroupManager:EnsureSystemGroups(state)
+for permission in pairs(HolyStorm.PermissionRegistry.keys)do assert(state.groups[ids.ADMINISTRATOR].permissions[permission]==true,"Administrator migration restores registered grant "..permission)end
+state.groups[ids.ADMINISTRATOR].permissions=fullAdminPermissions
+assert(not P:HasPermission("acct-klaus","Klaus","future-permission"),"unassigned members do not inherit Administrator permissions")
+local deniedAdmin=HolyStorm.Utils.DeepCopy(administrator);deniedAdmin.characterMembers.Daniel=true
+local beforeAdminDenied=state.version;local adminDenied,adminDeniedReason=P:CommitChange({action="GROUP_UPSERT",group=deniedAdmin},{accountUUID="acct-raid",characterUUID="Daniel"})
+assert(not adminDenied and adminDeniedReason=="GUILD_LEADER_REQUIRED" and state.version==beforeAdminDenied,"officers cannot assign Administrator membership")
+assert(P:AddAccountMembership(ids.ADMINISTRATOR,"acct-klaus"));local accountAdmin=P:GetEffectiveGroups("acct-klaus","Klaus")[ids.ADMINISTRATOR];assert(accountAdmin and accountAdmin.reasons[1].type=="ACCOUNT","leader can assign Administrator by account")
+assert(P:RemoveMembership(ids.ADMINISTRATOR,"account","acct-klaus"));assert(P:AddGuildRankMembership(ids.ADMINISTRATOR,4));local rankAdmin=P:GetEffectiveGroups("acct-klaus","Klaus")[ids.ADMINISTRATOR];assert(rankAdmin and rankAdmin.reasons[1].source=="GUILD_RANK","leader can assign Administrator by Blizzard guild rank")
+assert(P:RemoveMembership(ids.ADMINISTRATOR,"guildRank",4))
+local beforeAdminGrant,previousAdminGrant=state.version,state.revisionID;assert(P:AddCharacterMembership(ids.ADMINISTRATOR,"Klaus"))
+assert(state.version==beforeAdminGrant+1 and state.history[#state.history].previousRevisionID==previousAdminGrant and state.history[#state.history].changedBy.characterUUID=="Maristi","Administrator membership changes use the ordinary leader-authorized revision chain")
+assert(P:HasPermission("acct-klaus","Klaus","future-permission"),"an explicit Administrator member receives registered permissions")
+local protectedAdmin=P:GetGroup(ids.ADMINISTRATOR);protectedAdmin.permissions["future-permission"]=nil;local adminPermissionWrite,adminPermissionReason=P:SaveGroup(protectedAdmin)
+assert(not adminPermissionWrite and adminPermissionReason=="SYSTEM_INVARIANT","Administrator permission grants cannot be edited as persisted group data")
+local setterAdmin,setterAdminReason=P:SetGroupPermissions(ids.ADMINISTRATOR,{})
+assert(not setterAdmin and setterAdminReason=="SYSTEM_GROUP","GroupManager protects Administrator permissions")
+local ownerConflict,ownerConflictReason=HolyStorm.PermissionRegistry:RegisterPermission({id="future-permission",module="AnotherOwner",category="Test"})
+assert(not ownerConflict and ownerConflictReason=="PERMISSION_OWNER_CONFLICT","a different module cannot replace a registered permission contract")
+local matrixAdmin=P:GetPermissionMatrix();local adminAssignment
+for _,row in ipairs(matrixAdmin.rows)do if row.permissionId=="future-permission"then adminAssignment=row.assignments[ids.ADMINISTRATOR]end end
+assert(adminAssignment and adminAssignment.default and adminAssignment.effective and adminAssignment.protected,"permission matrix marks Administrator defaults and cells protected")
+
+print("Permission engine scenarios A-AD passed")

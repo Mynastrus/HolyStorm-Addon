@@ -1,4 +1,4 @@
-local addonVersion = "2.2.0"
+local addonVersion = "2.3.0"
 local HolyStorm = LibStub("AceAddon-3.0"):GetAddon("Holy_Storm")
 local L = LibStub("AceLocale-3.0"):GetLocale("Holy_Storm")
 
@@ -58,8 +58,8 @@ function HolyStorm:RegisterModulePermissions(metadata)
         local definition
         if type(entry) == "table" then
             definition = HolyStorm.Utils.DeepCopy(entry)
-        elseif type(entry) == "string" and not registry:GetPermission(entry) then
-            definition = { id = entry }
+        -- String entries are references to a different module's contract, not
+        -- implicit permission definitions with missing defaults/ownership.
         end
         if definition then
             definition.module = definition.module or metadata.id
@@ -77,6 +77,13 @@ function HolyStorm:FlushModulePermissions()
     local ids={}; for id in pairs(self.pendingModulePermissions) do ids[#ids+1]=id end; table.sort(ids)
     local registered=0; for _,id in ipairs(ids) do registered=registered+self:RegisterModulePermissions(self.pendingModulePermissions[id]) end
     return registered
+end
+
+-- The root Core addon is also a module contract. Queue its declarations before
+-- PermissionRegistry.lua loads so the registry is derived from contracts only.
+if type(HolyStorm.metadata) == "table" then
+    HolyStorm.metadata = HolyStorm:NormalizeModuleMetadata(HolyStorm.metadata, "core", "core")
+    HolyStorm:RegisterModulePermissions(HolyStorm.metadata)
 end
 
 function HolyStorm:RegisterModuleRuleFields(metadata)

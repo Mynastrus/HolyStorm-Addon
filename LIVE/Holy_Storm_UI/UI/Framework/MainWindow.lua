@@ -1,4 +1,4 @@
-local addonVersion = "2.3.3"
+local addonVersion = "2.4.0"
 local HolyStorm = LibStub("AceAddon-3.0"):GetAddon("Holy_Storm")
 local L = LibStub("AceLocale-3.0"):GetLocale("Holy_Storm_UI")
 
@@ -6,7 +6,7 @@ local UI = HolyStorm:RegisterRequiredModule("UI")
 UI.dashboardProviders = {}
 HolyStorm:ApplyModuleMetadata(UI, {
     displayName = L["DISPLAY_NAME"], internalName = "ui", version = addonVersion,
-    category = "required", description = L["DESCRIPTION"], permissions = { "ui-render" },
+    category = "required", description = L["DESCRIPTION"], permissions = { { id = "ui-render", category = "Core" } },
     dependencies = { "core" }, enabledByDefault = true,
 })
 

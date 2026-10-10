@@ -92,6 +92,12 @@ Die registrierte Section `permissions` verwendet keine eigene Fachlogik und kein
 
 Systemgruppen sind gesperrt und lokalisiert. Automatische System-/Gildenrangquellen, manuelle Character-/Accountquellen und Filter-/Rule-Quellen werden getrennt angezeigt. Die Permission-Matrix entsteht vollständig aus der aktiven Registry und enthält keine statische Feature-Permission-Liste. Factory Reset und Custom-Group-Löschung verwenden bestätigte, lokalisierte Dialoge und erzeugen normale Revisionen.
 
+Die geschützte Systemgruppe `guild-administrators` besitzt alle aktuell registrierten Permissions und startet ohne Mitglieder. Nur der tatsächliche Blizzard-Gildenleiter kann ihre Mitgliedschaft ändern; Charakter, Account und Gildenrang sind als Mitgliedschaftsquellen möglich. Der Gildenleiter bleibt über die PermissionEngine Root-Administrator und benötigt die Gruppe nicht.
+
+Identität, Systemregel und Löschung aller Systemgruppen sind geschützt. Die Gildenleitungsgruppe bleibt unveränderliche Vollzugriffsgruppe; die Permission-Zuweisungen der Administratorgruppe sind ebenfalls geschützt. Direkte Permission-Zuweisungen für Offiziere und Gildenmitglieder können autorisierte Gruppenverwalter weiterhin bearbeiten. Standardrechte für diese Gruppen kommen aus den Contracts ihrer Module. Core-Rechte haben ohne explizite Contract-Angabe keine Standardzuweisung. Änderungen an Administrator-Mitgliedschaften laufen über die normale Autorisierung und Permission-Revision-Chain. Eine Release-Version allein legitimiert keine Berechtigungsänderung.
+
+Der aktive Permission-Bestand wird aus Modul-Contracts aufgebaut. `HolyStorm.metadata.permissions` im Core-Addon definiert gemeinsame Core-Rechte; Feature- und UI-Module definieren ihre eigenen Permissions als vollständige Tabellen-Einträge. String-Einträge in `metadata.permissions` verweisen auf einen anderen Contract und erzeugen keine unvollständige Definition. Eine Permission-Registry-Definition mit abweichendem Owner wird abgelehnt.
+
 ## Rule- und Filter-Administration
 
 Holy Storm besitzt eigenständige wiederverwendbare Rule-Objekte und Filter-Objekte. Beide Seiten verwenden denselben `PolicyUI`-Rule-Tree-Editor und dieselbe `RuleEngine`; die UI implementiert weder Evaluator noch Operatorsemantik. Der Editor unterstützt Conditions, verschachtelte AND-/OR-/NOT-Gruppen, Hinzufügen, Entfernen, Hoch/Runter sowie Ein-/Ausrücken. Field-, Operator- und Value-Auswahl entstehen aus den aktiven Registries. Boolean-, Enum-, Character-, Account- und Mehrfachwerte verwenden strukturierte Auswahl, Number-/String- und Range-Werte typbezogene Eingaben.
@@ -139,6 +145,10 @@ metadata.administration = {
 ```
 
 Das Beispiel ist ausschließlich Dokumentation und registriert keine Produktiv-Section.
+
+## Permission Contracts
+
+Das Core-Addon führt gemeinsame Core-Permissions in seinem Modul-Metadatum. Feature- und UI-Module deklarieren ihre Definitionen mit `id`, optionaler Kategorie, Lokalisierungsschlüsseln oder lokalisierten Texten sowie expliziten Standardzuweisungen für `leadership`, `officers` oder `member`, falls vorgesehen. Ein String ist ausschließlich ein Verweis auf die Definition eines anderen Owners. Die zentrale Registry übernimmt diese Contracts; die Administration pflegt keine zweite Permission-Liste.
 
 ## Section layout sizing contract
 

@@ -1,4 +1,4 @@
-local addonVersion = "2.0.0"
+local addonVersion = "2.1.0"
 local HolyStorm = LibStub("AceAddon-3.0"):GetAddon("Holy_Storm")
 local L = LibStub("AceLocale-3.0"):GetLocale("Holy_Storm_Options")
 
@@ -12,8 +12,8 @@ HolyStorm:ApplyModuleMetadata(Options, {
     category = "required",
     description = L["DESCRIPTION"],
     permissions = {
-        "settings-read",
-        "settings-write",
+        { id = "settings-read", category = "Core" },
+        { id = "settings-write", category = "Core" },
     },
     dependencies = {
         "core",

@@ -1,4 +1,4 @@
-local addonVersion = "5.0.0"
+local addonVersion = "5.1.0"
 local HolyStorm = LibStub("AceAddon-3.0"):GetAddon("Holy_Storm")
 local Core = HolyStorm.PermissionCore
 local Engine = { version=addonVersion, permissionCache={}, membershipCache={}, generation=0 }
@@ -134,12 +134,13 @@ function Engine:GetGroupSummary(groupId) return self:GetGroupSummaries()[groupId
 function Engine:GetPermissionMatrix()
     local groups=self:GetGroups(); local groupIds=Core.TableKeys(groups); local rows={}
     local aliases={[self.systemIds.LEADERSHIP]="leadership",[self.systemIds.OFFICERS]="officers",[self.systemIds.MEMBER]="member"}
+    if self.systemIds.ADMINISTRATOR then aliases[self.systemIds.ADMINISTRATOR]="administrator" end
     for permissionId,definition in pairs(HolyStorm.PermissionRegistry:GetPermissions()) do
         local grants,assignments={},{ }
         for _,groupId in ipairs(groupIds) do
             local direct=groups[groupId].permissions[permissionId]==true
             local default=definition.defaults and (definition.defaults[groupId]==true or definition.defaults[aliases[groupId]]==true) or false
-            assignments[groupId]={direct=direct,effective=groupId==self.systemIds.LEADERSHIP or direct,default=default,protected=groupId==self.systemIds.LEADERSHIP}
+            assignments[groupId]={direct=direct,effective=groupId==self.systemIds.LEADERSHIP or direct,default=groupId==self.systemIds.ADMINISTRATOR or default,protected=groupId==self.systemIds.LEADERSHIP or groupId==self.systemIds.ADMINISTRATOR}
             grants[groupId]=assignments[groupId].effective
         end
         rows[#rows+1]={permissionId=permissionId,definition=definition,grants=grants,assignments=assignments}

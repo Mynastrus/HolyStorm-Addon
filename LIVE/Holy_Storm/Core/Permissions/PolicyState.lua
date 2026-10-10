@@ -1,4 +1,4 @@
-local addonVersion = "5.2.0"
+local addonVersion = "5.3.0"
 local HolyStorm = LibStub("AceAddon-3.0"):GetAddon("Holy_Storm")
 local Core = HolyStorm.PermissionCore
 local State = {
@@ -185,7 +185,9 @@ function State:AuthorizeChange(state,change,actor)
         local managed=self:IsActualGuildLeader(actor.accountUUID,actor.characterUUID) or self:IsManagedBy(state,actor,incoming.id) or self:HasPermissionInState(state,actor.accountUUID,actor.characterUUID,"groups-edit")
         if current.system and metadataChanged then return false,"SYSTEM_INVARIANT" end
         if incoming.id==self.systemIds.LEADERSHIP and permissionChanged then return false,"FULL_ACCESS_GROUP" end
+        if incoming.id==self.systemIds.ADMINISTRATOR and permissionChanged then return false,"SYSTEM_INVARIANT" end
         if incoming.id==self.systemIds.LEADERSHIP and membershipChanged and not self:IsActualGuildLeader(actor.accountUUID,actor.characterUUID) then return false,"GUILD_LEADER_REQUIRED" end
+        if incoming.id==self.systemIds.ADMINISTRATOR and membershipChanged and not self:IsActualGuildLeader(actor.accountUUID,actor.characterUUID) then return false,"GUILD_LEADER_REQUIRED" end
         if permissionChanged and (not managed or not self:HasPermissionInState(state,actor.accountUUID,actor.characterUUID,"permissions-manage")) then return false,"PERMISSION_DENIED" end
         if membershipChanged and incoming.id~=self.systemIds.LEADERSHIP and not (self:IsManagedBy(state,actor,incoming.id) or self:HasPermissionInState(state,actor.accountUUID,actor.characterUUID,"groups-manage-members")) then return false,"PERMISSION_DENIED" end
         if metadataChanged and not managed then return false,"PERMISSION_DENIED" end

@@ -1,11 +1,11 @@
-local addonVersion = "2.1.0"
+local addonVersion = "2.2.0"
 local HolyStorm = LibStub("AceAddon-3.0"):GetAddon("Holy_Storm")
 local L = LibStub("AceLocale-3.0"):GetLocale("Holy_Storm_SavedVariables")
 
 local SavedVariables = HolyStorm:RegisterRequiredModule("SavedVariables")
 HolyStorm:ApplyModuleMetadata(SavedVariables, {
     displayName = L["DISPLAY_NAME"], internalName = "savedVariables", version = addonVersion,
-    category = "required", description = L["DESCRIPTION"], permissions = { "savedvariables-read" },
+    category = "required", description = L["DESCRIPTION"], permissions = { { id = "savedvariables-read", category = "Core" } },
     dependencies = { "core", "options" }, enabledByDefault = true,
 })
 

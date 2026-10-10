@@ -1,10 +1,10 @@
 # Guild Management architecture
 
-`Holy_Storm_Guild` owns the Guild Management domain. The existing `GuildRoster` module remains responsible for Blizzard roster, public-note, officer-note, and rank interactions. The separate `GuildManagement` module owns structured Holy Storm notes, absences, and factual Activity history.
+`Holy_Storm_Guild` owns the Guild Management domain. The existing `GuildRoster` module remains responsible for Blizzard roster, public-note, officer-note, and rank interactions. The separate `GuildManagement` module owns structured Holy Storm notes, absences, factual Activity history, and Activity Points.
 
 ## Parent and feature registration
 
-`HolyStorm.GuildManagement:RegisterFeature(definition)` registers ordered child features. A child supplies a stable ID and lazy `build` callback; optional refresh and presentation metadata stay feature-owned. The single `guildManagement` UI view hosts the registered children in a shared tab group. The children are `notes`, `absences`, and `activity`; each is built only when selected. Points and recommendations can register later without adding feature knowledge to Core. Activity contains no scoring or recommendation logic. Future recommendations may prepare proposals, but consequential guild changes must always require explicit confirmation from an authorized user.
+`HolyStorm.GuildManagement:RegisterFeature(definition)` registers ordered child features. A child supplies a stable ID and lazy `build` callback; optional refresh and presentation metadata stay feature-owned. The single `guildManagement` UI view hosts the registered children in a shared tab group. The children are `notes`, `absences`, and `activity`; each is built only when selected. Activity Points already has a separate lazy section registered through the central Administration module contract, so Core does not need feature-specific knowledge. Activity is factual; it does not decide promotion, demotion, or guild removal. No recommendation workflow for those decisions is implemented. Any future proposal must remain advisory and require explicit confirmation from an authorized user before a consequential action.
 
 ## Persistence and identity
 
@@ -14,6 +14,7 @@ All four schema-version-1 roots use `DataManager`:
 - `guild-shared-notes`: guild-partitioned synchronized notes.
 - `guild-absences`: guild-partitioned synchronized absences.
 - `guild-activity`: guild/account-partitioned synchronized compact factual history and aggregates.
+- `guild-activity-points`: guild-partitioned point rules, decay configuration, auditable ledger, and account score cache.
 
 Notes have a stable note ID, subject Character UUID and optional known Account UUID, immutable original author, last editor, category, content, scope/visibility, created/modified/expiration timestamps, revision, and status. Private notes never enter a Sync domain. Shared deletion writes a content-minimized tombstone.
 
@@ -38,6 +39,8 @@ Leadership retains dynamic full access through the protected PermissionEngine mo
 - No static assignment: `guild-notes-view-leadership`; Leadership receives it through dynamic full access.
 
 The module owns the absence fields plus factual Activity fields for last-seen/last-activity and explicit 7-/30-day online, chat, raid, Mythic+, and event windows. Missing identity/provider/permission data remains `UNKNOWN`; private notes and note content/counts are deliberately not Rule fields.
+
+Activity Points can award ledger entries from configured factual event rules, calculate raw/effective scores with fixed or percentage decay, and record separately authorized manual adjustments with a required reason. Rules have revisions and effective times; duplicate event/rule pairs are suppressed. Configure and manual-adjust rights are distinct. This is an implemented points subsystem, not a promotion or removal recommendation engine.
 
 ## UI, tasks, and optional Calendar
 

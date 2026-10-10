@@ -1,8 +1,8 @@
-local addonVersion="1.0.0"
+local addonVersion="1.1.0"
 local HolyStorm=LibStub("AceAddon-3.0"):GetAddon("Holy_Storm")
 local L=LibStub("AceLocale-3.0"):GetLocale("Holy_Storm_TaskManager")
 local Page=HolyStorm:RegisterRequiredModule("TaskManagerUI")
-HolyStorm:ApplyModuleMetadata(Page,{displayName=L["DISPLAY_NAME"],internalName="taskManagerUI",version=addonVersion,category="required",description=L["DESCRIPTION"],permissions={"tasks-view"},dependencies={"core","ui"},enabledByDefault=true})
+HolyStorm:ApplyModuleMetadata(Page,{displayName=L["DISPLAY_NAME"],internalName="taskManagerUI",version=addonVersion,category="required",description=L["DESCRIPTION"],permissions={{id="tasks-view",category="Task Manager"},{id="taskmanager-view",category="Task Manager"},{id="taskmanager-control",category="Task Manager"}},dependencies={"core","ui"},enabledByDefault=true})
 local views={"LIVE_TASKS","QUEUE","WORKFLOWS","HISTORY","PERFORMANCE","EVENT_MONITOR","DEPENDENCIES"}
 local ROW_HEIGHT=20
 local MAX_VISIBLE_ROWS=32

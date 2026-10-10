@@ -1,4 +1,4 @@
-local addonVersion = "5.2.0"
+local addonVersion = "5.3.0"
 local HolyStorm = LibStub("AceAddon-3.0"):GetAddon("Holy_Storm")
 
 local Core = HolyStorm.PermissionCore or {}
@@ -44,11 +44,6 @@ function Core.Log(level, category, message, context)
 end
 
 local Registry = { version = addonVersion, keys = {} }
-local definitions = {
-    ["groups-create"]="Administration",["groups-edit"]="Administration",["groups-delete"]="Administration",["groups-manage-members"]="Administration",["permissions-manage"]="Administration",["permissions-reset"]="Administration",["filters-create"]="Administration",["filters-edit"]="Administration",["filters-delete"]="Administration",["rules-manage"]="Administration",["policy-inspect"]="Administration",["modules-manage"]="Administration",
-    ["core-settings-read"]="Core",["core-settings-write"]="Core",["settings-read"]="Core",["settings-write"]="Core",["ui-render"]="Core",["sync-send"]="Sync",["sync-receive"]="Sync",["player-read"]="Core",["savedvariables-read"]="Core",["savedvariables-write"]="Core",
-    ["logs-view"]="Logs",["logs-clear"]="Logs",["taskmanager-view"]="Task Manager",["taskmanager-control"]="Task Manager",["tasks-view"]="Task Manager",
-}
 Registry.legacyIds = {
     ["roles.manage"]="groups-edit",["permissions.manage"]="permissions-manage",["filters.manage_global"]="filters-edit",["rules.manage_global"]="rules-manage",["policy.inspect"]="policy-inspect",["core.settings.read"]="core-settings-read",["core.settings.write"]="core-settings-write",["ui.render"]="ui-render",["sync.send"]="sync-send",["logs.view"]="logs-view",["logs.clear"]="logs-clear",["taskmanager.view"]="taskmanager-view",["taskmanager.control"]="taskmanager-control",["tasks.view"]="tasks-view",
 }
@@ -67,6 +62,8 @@ function Registry:RegisterPermission(definition)
     normalized.owner = normalized.owner or normalized.module
     normalized.labelKey = normalized.labelKey or keyFor("PERMISSION_", normalized.id)
     normalized.descriptionKey = normalized.descriptionKey or keyFor("PERMISSION_DESC_", normalized.id)
+    local current = self.keys[normalized.id]
+    if current and current.owner ~= normalized.owner then return false, "PERMISSION_OWNER_CONFLICT" end
     self.keys[normalized.id] = normalized
     local state = HolyStorm.PermissionComponents and HolyStorm.PermissionComponents.State
     -- Module metadata is loaded before AceDB exists. UpgradeState applies every
@@ -88,7 +85,6 @@ function Registry:GetPermissions() return Core.Copy(self.keys) end
 Registry.GetPermissionDefinitions = Registry.GetPermissions
 function Registry:NormalizePermissionId(id) return self.legacyIds[id] or id end
 
-for id, category in pairs(definitions) do Registry:RegisterPermission({ id=id, module="Core", category=category }) end
 HolyStorm.PermissionRegistry = Registry
 HolyStorm.PermissionComponents = HolyStorm.PermissionComponents or {}
 HolyStorm.PermissionComponents.Registry = Registry

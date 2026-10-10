@@ -4,7 +4,7 @@ local Registry,Engine,Groups=HolyStorm.PermissionRegistry,HolyStorm.PermissionEn
 local Filters,State=HolyStorm.FilterManager,HolyStorm.PolicyState
 local Page=HolyStorm:RegisterRequiredModule("PermissionsUI")
 
-HolyStorm:ApplyModuleMetadata(Page,{displayName=L["PERMISSIONS_TITLE"],internalName="permissionsUI",version="3.0.0",category="required",description=L["PERMISSIONS_DESC"],permissions={"permissions-manage"},dependencies={"core","ui"},enabledByDefault=true})
+HolyStorm:ApplyModuleMetadata(Page,{displayName=L["PERMISSIONS_TITLE"],internalName="permissionsUI",version="3.1.0",category="required",description=L["PERMISSIONS_DESC"],permissions={"permissions-manage"},dependencies={"core","ui"},enabledByDefault=true})
 
 local tabs={"GENERAL","MEMBERS","PERMISSIONS","PERMISSION_MATRIX","RULES_FILTERS","MANAGERS","EFFECTIVE_MEMBERS","MODULE_SETTINGS","ANALYSIS","STATUS"}
 local errorKeys={SYSTEM_GROUP="ERROR_SYSTEM_GROUP",SYSTEM_INVARIANT="ERROR_SYSTEM_INVARIANT",FULL_ACCESS_GROUP="ERROR_FULL_ACCESS_GROUP",GUILD_LEADER_REQUIRED="ERROR_GUILD_LEADER_REQUIRED",PERMISSION_DENIED="ERROR_PERMISSION_DENIED",STATE_NOT_VALID="ERROR_STATE_NOT_VALID",UNCHANGED="ERROR_UNCHANGED",MANAGER_CYCLE="ERROR_MANAGER_CYCLE",INVALID_GROUP="ERROR_INVALID_GROUP",INVALID_GROUP_NAME="ERROR_INVALID_GROUP_NAME",NOT_FOUND="ERROR_NOT_FOUND",TOO_MANY_MEMBERSHIPS="ERROR_TOO_MANY_MEMBERSHIPS",INVALID_MODULE="ERROR_INVALID_MODULE"}
@@ -25,9 +25,10 @@ function Page:CanMutate(permission)local status=State:GetPermissionStateStatus()
 function Page:CanEditGroup()if not self.draft then return false end;if self.isNew then return self:CanMutate("groups-create")end;local actor=Engine:Actor();return Engine:CanManageGroup(actor.accountUUID,actor.characterUUID,self.draft.id)end
 function Page:CanEditMembers()
  if not self.draft or self.isNew then return false end;if self.draft.id==Groups.systemIds.LEADERSHIP and not Engine:IsActualGuildLeader()then return false end
+ if self.draft.id==Groups.systemIds.ADMINISTRATOR then return Engine:IsActualGuildLeader()end
  local actor=Engine:Actor();local state=State:GetState();if state and Engine:IsManagedBy(state,actor,self.draft.id)then return true end;return self:CanMutate("groups-manage-members")
 end
-function Page:CanEditPermissions()return self.draft~=nil and not self.isNew and self.draft.id~=Groups.systemIds.LEADERSHIP and self:CanEditGroup()and self:CanMutate("permissions-manage")end
+function Page:CanEditPermissions()return self.draft~=nil and not self.isNew and self.draft.id~=Groups.systemIds.LEADERSHIP and self.draft.id~=Groups.systemIds.ADMINISTRATOR and self:CanEditGroup()and self:CanMutate("permissions-manage")end
 function Page:ErrorMessage(reason)local key=errorKeys[reason];return key and L[key]or string.format(L["INVALID"],tostring(reason))end
 
 function Page:Select(group)

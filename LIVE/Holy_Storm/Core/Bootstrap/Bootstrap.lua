@@ -18,10 +18,32 @@ end
 local rawVersion = C_AddOns and C_AddOns.GetAddOnMetadata and C_AddOns.GetAddOnMetadata(addonName, "Version")
 HolyStorm.version = resolveVersion(rawVersion)
 function HolyStorm:GetVersion() return self.version end
+local corePermissions = {
+    { id = "groups-create", category = "Administration" },
+    { id = "groups-edit", category = "Administration" },
+    { id = "groups-delete", category = "Administration" },
+    { id = "groups-manage-members", category = "Administration" },
+    { id = "permissions-manage", category = "Administration" },
+    { id = "permissions-reset", category = "Administration" },
+    { id = "filters-create", category = "Administration" },
+    { id = "filters-edit", category = "Administration" },
+    { id = "filters-delete", category = "Administration" },
+    { id = "rules-manage", category = "Administration" },
+    { id = "policy-inspect", category = "Administration" },
+    { id = "modules-manage", category = "Administration" },
+    { id = "core-settings-read", category = "Core" },
+    { id = "core-settings-write", category = "Core" },
+    { id = "sync-send", category = "Sync" },
+    { id = "sync-receive", category = "Sync" },
+    { id = "player-read", category = "Core" },
+    { id = "savedvariables-write", category = "Core" },
+}
+
 HolyStorm.metadata = {
+    id = "core", name = "Core",
     displayName = L["CORE_DISPLAY_NAME"], internalName = "core", author = "Mynastrus - Norgannon - EU",
     version = HolyStorm:GetVersion(), category = "core", description = L["CORE_DESCRIPTION"],
-    permissions = { "core-settings-read", "core-settings-write" }, dependencies = {}, enabledByDefault = true,
+    permissions = corePermissions, dependencies = {}, enabledByDefault = true,
 }
 HolyStorm.Data, HolyStorm.Modules = {}, {}
 

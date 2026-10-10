@@ -1,7 +1,7 @@
-local addonVersion = "5.2.0"
+local addonVersion = "5.3.0"
 local HolyStorm = LibStub("AceAddon-3.0"):GetAddon("Holy_Storm")
 local Core = HolyStorm.PermissionCore
-local Groups = { version=addonVersion, systemIds={LEADERSHIP="guild-leadership",OFFICERS="officers",MEMBER="guild-member"} }
+local Groups = { version=addonVersion, systemIds={LEADERSHIP="guild-leadership",OFFICERS="officers",MEMBER="guild-member",ADMINISTRATOR="guild-administrators"} }
 Groups.systemIds.GUILD_MASTER = Groups.systemIds.LEADERSHIP
 Groups.systemIds.USERS = Groups.systemIds.MEMBER
 
@@ -18,7 +18,7 @@ function Groups:GetDefaultGroups()
     local function permissionsFor(groupId)
         local permissions = {}
         for id, definition in pairs(HolyStorm.PermissionRegistry.keys) do
-            if definition.defaults and definition.defaults[groupId] == true then permissions[id] = true end
+            if groupId == "administrator" or definition.defaults and definition.defaults[groupId] == true then permissions[id] = true end
         end
         return permissions
     end
@@ -26,16 +26,20 @@ function Groups:GetDefaultGroups()
         [ids.LEADERSHIP]={id=ids.LEADERSHIP,nameKey="GROUP_GUILD_LEADERSHIP",descriptionKey="GROUP_DESC_GUILD_LEADERSHIP",creator="System",system=true,systemRule="GUILD_LEADER",permissions={},characterMembers={},accountMembers={},guildRanks={},filterIds={},ruleIds={},filterOperator="AND",managerGroupIds={}},
         [ids.OFFICERS]={id=ids.OFFICERS,nameKey="GROUP_OFFICERS",descriptionKey="GROUP_DESC_OFFICERS",creator="System",system=true,systemRule="OFFICER",permissions={},characterMembers={},accountMembers={},guildRanks={},filterIds={},ruleIds={},filterOperator="AND",managerGroupIds={ids.LEADERSHIP}},
         [ids.MEMBER]={id=ids.MEMBER,nameKey="GROUP_GUILD_MEMBER",descriptionKey="GROUP_DESC_GUILD_MEMBER",creator="System",system=true,systemRule="GUILD_MEMBER",permissions={},characterMembers={},accountMembers={},guildRanks={},filterIds={},ruleIds={},filterOperator="AND",managerGroupIds={ids.LEADERSHIP}},
+        [ids.ADMINISTRATOR]={id=ids.ADMINISTRATOR,nameKey="GROUP_ADMINISTRATOR",descriptionKey="GROUP_DESC_ADMINISTRATOR",creator="System",system=true,systemRule="ADMINISTRATOR",permissions={},characterMembers={},accountMembers={},guildRanks={},filterIds={},ruleIds={},filterOperator="AND",managerGroupIds={ids.LEADERSHIP}},
     }
-    for _, group in pairs(defaults) do group.permissions = permissionsFor(group.id == ids.OFFICERS and "officers" or group.id == ids.MEMBER and "member" or "leadership") end
+    for _, group in pairs(defaults) do group.permissions = permissionsFor(group.id == ids.OFFICERS and "officers" or group.id == ids.MEMBER and "member" or group.id == ids.ADMINISTRATOR and "administrator" or "leadership") end
     return defaults
 end
 
 function Groups:ApplyRegisteredDefaults(state, definition)
-    if not state or not definition or type(definition.defaults) ~= "table" then return false end
+    if not state or not definition then return false end
     local aliases={leadership=self.systemIds.LEADERSHIP,officers=self.systemIds.OFFICERS,member=self.systemIds.MEMBER}
+    if self.systemIds.ADMINISTRATOR then aliases.administrator=self.systemIds.ADMINISTRATOR end
     local changed=false
-    for groupId, enabled in pairs(definition.defaults) do
+    local defaults=Core.Copy(type(definition.defaults)=="table" and definition.defaults or {})
+    defaults.administrator=true
+    for groupId, enabled in pairs(defaults) do
         local group = state.groups and state.groups[aliases[groupId] or groupId]
         if enabled == true and group and type(group.permissions) == "table" and group.permissions[definition.id] == nil then group.permissions[definition.id] = true; changed=true end
     end
@@ -106,6 +110,7 @@ function Groups:EnsureSystemGroups(state)
         if not existing then state.groups[id] = Core.Copy(definition) else
             existing.id=id; existing.system=true; existing.systemRule=definition.systemRule; existing.nameKey=definition.nameKey; existing.descriptionKey=definition.descriptionKey; existing.creator="System"
             existing.permissions=type(existing.permissions)=="table" and existing.permissions or Core.Copy(definition.permissions)
+            if id==self.systemIds.ADMINISTRATOR then for permission in pairs(definition.permissions) do existing.permissions[permission]=true end end
             existing.characterMembers=type(existing.characterMembers)=="table" and existing.characterMembers or {}; existing.accountMembers=type(existing.accountMembers)=="table" and existing.accountMembers or {}; existing.guildRanks=type(existing.guildRanks)=="table" and existing.guildRanks or {}
             existing.filterIds=type(existing.filterIds)=="table" and existing.filterIds or {}; existing.ruleIds=type(existing.ruleIds)=="table" and existing.ruleIds or {}; existing.managerGroupIds=type(existing.managerGroupIds)=="table" and existing.managerGroupIds or Core.Copy(definition.managerGroupIds)
         end
@@ -194,7 +199,7 @@ end
 function Groups:AddCharacterMembership(groupId,id) return self:AddMembership(groupId,"character",id) end
 function Groups:AddAccountMembership(groupId,id) return self:AddMembership(groupId,"account",id) end
 function Groups:AddGuildRankMembership(groupId,id) return self:AddMembership(groupId,"guildRank",id) end
-function Groups:SetGroupPermissions(groupId,permissions) if groupId==self.systemIds.LEADERSHIP then return false,"FULL_ACCESS_GROUP" end; local group=self:GetGroup(groupId); if not group then return false,"NOT_FOUND" end; group.permissions=Core.NormalizeSet(permissions); return self:SaveGroup(group) end
+function Groups:SetGroupPermissions(groupId,permissions) local group=self:GetGroup(groupId);if not group then return false,"NOT_FOUND"end;if groupId==self.systemIds.LEADERSHIP then return false,"FULL_ACCESS_GROUP"end;if groupId==self.systemIds.ADMINISTRATOR then return false,"SYSTEM_GROUP"end;group.permissions=Core.NormalizeSet(permissions);return self:SaveGroup(group)end
 function Groups:SetGroupManagers(groupId,managerIds) local group=self:GetGroup(groupId); if not group then return false,"NOT_FOUND" end; group.managerGroupIds=Core.NormalizeArray(managerIds); return self:SaveGroup(group) end
 function Groups:AddManagerGroup(groupId,managerId) local group=self:GetGroup(groupId); if not group then return false,"NOT_FOUND" end; if Core.ArrayContains(group.managerGroupIds,managerId) then return false,"UNCHANGED" end; group.managerGroupIds[#group.managerGroupIds+1]=managerId; return self:SaveGroup(group) end
 function Groups:RemoveManagerGroup(groupId,managerId) local group=self:GetGroup(groupId); if not group then return false,"NOT_FOUND" end; local nextIds={}; for _,id in ipairs(group.managerGroupIds) do if id~=managerId then nextIds[#nextIds+1]=id end end; if #nextIds==#group.managerGroupIds then return false,"UNCHANGED" end; group.managerGroupIds=nextIds; return self:SaveGroup(group) end
