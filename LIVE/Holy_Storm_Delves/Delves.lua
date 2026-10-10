@@ -1,4 +1,4 @@
-local addonVersion="2.2.0"
+local addonVersion="2.2.1"
 local HolyStorm=LibStub("AceAddon-3.0"):GetAddon("Holy_Storm");local L=LibStub("AceLocale-3.0"):GetLocale("Holy_Storm_Delves")
 
 local function validNumber(value,minimum,integer)
@@ -126,7 +126,7 @@ HolyStorm:RegisterModule(metadata,function(Module)
   local valid,reason=validSnapshot(snapshot);return valid,reason,false
  end
  function Module:Commit(snapshot)local guid=UnitGUID("player");local committed,reason=HolyStorm.PlayerData:WriteOwnedBlock(guid,"delves",snapshot,"blizzard");if HolyStorm.CharacterScans and HolyStorm.CharacterScans.RecordSnapshotResult then HolyStorm.CharacterScans:RecordSnapshotResult("delves",committed and"COMMITTED"or reason=="UNCHANGED"and"UNCHANGED"or"FAILED")end;return committed,reason end
- function Module:Queue(sync)return HolyStorm.Snapshots:Queue("delves",function()return Module:Collect()end,function(snapshot,scanReason,diagnostics,attempt,maximum)return Module:Validate(snapshot,scanReason,diagnostics,attempt,maximum)end,function(snapshot,force)return Module:Commit(snapshot,force,sync)end,{source="Delves",delay=1,retryDelay=2.5,priority=6,onValidationFailure=function(reason,disposition,retryCount,_,diagnostics)
+ function Module:Queue(sync)return HolyStorm.Snapshots:Queue("delves",function()return Module:Collect()end,function(snapshot,scanReason,diagnostics,attempt,maximum)return Module:Validate(snapshot,scanReason,diagnostics,attempt,maximum)end,function(snapshot,force)return Module:Commit(snapshot,force,sync)end,{source="Delves",delay=1,retryDelay=2.5,priority=6,fingerprint=false,onValidationFailure=function(reason,disposition,retryCount,_,diagnostics)
   local details=type(diagnostics)=="table"and diagnostics or{};local stage=details.stage
   if not stage then stage=reason and(tostring(reason):find("INVALID_DELVES",1,true)or tostring(reason):find("DUPLICATE_DELVES",1,true))and"VALIDATION"or"COLLECT"end
   if HolyStorm.CharacterScans then

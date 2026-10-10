@@ -1,6 +1,6 @@
 local HolyStorm=LibStub("AceAddon-3.0"):GetAddon("Holy_Storm")
 local L=LibStub("AceLocale-3.0"):GetLocale("Holy_Storm_Achievements")
-local A={version="1.0.0",sequence=0,types={AUTOMATIC=true,MANUAL=true,FEAT_OF_STRENGTH=true},statuses={DRAFT=true,ACTIVE=true,ARCHIVED=true},scopes={CHARACTER=true,ACCOUNT=true},pending={},index={dependencies={},status={},category={},recipient={},achievement={}},diagnostics={evaluations={},lastSync=nil},maxDescription=4000,maxRuleBytes=16000,maxAwardRecipients=30,maxAwardBytes=60000}
+local A={version="1.0.1",sequence=0,types={AUTOMATIC=true,MANUAL=true,FEAT_OF_STRENGTH=true},statuses={DRAFT=true,ACTIVE=true,ARCHIVED=true},scopes={CHARACTER=true,ACCOUNT=true},pending={},index={dependencies={},status={},category={},recipient={},achievement={}},diagnostics={evaluations={},lastSync=nil},maxDescription=4000,maxRuleBytes=16000,maxAwardRecipients=30,maxAwardBytes=60000}
 local function copy(v)return HolyStorm.Utils.DeepCopy(v)end
 local function now()return HolyStorm.Utils.Now()end
 local function id(prefix)A.sequence=A.sequence+1;return string.format("%s-%08x-%04x-%04x",prefix,now()%0xffffffff,A.sequence%0xffff,math.random(0,0xffff))end

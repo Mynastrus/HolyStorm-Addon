@@ -61,7 +61,13 @@ Runtime state is memory-only. It records state, reason, changed time, last attem
 
 For the local character, snapshot prompts start that block's provider. For a remote character, the Overview uses the existing CharacterStore/Sync request path instead of offering a producer this client cannot run. A remote import refreshes the view through its block update event; remote producer state is not conflated with local runtime state.
 
-PlayerData validates and commits only accepted snapshots. A changed local owned-block commit emits the established owned-update event, and Sync v2 publishes from it. No login snapshot work is added to Sync. Existing login presence runs after a 1.5-second delay in startup phase 4; it sends presence, schedules its required heartbeat, and starts per-domain background catch-up. Sync already merges domain discovery, applies bounded queue/transfer budgets, jitters peer responses, and distinguishes interactive from background priority. This policy does not redesign that protocol.
+PlayerData validates and commits only accepted snapshots. A changed local owned-block commit emits the established owned-update event, and Sync publishes from it. Login Presence runs after a 1.5-second delay in startup phase 4 and carries only version/session metadata plus the bounded revision manifest. Login does not start a global catch-up, and Sync does not schedule a recurring global Presence heartbeat. Missing eligible objects are fetched through the existing targeted queue, which merges duplicate jobs and distinguishes interactive from maintenance priority. This policy does not redesign that protocol.
+
+Snapshot validation normally computes a content fingerprint only when its
+commit consumer uses that value. Mythic+, Delves, and Stats commit through
+PlayerData's own semantic equality check, so their workflows skip the
+otherwise redundant full fingerprint serialization. Unchanged blocks still do
+not get a new owner revision or trigger Sync.
 
 ## UI visibility and idle work
 
@@ -73,7 +79,7 @@ The audited timer/update work is scoped as follows:
 | --- | --- | --- |
 | TaskManager wake timer | Event/task-driven | `Wake` returns immediately when no task is queued or running; one-shot timer exists only for queued work. Coalesced wake diagnostics summarize the active burst. |
 | Snapshot workflows and Stats debounce | Event-driven | One-shot workflow/debounce tasks only after a relevant event or user request; no repeating producer timer. |
-| Sync login discovery and heartbeat | Background / necessary presence | Login discovery is delayed and bounded. Heartbeat repeats while the guild presence contract is active. |
+| Sync login Presence and discovery | Metadata-only / demand-driven | One login Presence carries a bounded revision manifest. There is no global login catch-up or recurring Presence heartbeat; missing objects are fetched on demand. |
 | Positions movement sample | Live event-driven exception | One-second sampler runs only while sharing and movement are active; it stops on `PLAYER_STOPPED_MOVING`. Login capture/reconciliation is necessary live sharing behavior. |
 | Positions roster cleanup | Background maintenance exception | Ten-second recurring roster reconciliation exists while the Positions service is active and is cancelled on disable; it is not a character snapshot scan. |
 | POI startup | Background maintenance | Loads/reconciles persistent POIs, expires/prunes entries, and may discover synchronized POIs; it does not full-refresh snapshots or transform maps at login. The World Map provider installs on map show. The shared Minimap updater runs only while enabled markers exist. |

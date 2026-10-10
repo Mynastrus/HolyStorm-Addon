@@ -58,6 +58,7 @@ assert(clean.secondary.criticalStrike.rating==936 and clean.secondary.criticalSt
 assert(clean.secondary.haste.baseline==20 and clean.secondary.mastery.baseline==22 and clean.secondary.mastery.coefficient==1.15,"effective haste and spec-scaled mastery are used instead of rating bonus")
 assert(clean.secondary.versatility.baseline==3 and clean.secondary.leech.baseline==0 and clean.secondary.speed.baseline==0,"Versatility includes the separate bonus, while Leech and Speed preserve confirmed zero values")
 assert(Stats:Validate(clean));assert(Stats:Commit(clean));assert(#writes==1 and writes[1].source=="blizzard")
+assert(Stats:Queue()and HolyStorm.Snapshots.options.fingerprint==false,"Stats uses the central snapshot workflow without its unused full-snapshot fingerprint")
 local malformed={snapshotVersion=2,schemaVersion=2,primary={},armor=clean.armor,secondary=clean.secondary,capture=clean.capture};for key,value in pairs(clean.primary)do malformed.primary[key]=value end;malformed.primary.strength={baseline="95"};assert(not Stats:Validate(malformed),"snapshot validation rejects malformed numeric fields")
 
 -- Timed auras retain safe primary baselines while excluding transient fields.

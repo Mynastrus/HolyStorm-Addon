@@ -1,4 +1,4 @@
-local addonVersion = "1.1.0"
+local addonVersion = "1.1.1"
 local HolyStorm = LibStub("AceAddon-3.0"):GetAddon("Holy_Storm")
 
 -- HS_Player_DB is the canonical persistent owner-controlled data store.
@@ -211,6 +211,22 @@ function PlayerData:CompareMetadata(localMeta,remoteMeta)
     local remoteDirect=remoteMeta.direct==true;local localDirect=localMeta and localMeta.direct==true;if remoteDirect~=localDirect then return remoteDirect and 1 or-1,remoteDirect and"DIRECT_OWNER"or"INDIRECT_COPY"end
     return 0,"SAME_VERSION"
 end
+-- Owner-controlled character blocks have a stronger source rule than shared
+-- domains: a relay may carry a newer owner revision while the owner is
+-- offline, but it cannot supersede a revision already received directly from
+-- that owner. A direct owner snapshot may replace an indirect copy even when
+-- its revision is numerically lower; the owner remains authoritative.
+function PlayerData:CompareOwnerMetadata(localMeta,remoteMeta)
+    if type(remoteMeta)~="table"then return -1,"INVALID_METADATA"end
+    local remoteVersion=tonumber(remoteMeta.version);if not remoteVersion or remoteVersion<0 then return -1,"INVALID_VERSION"end
+    if type(localMeta)=="table"and localMeta.owner==remoteMeta.owner then
+        local remoteDirect=remoteMeta.direct==true;local localDirect=localMeta.direct==true
+        if remoteDirect~=localDirect then return remoteDirect and 1 or -1,remoteDirect and"DIRECT_OWNER"or"NON_AUTHORITATIVE_RELAY"end
+    end
+    local localVersion=tonumber(localMeta and localMeta.version)or -1
+    if remoteVersion~=localVersion then return remoteVersion>localVersion and 1 or -1,remoteVersion>localVersion and"NEWER_VERSION"or"STALE_VERSION"end
+    return 0,"SAME_VERSION"
+end
 function PlayerData:ValidateBlock(blockId,data)
     local definition=self.blocks[blockId];if not definition or type(data)~="table"then return false,"INVALID_BLOCK_DATA"end
     if definition.validate then local ok,result,reason=HolyStorm.Utils.SafeCall("playerdata.validate:"..blockId,definition.validate,data);if not ok then return false,tostring(result)end;if result==false then return false,reason or"VALIDATION_FAILED"end end
@@ -234,13 +250,23 @@ function PlayerData:ApplyBlock(guid,blockId,data,meta,mode)
             identical=same(existing,data,definition)
         end
         local locallyOwned=self:IsLocallyOwned(guid)
-        if incomingVersion<storedVersion then return false,"STALE_REVISION",true end
+        if locallyOwned then
+            if incomingVersion==storedVersion and identical then return true,"NOOP",true end
+            return false,"SELF_OWNED_REMOTE_REJECT",true
+        end
+        local directOwner=meta.direct==true
+        if current and current.direct==true and not directOwner then
+            if identical then return true,"NOOP",true end
+            return false,"NON_AUTHORITATIVE_RELAY",true
+        end
+        local authoritativeUpgrade=current~=nil and current.direct~=true and directOwner
+        if incomingVersion<storedVersion and not authoritativeUpgrade then return false,"STALE_REVISION",true end
         if incomingVersion==storedVersion then
             if identical then
                 if not locallyOwned and meta.direct==true and current.direct~=true then current.direct=true;current.receivedFrom=meta.receivedFrom;current.receivedAt=now();current.originCreatedAt=current.originCreatedAt or current.updatedAt end
                 return true,"NOOP",true
             end
-            return false,locallyOwned and"SELF_OWNED_REMOTE_REJECT"or"SAME_REVISION_CONFLICT",true
+            if not authoritativeUpgrade then return false,locallyOwned and"SELF_OWNED_REMOTE_REJECT"or"SAME_REVISION_CONFLICT",true end
         end
         if locallyOwned then return false,"SELF_OWNED_REMOTE_REJECT",true end
     elseif not self:IsLocallyOwned(guid)then return false,"NOT_LOCAL_OWNER",true end

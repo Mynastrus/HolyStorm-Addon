@@ -1,9 +1,11 @@
 local HolyStorm=LibStub("AceAddon-3.0"):GetAddon("Holy_Storm")
 local Store={schemaVersion=1,awardIndexes={}}
+local schemaId="achievement-store"
 local function copy(value)return HolyStorm.Utils.DeepCopy(value)end
 local function validId(value)return type(value)=="string"and#value>0 and#value<=160 and value:match("^[%w_%.%-:]+$")~=nil end
+HolyStorm.DataManager:RegisterSchema({id=schemaId,owner="AchievementStore",version=1,versionField=false,storage={backend="database",scope="global",path={"achievements"}},default=function()return{schemaVersion=1,guilds={}}end,validate=function(value)return type(value)=="table"and type(value.guilds)=="table","INVALID_ACHIEVEMENT_ROOT"end})
 function Store:GetGuildId()local guild=HolyStorm.Data.GuildStore:GetCurrent();return guild and guild.id end
-function Store:GetRoot()local root=HolyStorm.db.global.achievements;if type(root)~="table"then root={guilds={},schemaVersion=self.schemaVersion};HolyStorm.db.global.achievements=root end;root.guilds=type(root.guilds)=="table"and root.guilds or{};return root end
+function Store:GetRoot()local root=HolyStorm.DataManager:GetOwnedRoot(schemaId,"AchievementStore");if not root then return nil end;root.schemaVersion=tonumber(root.schemaVersion)or self.schemaVersion;root.guilds=type(root.guilds)=="table"and root.guilds or{};return root end
 function Store:GetGuild(guildId,create)guildId=guildId or self:GetGuildId();if not guildId then return nil end;local root=self:GetRoot();local state=root.guilds[guildId];if not state and create then state={guildId=guildId,schemaVersion=self.schemaVersion,definitions={},events={},meta={},updatedAt=0};root.guilds[guildId]=state end;if state then state.definitions=type(state.definitions)=="table"and state.definitions or{};state.events=type(state.events)=="table"and state.events or{};state.meta=type(state.meta)=="table"and state.meta or{}end;return state end
 function Store:ObjectId(kind,id,guildId)return table.concat({guildId or self:GetGuildId()or"",kind,id},"\031")end
 function Store:SplitObjectId(objectId)local guildId,kind,id=tostring(objectId or""):match("^(.-)\031([DE])\031(.+)$");return guildId,kind,id end

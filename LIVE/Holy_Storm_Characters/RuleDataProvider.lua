@@ -1,7 +1,7 @@
-local addonVersion="1.0.0"
+local addonVersion="1.0.1"
 local HolyStorm=LibStub("AceAddon-3.0"):GetAddon("Holy_Storm")
 local L=LibStub("AceLocale-3.0"):GetLocale("Holy_Storm_Twinks")
-
+local demandsSchema="character-rule-demands"
 local function collect(namespace)
     return function(node,demands)
         local id=tonumber(node.argument or node.value)
@@ -21,10 +21,8 @@ local metadata={
 
 HolyStorm:RegisterModule(metadata,function(Module)
     function Module:RebuildDemands()
-        local global=HolyStorm.db and HolyStorm.db.global
-        if not global then return false,"DATABASE_UNAVAILABLE" end
-        global.filters=global.filters or{}
-        local seed=HolyStorm.Utils.DeepCopy(global.filters.demands or{})
+        local demandStore=HolyStorm.DataManager:Get(demandsSchema)
+        local seed=type(demandStore)=="table"and demandStore or{}
         seed.quests,seed.achievements={},{}
         local nodes={}
         local function appendObjects(objects)
@@ -32,22 +30,21 @@ HolyStorm:RegisterModule(metadata,function(Module)
                 if type(object)=="table" and object.enabled~=false then nodes[#nodes+1]=object.root or object.rules or object end
             end
         end
-        appendObjects(global.rules and global.rules.global)
-        appendObjects(global.filters and global.filters.global)
-        if HolyStorm.db.profile then
-            appendObjects(HolyStorm.db.profile.rules and HolyStorm.db.profile.rules.localRules)
-            appendObjects(HolyStorm.db.profile.filters and HolyStorm.db.profile.filters.localFilters)
-        end
-        for _,group in pairs(global.permissions and global.permissions.groups or{}) do appendObjects(group.rules) end
+        appendObjects(HolyStorm.FilterManager:GetRules("global"))
+        appendObjects(HolyStorm.FilterManager:GetFilters("global"))
+        appendObjects(HolyStorm.FilterManager:GetRules("local"))
+        appendObjects(HolyStorm.FilterManager:GetFilters("local"))
+        for _,group in pairs(HolyStorm.Policy:GetGroups()or{})do appendObjects(group.rules)end
         local demands=HolyStorm.Rules:CollectDemands(nodes,seed)
-        global.filters.demands=demands
-        HolyStorm.Events:Emit("HS_RULE_DEMANDS_CHANGED",HolyStorm.Utils.DeepCopy(demands))
+        local committed=HolyStorm.DataManager:Commit(demandsSchema,nil,demands,{source="CharacterRuleData.RebuildDemands"})
+        if not committed or not committed.ok then return false,committed and committed.errorCode or"DEMANDS_COMMIT_FAILED"end
+        if committed.changed then HolyStorm.Events:Emit("HS_RULE_DEMANDS_CHANGED",HolyStorm.Utils.DeepCopy(demands))end
         return true
     end
     function Module:Capture(guid)
         guid=guid or UnitGUID("player")
         if not guid then return false end
-        local demands=HolyStorm.db.global.filters.demands or{}
+        local demands=HolyStorm.DataManager:Get(demandsSchema)or{}
         local snapshot={quests={},achievements={},updatedAt=HolyStorm.Utils.Now()}
         for id in pairs(demands.quests or{}) do if C_QuestLog and C_QuestLog.IsQuestFlaggedCompleted then snapshot.quests[id]=C_QuestLog.IsQuestFlaggedCompleted(id)==true end end
         for id in pairs(demands.achievements or{}) do if GetAchievementInfo then local _,_,_,completed=GetAchievementInfo(id);snapshot.achievements[id]=completed==true end end

@@ -20,6 +20,7 @@ function HolyStorm.Tasks:Queue(id,options)
  self.sequence=self.sequence+1;local task={id=id,uid="task-"..self.sequence,options=options};self.queue[#self.queue+1]=task;return task.uid,"QUEUED"
 end
 function HolyStorm.Utils.Now()return clock end
+function HolyStorm.Utils.CompareSemanticVersions(left,right)if left==right or type(left)=="string"and left:match("^%d+%.%d+%.%d+$")then return 0 end;return nil end
 function HolyStorm.Utils.DeepCopy(value)return deep(value)end
 function HolyStorm.Utils.TableCount(value)local count=0;for _ in pairs(value or{})do count=count+1 end;return count end
 function HolyStorm.Utils.SafeCall(_,fn,... )local values={pcall(fn,...)};if not values[1]then return false,values[2]end;table.remove(values,1);return true,table.unpack(values)end
@@ -165,6 +166,10 @@ assert(Sync.activeTransfer.fragments==0 and Sync.activeTransfer.phase=="REQUEST"
 -- Presence/control can still update while the data slot is occupied.
 assert(Sync:OnPresence({version="DEV"},"Relay-One-Realm","Player-RelayOne","Player-RelayOne"))
 assert(Sync:GetKnownVersion("Player-RelayOne")=="DEV","Presence remains independent of the serialized data slot")
+local versionUpdates=0;HolyStorm.Events:Register("HS_SYNC_VERSION_UPDATED","version-dedup-test",function()versionUpdates=versionUpdates+1 end)
+assert(Sync:OnPresence({version="DEV"},"Relay-One-Realm","Player-RelayOne","Player-RelayOne")and versionUpdates==0,"repeated Presence with an unchanged version does not emit a redundant version-update event")
+assert(Sync:OnPresence({version="1.2.0"},"Relay-One-Realm","Player-RelayOne","Player-RelayOne")and versionUpdates==1,"a changed peer version emits exactly one update")
+assert(Sync:OnPresence({version="1.2.0"},"Relay-One-Realm","Player-RelayOne","Player-RelayOne")and versionUpdates==1,"the new version stays quiet on subsequent Presence")
 
 -- Receive only imports a complete object on the TaskManager worker; failure keeps cache.
 local payload={objectId=userObject,snapshot={new=true}}

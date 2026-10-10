@@ -1,4 +1,4 @@
-local addonVersion = "2.4.0"
+local addonVersion = "2.4.1"
 local HolyStorm = LibStub("AceAddon-3.0"):GetAddon("Holy_Storm")
 local L = LibStub("AceLocale-3.0"):GetLocale("Holy_Storm_Dungeons")
 
@@ -348,7 +348,7 @@ HolyStorm:RegisterModule(metadata, function(Module)
 			function(snapshot, reason, diagnostics) return Module:Validate(snapshot, reason, diagnostics) end,
 			function(snapshot, force) return Module:Commit(snapshot, force, sync) end,
 			{
-				source = "MythicPlus", delay = delay or 1.5, retryDelay = 2.5, maxRetries = 3, priority = 4,
+				source = "MythicPlus", delay = delay or 1.5, retryDelay = 2.5, maxRetries = 3, priority = 4, fingerprint = false,
 				onValidationFailure = function(reason, disposition, retryCount, maxRetries, diagnostics)
 					diagnostics = type(diagnostics) == "table" and diagnostics or {}
 					HolyStorm.Logger:Write("WARN", "MythicPlus", "validation", "MythicPlus validation: " .. disposition, {

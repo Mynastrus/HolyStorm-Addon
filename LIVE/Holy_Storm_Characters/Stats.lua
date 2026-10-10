@@ -1,4 +1,4 @@
-local addonVersion="1.2.0"
+local addonVersion="1.2.1"
 local HolyStorm=LibStub("AceAddon-3.0"):GetAddon("Holy_Storm")
 local L=LibStub("AceLocale-3.0"):GetLocale("Holy_Storm_Twinks")
 local metadata={id="CharacterStats",name="CharacterStats",displayName=L["RULE_CATEGORY_STATS"],internalName="characterStats",version=addonVersion,moduleType="feature",category="feature",description=L["RULE_CATEGORY_STATS_DESC"],permissions={"player-read","sync-send"},dependencies={"core"},capabilities={"character.scan.stats","character.scan.additional"},data={block="stats"},enabledByDefault=true,ruleFields={
@@ -165,7 +165,7 @@ HolyStorm:RegisterModule(metadata,function(Module)
   if ok or writeReason=="UNCHANGED"then self:CollectLive()end
   return ok,writeReason
  end
- function Module:Queue(sync)return HolyStorm.Snapshots:Queue("stats",function()return Module:Collect()end,function(snapshot,scanReason,diagnostics,attempt,maximum)return Module:Validate(snapshot,scanReason,diagnostics,attempt,maximum)end,function(snapshot)return Module:Commit(snapshot)end,{source="CharacterStats",delay=1,retryDelay=2.5,priority=5})end
+ function Module:Queue(sync)return HolyStorm.Snapshots:Queue("stats",function()return Module:Collect()end,function(snapshot,scanReason,diagnostics,attempt,maximum)return Module:Validate(snapshot,scanReason,diagnostics,attempt,maximum)end,function(snapshot)return Module:Commit(snapshot)end,{source="CharacterStats",delay=1,retryDelay=2.5,priority=5,fingerprint=false})end
  function Module:RequestBaseline(reason)
   local allowed=baselineSafety();if not allowed then self.baselineDirty=true;return false,"BASELINE_UNSAFE"end
   self.baselineDirty=true

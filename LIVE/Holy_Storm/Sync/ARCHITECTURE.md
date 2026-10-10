@@ -72,9 +72,10 @@ blocks. Optional domains can register a manifest provider without adding a
 hard dependency to core. Unknown domains are held in a 256-entry bounded list
 for up to the Presence TTL and considered if that module registers.
 
-The receiver compares each entry against its local domain metadata through
-`PlayerData:CompareMetadata`; an exact owner/version/revision match and any
-locally newer version cause no request. A missing or newer remote revision
+The receiver compares each entry against local domain metadata using that
+domain's freshness rule. Character blocks use owner-aware freshness: an exact
+direct owner match is current, but a direct owner can repair an indirect relay
+copy even when its numeric version is lower. Missing or fresher eligible data
 creates normal `QueueFetch` demand. Login does not call `RunCatchUp`; the legacy
 entry point logs `LOGIN_CATCHUP_SUPPRESSED` and returns without discovery.
 Passive healing remains available from newer offers, domain events and actual
@@ -161,10 +162,15 @@ receive the configured bounded retries; exhausted source/revision pairs stay
 suppressed in memory for ten minutes (up to 512 entries), unless a new source,
 new revision or explicit user refresh appears.
 
-The central planner does not create owner revisions. PlayerData continues to
-accept only owner-originated revisions, preserve origin timestamps and
-identity through relays, reject older revisions and same-revision conflicts,
-and protect locally owned snapshots from remote copies.
+The central planner does not create owner revisions. Character block payloads
+must retain the original character GUID as owner. A relay can advance an
+indirect cache while no direct copy from that owner is known. Once a block has
+been received directly from its owner, a relay cannot replace it even with a
+higher numeric version; a later direct owner copy can replace a relay cache
+even if its version is lower. Locally owned blocks still reject non-identical
+remote data. Identical same-revision payloads remain no-ops. Other domains use
+their registered freshness rules; in particular, permission imports retain
+their revision-chain validation.
 
 ## Traffic, payload boundaries and fragmentation
 
@@ -202,6 +208,12 @@ checks, then calls the domain importer. PlayerData commits each character
 block as one write and emits its update event only after persistence succeeds.
 GuildLog retains its own validated event merge semantics. Invalid, stale or
 failed imports leave the last valid snapshot intact.
+
+For character blocks, source authority is evaluated before numeric freshness
+when comparing the same owner. This lets the owner's direct copy repair an
+indirect relay cache without changing the owner revision format. Login
+discovery remains a metadata-only manifest followed by targeted requests; it
+does not start a global catch-up or recurring Presence heartbeat.
 
 ## Retry and recovery
 

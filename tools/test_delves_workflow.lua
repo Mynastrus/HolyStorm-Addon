@@ -61,6 +61,8 @@ local worldActivities={{id=801,index=1,type=6,progress=0,threshold=3,level=4},{i
 C_WeeklyRewards={AreRewardsForCurrentRewardPeriod=function()return false end,HasAvailableRewards=function()return false end,GetActivities=function(kind)assert(kind==6);return worldActivities end}
 
 assert(loadfile(coreRoot.."Persistence/SnapshotManager.lua"))()
+local snapshotFingerprintCalls=0;local originalSnapshotFingerprint=HolyStorm.Snapshots.Fingerprint
+HolyStorm.Snapshots.Fingerprint=function(self,value)snapshotFingerprintCalls=snapshotFingerprintCalls+1;return originalSnapshotFingerprint(self,value)end
 assert(loadfile(coreRoot.."Core/Tasks/CharacterScanManager.lua"))()
 assert(loadfile(repository.."LIVE/Holy_Storm_Delves/Delves.lua"))()
 HolyStorm.Tasks:Initialize();HolyStorm.Workflows:Initialize();HolyStorm.CharacterScans:Initialize()
@@ -86,6 +88,7 @@ local oldStored,oldMeta=stored();assert(oldStored.weeklyIdentity~=C_DateAndTime.
 -- A successful current identity replaces stale data only at the atomic commit.
 assert(HolyStorm.CharacterScans:Request("delves","MANUAL_COMMAND",false,{manual=true,order=40}));local activeQueue=HolyStorm.CharacterScans.pending.delves;local duringRefresh,duringRefreshMeta=stored();assert(activeQueue and duringRefresh.weeklyIdentity==oldStored.weeklyIdentity and duringRefreshMeta.version==7,"cached values stay stored while a refresh is queued")
 processAll();local current,currentMeta=stored();assert(current.weeklyIdentity==1900000000 and current.seasonNumber==4 and current.greatVaultWorld.progress==1 and currentMeta.version==8 and currentMeta.originCreatedAt>oldMeta.originCreatedAt,"validated current snapshot atomically replaces the previous-week block")
+assert(snapshotFingerprintCalls==0,"Delves avoids the redundant SnapshotManager fingerprint; PlayerData still performs its required equality check at commit")
 
 -- A scan with no semantic changes is successful without a revision/timestamp bump.
 local currentOrigin=currentMeta.originCreatedAt;request("MANUAL_COMMAND");local unchanged,unchangedMeta=stored();assert(unchangedMeta.version==8 and unchangedMeta.originCreatedAt==currentOrigin and unchanged.weeklyIdentity==1900000000,"unchanged scans do not advance origin revision or timestamp")

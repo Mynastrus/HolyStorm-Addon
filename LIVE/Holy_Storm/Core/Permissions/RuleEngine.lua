@@ -1,4 +1,4 @@
-local addonVersion = "4.0.0"
+local addonVersion = "4.0.1"
 local HolyStorm = LibStub("AceAddon-3.0"):GetAddon("Holy_Storm")
 
 local Rules = {
@@ -13,6 +13,10 @@ local Rules = {
     maxListValues = 100,
     Result = { PASS="PASS", FAIL="FAIL", UNKNOWN="UNKNOWN" },
 }
+local demandsSchema="character-rule-demands"
+if HolyStorm.DataManager then
+    HolyStorm.DataManager:RegisterSchema({id=demandsSchema,owner="CharacterRuleData",version=1,versionField=false,storage={backend="database",scope="global",path={"filters","demands"}},default=function()return{}end,validate=function(value)return type(value)=="table","INVALID_DEMANDS"end})
+end
 
 local function lower(value) return string.lower(tostring(value or "")) end
 local function equals(left,right)
@@ -388,8 +392,8 @@ end
 
 function Rules:RebuildDemands()
     if HolyStorm.Events then HolyStorm.Events:Emit("HS_RULE_DEMANDS_REBUILD_REQUESTED") end
-    local global=HolyStorm.db and HolyStorm.db.global
-    return copy(global and global.filters and global.filters.demands or{})
+    local demands=HolyStorm.DataManager and HolyStorm.DataManager:Get(demandsSchema)
+    return type(demands)=="table"and demands or{}
 end
 
 function Rules:Initialize() end

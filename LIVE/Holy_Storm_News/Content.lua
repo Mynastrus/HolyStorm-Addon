@@ -1,4 +1,4 @@
-local addonVersion="1.0.0"
+local addonVersion="1.0.1"
 local HolyStorm=LibStub("AceAddon-3.0"):GetAddon("Holy_Storm")
 local L=LibStub("AceLocale-3.0"):GetLocale("Holy_Storm_News")
 local Content={version=addonVersion,types={NEWS=true,GUIDE=true,ANNOUNCEMENT=true},statuses={DRAFT=true,PUBLISHED=true,ARCHIVED=true,DELETED=true},priorities={NORMAL=true,IMPORTANT=true,URGENT=true},openHandlers={},sequence=0,maxEntries=1500,maxTitle=160,maxBody=60000}
@@ -15,7 +15,7 @@ function Content:GetGuildId()return HolyStorm.Data.ContentStore:GetGuildId()end
 function Content:Get(id)return HolyStorm.Data.ContentStore:Get(id)end
 function Content:GetIndex()return HolyStorm.Data.ContentStore:GetIndex()end
 function Content:NewId()
- self.sequence=self.sequence+1;local install=HolyStorm.db.global.installId or"local";return string.format("content-%08x-%04x-%04x-%s",now()%0xffffffff,self.sequence%0xffff,math.random(0,0xffff),install:gsub("[^%w]",""):sub(-12))
+ self.sequence=self.sequence+1;local install=HolyStorm.Database:Get("installId","global")or"local";return string.format("content-%08x-%04x-%04x-%s",now()%0xffffffff,self.sequence%0xffff,math.random(0,0xffff),install:gsub("[^%w]",""):sub(-12))
 end
 function Content:Normalize(entry,current)
  local result=copy(entry);result.id=result.id or self:NewId();result.guildId=result.guildId or self:GetGuildId();result.type=string.upper(tostring(result.type or(current and current.type)or"NEWS"));result.category=string.upper(tostring(result.category or(current and current.category)or"GENERAL"));result.title=HolyStorm.Utils.Trim(result.title or"");result.slug=slug(result.slug~=""and result.slug or result.title);result.body=tostring(result.body or result.content or"");result.content=nil;result.status=string.upper(tostring(result.status or(current and current.status)or"DRAFT"));result.priority=string.upper(tostring(result.priority or(current and current.priority)or"NORMAL"));result.visibility=type(result.visibility)=="table"and result.visibility or{scope="GUILD"};result.visibility.scope=string.upper(tostring(result.visibility.scope or"GUILD"));result.tags=type(result.tags)=="table"and result.tags or{};result.metadata=type(result.metadata)=="table"and result.metadata or{};return result

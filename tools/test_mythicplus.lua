@@ -47,7 +47,7 @@ C_WeeklyRewards={
 
 assert(loadfile(featureRoot.."MythicPlus.lua"))()
 local metadata=HolyStorm.metadata
-assert(metadata.id=="mythicPlus"and metadata.name=="MythicPlus"and metadata.version=="2.4.0","module metadata identifies the audited producer")
+assert(metadata.id=="mythicPlus"and metadata.name=="MythicPlus"and metadata.version=="2.4.1","module metadata identifies the audited producer")
 assert(metadata.data.schemaVersion==5 and HolyStorm.PlayerData.blockSchema==5,"optional affix details advance the persisted snapshot schema")
 assert(metadata.sync.domains[1]=="character"and metadata.permissions[1]=="sync-send"and metadata.permissions[2]=="sync-receive","Mythic+ uses only the standard character sync permissions")
 Module:OnInitialize();Module:OnEnable()
@@ -122,7 +122,7 @@ C_ChallengeMode.GetMapTable=function()return pool end
 
 local provider=assert(HolyStorm.CharacterScans.providers.mythicPlus)
 provider.request(true,"MANUAL_COMMAND");assert(requested.maps==1 and requested.rewards==1 and workflows.created==1,"an explicit manual scan requests Blizzard's asynchronous map and reward data through the central workflow")
-assert(workflows.options.maxRetries==3 and workflows.options.retryDelay==2.5 and workflows.options.onValidationFailure,"retry limit, delay, and compact validation diagnostics are configured on the standard workflow")
+assert(workflows.options.maxRetries==3 and workflows.options.retryDelay==2.5 and workflows.options.onValidationFailure and workflows.options.fingerprint==false,"retry diagnostics remain configured while the unused full-snapshot fingerprint is disabled")
 workflows.options.onValidationFailure("DUNGEON_POOL_NOT_READY","RETRY",1,3,{season=18,rating=0,maps=0,expectedMaps=8,mapId=4})
 local validationLog=logEntries[#logEntries]
 assert(validationLog.level=="WARN"and validationLog.source=="MythicPlus"and validationLog.message=="MythicPlus validation: RETRY"and validationLog.context.reason=="DUNGEON_POOL_NOT_READY"and validationLog.context.season==18 and validationLog.context.rating==0 and validationLog.context.maps==0 and validationLog.context.expectedMaps==8 and validationLog.context.mapId==4 and validationLog.context.retryCount==1 and validationLog.context.maxRetries==3,"diagnostic log preserves reason ID, known zero, compact map context, and retry bounds")

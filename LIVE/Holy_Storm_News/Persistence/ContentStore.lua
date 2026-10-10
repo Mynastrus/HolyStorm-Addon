@@ -1,16 +1,22 @@
-local addonVersion="1.0.0"
+local addonVersion="1.0.1"
 local HolyStorm=LibStub("AceAddon-3.0"):GetAddon("Holy_Storm")
 local Store={version=addonVersion}
+local schemaId="content-store"
 
 local function copy(value)return HolyStorm.Utils.DeepCopy(value)end
 local function now()return HolyStorm.Utils.Now()end
+HolyStorm.DataManager:RegisterSchema({id=schemaId,owner="ContentStore",version=1,versionField=false,storage={backend="database",scope="global",path={"content"}},default=function()return{schemaVersion=1,guilds={},legacyNews={},legacyReads={}}end,validate=function(value)return type(value)=="table"and type(value.guilds)=="table","INVALID_CONTENT_ROOT"end})
 
 function Store:Initialize()
- local global=HolyStorm.db.global
- global.content=HolyStorm.Utils.ApplyDefaults(global.content,{guilds={},legacyNews={},legacyReads={},schemaVersion=1})
+ local root=self:GetRoot();if not root then return false,"CONTENT_ROOT_UNAVAILABLE"end
+ root.schemaVersion=tonumber(root.schemaVersion)or 1
+ root.guilds=type(root.guilds)=="table"and root.guilds or{}
+ root.legacyNews=type(root.legacyNews)=="table"and root.legacyNews or{}
+ root.legacyReads=type(root.legacyReads)=="table"and root.legacyReads or{}
+ return true
 end
 
-function Store:GetRoot()return HolyStorm.db.global.content end
+function Store:GetRoot()local root=HolyStorm.DataManager:GetOwnedRoot(schemaId,"ContentStore");return root end
 function Store:GetGuildId()local guild=HolyStorm.Data.GuildStore:GetCurrent();return guild and guild.id end
 function Store:GetGuild(guildId,create)
  guildId=guildId or self:GetGuildId();if not guildId then return nil end

@@ -1,5 +1,13 @@
 # Holy Storm Persistence- und Datenarchitektur-Audit
 
+> Historical snapshot: this report predates the current schema-backed
+> `DataManager` and contains findings that are no longer current. For the
+> repository state audited on 2026-10-10, use
+> [`docs/CORE_SYNC_DATA_MANAGER_AUDIT_20261010.md`](docs/CORE_SYNC_DATA_MANAGER_AUDIT_20261010.md).
+> In particular, the older notes about AchievementStore relay provenance,
+> remote Character identity writes, PlayerData schema version, and the lack of
+> a real DataManager must not be read as descriptions of current behavior.
+
 Stand: 2026-09-19
 Repository-Revision: `94a02493f7eb89c8328401867bb05b275bfd1909` (`main`)
 Gegenstand: Ist-Analyse sowie dokumentierter Phase-1-Implementierungsstand; keine Store- oder SavedVariable-Migration

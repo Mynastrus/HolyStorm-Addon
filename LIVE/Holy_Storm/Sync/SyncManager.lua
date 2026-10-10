@@ -1,4 +1,4 @@
-local addonVersion="3.5.0"
+local addonVersion="3.5.1"
 local HolyStorm=LibStub("AceAddon-3.0"):GetAddon("Holy_Storm")
 local L=LibStub("AceLocale-3.0"):GetLocale("Holy_Storm")
 local Sync={version=addonVersion,protocol=3,domains={},requests={},activeRequests={},heard={},heardAt={},sequence=0,maxOffers=100,knownOnline={},knownVersions={},presenceResolutionDiagnostics={},publishedVersions={},requestTimeout=60,presenceTimeout=300,cleanupTimer=nil,cleanupDue=nil,cleanupTaskId=nil,activityNotifyTimer=nil,activitySequence=0,activeActivities={},activityPublishedActive=false,activityStateMismatch=false,activityMismatchLogged=false,retiredRequestIds={},retiredRequestOrder={},maxRetiredRequests=256,terminalFetches={},terminalFetchOrder={},lastTerminalFetch=nil,terminalFetchRetention=600,maxTerminalFetches=512,loginSessionId=nil,presencePublished=false,peerVersionReceived=false,outdatedNotified=false,catchUpJobs={},catchUpIndex={},catchUpLimit=20000,activeTransfer=nil,pendingPayloads={},pendingPayloadOrder={},maxPendingPayloads=64,maxRetries=3,maxManifestEntries=64,pendingManifestEntries={},maxPendingManifestEntries=256,maxCoalescedRecipients=64,maxRequestIdsPerRecipient=4,requestCoalesceWindow=.75,outboundCoalescing={},outboundSequence=0,offerSnapshots={},runtimeMetrics={requested=0,started=0,completed=0,failed=0,retried=0,byDomain={},byReason={}}}
@@ -127,12 +127,16 @@ local function sameAuthoritativeRevision(localMeta,remoteMeta)
  if tonumber(localMeta.version)~=tonumber(remoteMeta.version)then return false end
  return localMeta.revisionID==remoteMeta.revisionID
 end
+local function compareMetadata(domain,localMeta,remoteMeta)
+ if domain and domain.freshness=="player-block"and HolyStorm.PlayerData.CompareOwnerMetadata then return HolyStorm.PlayerData:CompareOwnerMetadata(localMeta,remoteMeta)end
+ return HolyStorm.PlayerData:CompareMetadata(localMeta,remoteMeta)
+end
 local function metadataNeedsFetch(domain,localMeta,remoteMeta)
- if sameAuthoritativeRevision(localMeta,remoteMeta)then return false,"SAME_REVISION"end
- local decision,reason=HolyStorm.PlayerData:CompareMetadata(localMeta,remoteMeta)
+ if sameAuthoritativeRevision(localMeta,remoteMeta)and not(domain and domain.freshness=="player-block"and localMeta.direct~=remoteMeta.direct)then return false,"SAME_REVISION"end
+ local decision,reason=compareMetadata(domain,localMeta,remoteMeta)
  local sibling=domain and domain.freshness=="revision-chain"and localMeta and tonumber(localMeta.version)==tonumber(remoteMeta.version)and localMeta.revisionID~=remoteMeta.revisionID
  if decision>0 or sibling then return true,sibling and"REVISION_CHAIN_SIBLING"or reason end
- return false,localMeta and decision<0 and"LOCAL_NEWER"or reason or"CURRENT"
+ return false,reason=="NON_AUTHORITATIVE_RELAY"and reason or localMeta and decision<0 and"LOCAL_NEWER"or reason or"CURRENT"
 end
 function Sync:BuildManifest()
  local entries,seen={},{};local scanLimit=self.maxManifestEntries*4
@@ -307,15 +311,15 @@ function Sync:RunDiscover(task)
 end
 function Sync:MetadataForRequest(domain,request,recipientGuid,recipientName)
  local entries={};if request.objectId then local meta=domain.getMetadata(request.objectId);if meta then entries[1]=meta end else entries=domain.listMetadata(tonumber(request.watermark)or 0,request)or{}end
- local out={};for _,meta in ipairs(entries)do if type(meta)=="table"and validId(meta.objectId)and validId(meta.owner)and tonumber(meta.version)and(not domain.canShare or domain.canShare(meta,recipientGuid,recipientName,"offer"))then local newer=tonumber(meta.version)>tonumber(request.knownVersion or-1);local sibling=domain.freshness=="revision-chain"and request.knownRevisionID and meta.revisionID~=request.knownRevisionID;if newer or sibling or not request.objectId then local item=copy(meta);item.direct=item.owner==UnitGUID("player");out[#out+1]=item end end end
+ local out={};for _,meta in ipairs(entries)do if type(meta)=="table"and validId(meta.objectId)and validId(meta.owner)and tonumber(meta.version)and(not domain.canShare or domain.canShare(meta,recipientGuid,recipientName,"offer"))then local newer=tonumber(meta.version)>tonumber(request.knownVersion or-1);local sibling=domain.freshness=="revision-chain"and request.knownRevisionID and meta.revisionID~=request.knownRevisionID;local authoritativeOwner=domain.freshness=="player-block"and meta.owner==UnitGUID("player");if newer or sibling or not request.objectId or authoritativeOwner then local item=copy(meta);item.direct=item.owner==UnitGUID("player");out[#out+1]=item end end end
  table.sort(out,function(a,b)if a.objectId==b.objectId then return tostring(a.revisionID or"")<tostring(b.revisionID or"")end;return a.objectId<b.objectId end);return out
 end
 function Sync:MetadataPageForRequest(domain,snapshot,request,recipientGuid,recipientName,page)
  local entries=snapshot.entries or snapshot.offers or{};local start=math.max(0,tonumber(page)or 0)*self.maxOffers;local out={};local eligible=0
  for _,meta in ipairs(entries)do
   if type(meta)=="table"and validId(meta.objectId)and validId(meta.owner)and tonumber(meta.version)and(not domain.canShare or domain.canShare(meta,recipientGuid,recipientName,"offer"))then
-   local newer=tonumber(meta.version)>tonumber(request.knownVersion or-1);local sibling=domain.freshness=="revision-chain"and request.knownRevisionID and meta.revisionID~=request.knownRevisionID
-   if newer or sibling or not request.objectId then eligible=eligible+1;if eligible>start and#out<self.maxOffers then local item=copy(meta);item.direct=item.owner==UnitGUID("player");out[#out+1]=item end end
+   local newer=tonumber(meta.version)>tonumber(request.knownVersion or-1);local sibling=domain.freshness=="revision-chain"and request.knownRevisionID and meta.revisionID~=request.knownRevisionID;local authoritativeOwner=domain.freshness=="player-block"and meta.owner==UnitGUID("player")
+   if newer or sibling or not request.objectId or authoritativeOwner then eligible=eligible+1;if eligible>start and#out<self.maxOffers then local item=copy(meta);item.direct=item.owner==UnitGUID("player");out[#out+1]=item end end
   end
  end
  return out,eligible>start+#out
@@ -330,7 +334,7 @@ end
 function Sync:RunOffer(task)
  local m=task.metadata;local domain=self.domains[m.domain];local snapshot=self.offerSnapshots[m.snapshotKey];if domain and not snapshot then local query=m.request or{};snapshot={offers=self:MetadataForRequest(domain,query,senderGuid(m.requester),m.requester),createdAt=now()};self.offerSnapshots[m.snapshotKey or("legacy:"..tostring(query.requestId))]=snapshot end;if not domain or not snapshot then return false end
  local pageOffers,hasMore;if snapshot.entries then local query=copy(m.request or{});query.page=nil;query.paginationSender=nil;pageOffers,hasMore=self:MetadataPageForRequest(domain,snapshot,query,senderGuid(m.requester),m.requester,m.page)else local first=(tonumber(m.page)or 0)*self.maxOffers+1;local last=math.min(#snapshot.offers,first+self.maxOffers-1);pageOffers={};for index=first,last do pageOffers[#pageOffers+1]=snapshot.offers[index]end;hasMore=last<#snapshot.offers end
- local filtered={};local heard=self.heard[m.request.requestId]or{};for _,meta in ipairs(pageOffers)do local decision=HolyStorm.PlayerData:CompareMetadata(heard[meta.objectId],meta);if domain.freshness=="revision-chain"then if not heard[meta.objectId]or decision>0 or heard[meta.objectId].revisionID~=meta.revisionID then filtered[#filtered+1]=meta end elseif not heard[meta.objectId]or decision>0 then filtered[#filtered+1]=meta end end
+ local filtered={};local heard=self.heard[m.request.requestId]or{};for _,meta in ipairs(pageOffers)do local decision=compareMetadata(domain,heard[meta.objectId],meta);if domain.freshness=="revision-chain"then if not heard[meta.objectId]or decision>0 or heard[meta.objectId].revisionID~=meta.revisionID then filtered[#filtered+1]=meta end elseif not heard[meta.objectId]or decision>0 then filtered[#filtered+1]=meta end end
  local supported={GUILD=true,PARTY=true,RAID=true,INSTANCE_CHAT=true};local channel=supported[m.responseChannel]and m.responseChannel or"GUILD";local target;if domain.canShare or m.request.paginationSender then channel,target="WHISPER",m.requester end;self:QueueEnvelope("OFFER",m.domain,{requestId=m.request.requestId,offers=filtered,requester=m.requester,page=m.page or 0,hasMore=hasMore},channel,target,domain.priority or 85);return true
 end
 local priorities={USER_INTERACTIVE=20,IMPORTANT_CONTROL=50,BACKGROUND_CATCHUP=90,MAINTENANCE=100}
@@ -488,7 +492,7 @@ function Sync:RecordOffers(domainId,data,sender,isAnnouncement)
  for _,meta in ipairs(data.offers)do
   if type(meta)=="table"and validId(meta.objectId)and validId(meta.owner)and tonumber(meta.version)and not isLocalSource(sender,senderId)then
    meta=copy(meta);meta.direct=senderId~=nil and senderId==meta.owner;meta.senderGuid=senderId
-   if requestId then local old=self.heard[requestId][meta.objectId];if not old or HolyStorm.PlayerData:CompareMetadata(old,meta)>0 then self.heard[requestId][meta.objectId]=meta end end
+   if requestId then local old=self.heard[requestId][meta.objectId];if not old or compareMetadata(domain,old,meta)>0 then self.heard[requestId][meta.objectId]=meta end end
    if pending and pending.domain==domainId and(not pending.objectId or pending.objectId==meta.objectId)and(not data.requester or samePlayerName(data.requester,GetUnitName("player",true)))then
     pending.candidates[meta.objectId]=pending.candidates[meta.objectId]or{};pending.candidates[meta.objectId][sender]={sender=sender,senderGuid=senderId,meta=meta}
     local localMeta=domain.getMetadata(meta.objectId);local needed,decision=metadataNeedsFetch(domain,localMeta,meta)
@@ -982,8 +986,12 @@ function Sync:OnPresence(data,sender,resolved,claimedGuid,identityReason)
   if validPresenceVersion(data.version)then
    local oldVersion=previous and previous.version
    self.knownVersions[resolved]={guid=resolved,sender=sender,version=data.version,receivedAt=receivedAt}
-   if oldVersion~=data.version then logPresenceVersion(sender,resolved,sender,oldVersion,data.version,data.version,oldVersion and"PRESENCE_VERSION_UPDATED"or"PRESENCE_VERSION_LEARNED",receivedAt,receivedAt+self.presenceTimeout)end
-   self.peerVersionReceived=true;HolyStorm.Events:Emit("HS_SYNC_VERSION_UPDATED",resolved,data.version,sender);HolyStorm.Tasks:Queue("Sync.VersionNotice",{delay=2,priority=99,triggerSource="PEER_VERSION_RECEIVED"})
+   if oldVersion~=data.version then
+    logPresenceVersion(sender,resolved,sender,oldVersion,data.version,data.version,oldVersion and"PRESENCE_VERSION_UPDATED"or"PRESENCE_VERSION_LEARNED",receivedAt,receivedAt+self.presenceTimeout)
+    HolyStorm.Events:Emit("HS_SYNC_VERSION_UPDATED",resolved,data.version,sender)
+    HolyStorm.Tasks:Queue("Sync.VersionNotice",{delay=2,priority=99,triggerSource="PEER_VERSION_RECEIVED"})
+   end
+   self.peerVersionReceived=true
   elseif previous then
    -- A versionless Presence still confirms that this peer is alive.
    previous.sender=sender;previous.receivedAt=receivedAt
