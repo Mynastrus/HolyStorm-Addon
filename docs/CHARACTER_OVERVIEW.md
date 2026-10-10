@@ -60,15 +60,17 @@ Summary sections are adapters over the same stored blocks as their tabs. Equipme
 
 One row is rendered per supported slot. The complete stored item hyperlink is used for the native tooltip and item click; the UI does not reconstruct `item:<id>`. Confirmed empty slots use the WoW slot placeholder. Missing slots render gray unknown. Item names are truncated to the available table width while preserving the link payload and tooltip.
 
-Enchant state is inferred only from the v4 stored enchant ID: positive/zero is known and absent is unknown. Socket count zero means no sockets; a missing socket count remains unknown even if the gem list is empty. Only a stored `SOCKET_FILLED` or positive legacy gem ID renders as filled. Missing gem IDs and legacy `empty=true` flags are unknown because the current producer cannot reliably establish an empty socket. The current producer does not establish tier membership; legacy `isTier` flags are ignored and tier stays unknown.
+Enchant state is inferred only from the v4 stored enchant ID: positive/zero is known and absent is unknown. Socket count zero means no sockets; a missing socket count remains unknown even if the gem list is empty. Only a stored `SOCKET_FILLED` or positive legacy gem ID renders as filled. Missing gem IDs and legacy `empty=true` flags are unknown because the current producer cannot reliably establish an empty socket. The current producer does not establish current-season tier membership; legacy `isTier` flags and generic item-set IDs are not enough, so tier stays unknown. Saved item links are checked against the saved item ID before tooltip or click handling. A malformed link keeps the stored item label visible but cannot be passed to WoW.
 
 ## Mythic+ v5
 
-The stored dynamic seasonal pool is rendered by stable challenge-map ID. The UI requires v4 schema/snapshot versions and a matching known season. It uses Blizzard's per-dungeon score and selected in-time/overtime records, retains both in the tooltip, and uses Blizzard rating colors when available. Zero rating remains visible as zero; a loaded dungeon with no completion is labeled separately. Great Vault thresholds are separate from seasonal score and are visible only for the current reward period/reset identity.
+The stored dynamic seasonal pool is rendered by stable challenge-map ID. The UI requires v5 schema/snapshot versions and a matching verified current season. A previous-season snapshot is hidden in the tab, overview summary and dashboard; if the current-season API is unavailable, seasonal values remain unknown until the season can be verified. It uses Blizzard's per-dungeon score and selected in-time/overtime records, retains both in the tooltip, and uses Blizzard rating colors when available. Zero rating remains visible as zero; a loaded dungeon with no completion is labeled separately. Great Vault thresholds are separate from seasonal score and are visible only for the current reward period/reset identity.
+
+The current saved schema does not provide a stable mapping from optional localized affix names to the Tyrannical and Fortified labels, and does not store dungeon teleport spell IDs or a recent-run history. The UI therefore does not infer those rows or actions from localized names, run affixes, or a static spell list. The optional tracked-affix details and actual best runs remain available in the tooltip.
 
 ## Raid v3
 
-The UI uses the stored current Encounter Journal catalog, boss order, lockouts, and lifetime statistics. Weekly difficulty columns remain separate from lifetime Best. Best is calculated per catalog boss from the highest confirmed lifetime difficulty in the stored v3 data; the tooltip emits one row per catalog boss in stored order and does not treat an unknown statistic as zero. Colors are centralized: LFR yellow, Normal green, Heroic blue, Mythic purple. Weekly lockouts remain visible when their stored identity is stale, with a cached-week label; stored catalog and lifetime Best remain usable.
+The UI uses the stored current Encounter Journal catalog, boss order, lockouts, and lifetime statistics. Weekly difficulty columns remain separate from lifetime Best. Best is calculated per catalog boss from the highest confirmed lifetime difficulty in the stored v3 data; the tooltip emits one row per catalog boss in stored order and does not treat partial or unknown statistics as zero. It displays zero kills only when all four authoritative difficulty counters are present and zero. Weekly boss tooltip state is green for killed, red for not killed and gray when unknown. Colors for progress columns are centralized: LFR yellow, Normal green, Heroic blue, Mythic purple. Weekly lockouts remain visible when their stored identity is stale, with a cached-week label; stored catalog and lifetime Best remain usable.
 
 ## Delves v3
 
@@ -104,7 +106,7 @@ PlayerData and snapshot runtime-status events identify the changed character and
 
 ## Known limitations
 
-- No Retail client was available for this audit. Tests validate stored consumer behavior, not Blizzard client rendering or API timing.
+- No Retail client was available for this audit. Tests validate stored consumer behavior, not Blizzard client rendering or API timing. In-game verification is still required for native item tooltips/clicks, truncation, narrow-window layout, Encounter Journal navigation, combat behavior, and localized header widths.
 - Raid weekly freshness follows the shared domain status contract. Stale weekly lockouts remain in the stored snapshot and are labeled by status; lifetime best data remains current independently.
 - An unsupported remote snapshot can remain unavailable until an authoritative newer block arrives through normal sync; the Character UI adds no private sync protocol.
 - Long subtitle content is constrained by the shared HeaderBar's one-line width; verify it in both locales at the narrowest supported window.

@@ -1,4 +1,4 @@
-local addonVersion="2.0.0"
+local addonVersion="2.0.1"
 local HolyStorm=LibStub("AceAddon-3.0"):GetAddon("Holy_Storm")
 local localeLibrary=LibStub("AceLocale-3.0",true)
 local L=localeLibrary and localeLibrary.GetLocale and localeLibrary:GetLocale("Holy_Storm_CharacterUI")or setmetatable({},{__index=function(_,key)return key end})
@@ -140,23 +140,24 @@ function CharacterUI:GetDataStatus(characterUUID,blockId,scope,snapshotSource)
  local snapshotVersion=expectedSnapshotVersions[blockId]
  if snapshotVersion and(type(data)~="table"or data.snapshotVersion~=snapshotVersion)then return"UNSUPPORTED",meta end
  if(blockId=="mythicPlus"or blockId=="delves"or blockId=="stats")and data.schemaVersion~=snapshotVersion then return"UNSUPPORTED",meta end
- if runtime and(runtime.state=="DIRTY"or runtime.state=="REFRESHING"or runtime.state=="ERROR")then return runtime.state,meta,runtime end
  local week
  if blockId=="mythicPlus"or blockId=="delves"or(blockId=="raid"and scope~="lifetime")then week=statusCurrentValue(C_DateAndTime,"GetWeeklyResetStartTime")end
  if blockId=="mythicPlus"then
   local season=statusCurrentValue(C_MythicPlus,"GetCurrentSeason");local storedSeason=statusNumber(data.seasonId)
-  if season and storedSeason and season~=storedSeason then return"STALE",meta end
-  local storedWeek=statusNumber(data.weeklyIdentity);if week and storedWeek and week~=storedWeek then return"STALE",meta end
+  if not season or not storedSeason then return"UNKNOWN",meta,runtime,"SEASON_UNKNOWN"end
+  if season and storedSeason and season~=storedSeason then return"STALE",meta,runtime,"SEASON"end
+  local storedWeek=statusNumber(data.weeklyIdentity);if week and storedWeek and week~=storedWeek then return"STALE",meta,runtime,"WEEKLY"end
  elseif blockId=="delves"then
   local season=statusCurrentValue(C_DelvesUI,"GetCurrentDelvesSeasonNumber");local storedSeason=statusNumber(data.seasonNumber)
-  if season and storedSeason and season~=storedSeason then return"STALE",meta end
-  local storedWeek=statusNumber(data.weeklyIdentity);if week and storedWeek and week~=storedWeek then return"STALE",meta end
+  if season and storedSeason and season~=storedSeason then return"STALE",meta,runtime,"SEASON"end
+  local storedWeek=statusNumber(data.weeklyIdentity);if week and storedWeek and week~=storedWeek then return"STALE",meta,runtime,"WEEKLY"end
  elseif blockId=="raid"and scope~="lifetime"and week then
   local storedWeek=statusNumber(data.weeklyIdentity)
-  if storedWeek and week~=storedWeek then return"STALE",meta end
+  if storedWeek and week~=storedWeek then return"STALE",meta,runtime,"WEEKLY"end
   local updatedAt=statusNumber(data.updatedAt or(meta and(meta.originCreatedAt or meta.updatedAt)))
-  if not storedWeek and updatedAt and updatedAt<week then return"STALE",meta end
+  if not storedWeek and updatedAt and updatedAt<week then return"STALE",meta,runtime,"WEEKLY"end
  end
+ if runtime and(runtime.state=="DIRTY"or runtime.state=="REFRESHING"or runtime.state=="ERROR")then return runtime.state,meta,runtime end
  return"CURRENT",meta,runtime
 end
 function CharacterUI:GetDifficultyById(difficultyId)
@@ -167,13 +168,17 @@ function CharacterUI:ColorDifficulty(key,text)local c=self:GetDifficultyColor(ke
 
 local lifetimeDifficulties={"LFR","NORMAL","HEROIC","MYTHIC"}
 local function bestLifetimeKill(boss)
- local best
+ local best;local allZero=true
  for _,key in ipairs(lifetimeDifficulties)do
   local entry=type(boss)=="table"and type(boss.difficulties)=="table"and boss.difficulties[key]
-  local kills=type(entry)=="table"and entry.source=="blizzard-statistic"and tonumber(entry.statisticId)and tonumber(entry.kills)
-  if kills and kills>0 then best={difficulty=key,kills=kills}end
+  local trusted=type(entry)=="table"and entry.source=="blizzard-statistic"and tonumber(entry.statisticId)~=nil
+  local kills=trusted and tonumber(entry.kills)or nil
+  if not kills then allZero=false
+  elseif kills>0 then best={difficulty=key,kills=kills}
+  elseif kills~=0 then allZero=false end
  end
- return best
+ if best then return best end
+ if allZero then return{kills=0}end
 end
 function CharacterUI:BuildRaidBestRows(snapshot,raidIdentity)
  local result={};local lifetime=type(snapshot)=="table"and snapshot.lifetime
@@ -245,10 +250,11 @@ function CharacterUI:GetDashboardSummary(characterUUID)
  local itemLevel=equipmentV4 and safeNumeric(equipment.equippedItemLevel or equipment.itemLevel)or nil;if itemLevel and itemLevel<=0 then itemLevel=nil end
  local mythicPlusV5=type(mythicPlus)=="table"and mythicPlus.schemaVersion==5 and mythicPlus.snapshotVersion==5
  local storedSeason=mythicPlusV5 and safeNumeric(mythicPlus.seasonId)
- local rating=mythicPlusV5 and safeNumeric(mythicPlus.overallScore)or nil
+ local mythicPlusStatus,_,_,mythicPlusStaleReason=self:GetDataStatus(characterUUID,"mythicPlus",nil,{data=mythicPlus,meta=mythicMeta})
+ local rating=mythicPlusV5 and mythicPlusStaleReason~="SEASON"and mythicPlusStaleReason~="SEASON_UNKNOWN"and safeNumeric(mythicPlus.overallScore)or nil
  local lastUpdatedAt=0;for _,meta in ipairs({equipmentMeta or{},mythicMeta or{},raidMeta or{},delvesMeta or{},statsMeta or{}})do lastUpdatedAt=math.max(lastUpdatedAt,tonumber(meta.updatedAt)or 0)end
  local bestRaid=type(raid)=="table"and raid.snapshotVersion==3 and raid.catalogReady==true and self:GetBestCurrentRaidProgress(raid)or nil
- return{characterUUID=characterUUID,name=context.name,coloredName=classColoredName(context,context.name),classFile=context.classFile,className=context.className,specName=context.spec and context.spec.name,specIcon=context.spec and context.spec.icon,level=context.level,realm=context.realm,guildRank=context.member and context.member.rank,itemLevel=itemLevel,mythicPlusRating=rating,mythicPlusSeasonId=storedSeason,bestRaid=bestRaid,bestRaidRows=bestRaid and self:BuildRaidBestRows(raid,bestRaid)or{},equipment=equipment,mythicPlus=mythicPlus,raid=raid,delves=delves,stats=stats,snapshotStatus={equipment=self:GetDataStatus(characterUUID,"equipment",nil,{data=equipment,meta=equipmentMeta}),mythicPlus=self:GetDataStatus(characterUUID,"mythicPlus",nil,{data=mythicPlus,meta=mythicMeta}),raidLifetime=self:GetDataStatus(characterUUID,"raid","lifetime",{data=raid,meta=raidMeta}),delves=self:GetDataStatus(characterUUID,"delves",nil,{data=delves,meta=delvesMeta}),stats=self:GetDataStatus(characterUUID,"stats",nil,{data=stats,meta=statsMeta})},lastUpdatedAt=lastUpdatedAt>0 and lastUpdatedAt or nil}
+ return{characterUUID=characterUUID,name=context.name,coloredName=classColoredName(context,context.name),classFile=context.classFile,className=context.className,specName=context.spec and context.spec.name,specIcon=context.spec and context.spec.icon,level=context.level,realm=context.realm,guildRank=context.member and context.member.rank,itemLevel=itemLevel,mythicPlusRating=rating,mythicPlusSeasonId=storedSeason,bestRaid=bestRaid,bestRaidRows=bestRaid and self:BuildRaidBestRows(raid,bestRaid)or{},equipment=equipment,mythicPlus=mythicPlus,raid=raid,delves=delves,stats=stats,snapshotStatus={equipment=self:GetDataStatus(characterUUID,"equipment",nil,{data=equipment,meta=equipmentMeta}),mythicPlus=mythicPlusStatus,raidLifetime=self:GetDataStatus(characterUUID,"raid","lifetime",{data=raid,meta=raidMeta}),delves=self:GetDataStatus(characterUUID,"delves",nil,{data=delves,meta=delvesMeta}),stats=self:GetDataStatus(characterUUID,"stats",nil,{data=stats,meta=statsMeta})},lastUpdatedAt=lastUpdatedAt>0 and lastUpdatedAt or nil}
 end
 function CharacterUI:CanUseTab(definition)
  if definition.permission and HolyStorm.Policy and not HolyStorm.Policy:Can(definition.permission)then return false,"PERMISSION"end

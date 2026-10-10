@@ -19,15 +19,26 @@ local function textCharacters(value)
     local out={};for character in tostring(value or""):gmatch("[%z\1-\127\194-\244][\128-\191]*")do out[#out+1]=character end;return out
 end
 local function compactWidths(widths,columns,available,gap)
-    local target=math.max(0,available-math.max(0,#widths-1)*gap);local total=0;for _,width in ipairs(widths)do total=total+width end
-    local excess=math.max(0,total-target);if excess<=.001 then return widths end
+    local columnCount=#widths;local actualGap=math.max(0,tonumber(gap)or 0)
+    for index,width in ipairs(widths)do widths[index]=math.max(1,tonumber(width)or 1)end
+    if columnCount>1 then actualGap=math.min(actualGap,math.max(0,(available-columnCount)/(columnCount-1)))else actualGap=0 end
+    local target=math.max(0,available-math.max(0,columnCount-1)*actualGap);local total=0;for _,width in ipairs(widths)do total=total+width end
+    local excess=math.max(0,total-target);if excess<=.001 then return widths,actualGap end
     local active={};for index,width in ipairs(widths)do local floor=math.max(1,tonumber(columns[index].compactWidth)or 36);if width>floor then active[index]=floor end end
     while excess>.001 and next(active)do
         local capacity=0;for index,floor in pairs(active)do capacity=capacity+math.max(0,widths[index]-floor)end;if capacity<=.001 then break end
         local removed=0;for index,floor in pairs(active)do local room=math.max(0,widths[index]-floor);local amount=math.min(room,excess*room/capacity);widths[index]=widths[index]-amount;removed=removed+amount;if widths[index]<=floor+.001 then active[index]=nil end end
         if removed<=.001 then break end;excess=math.max(0,excess-removed)
     end
-    return widths
+    if excess>.001 then
+        active={};for index,width in ipairs(widths)do if width>1 then active[index]=1 end end
+        while excess>.001 and next(active)do
+            local capacity=0;for index,floor in pairs(active)do capacity=capacity+math.max(0,widths[index]-floor)end;if capacity<=.001 then break end
+            local removed=0;for index,floor in pairs(active)do local room=math.max(0,widths[index]-floor);local amount=math.min(room,excess*room/capacity);widths[index]=widths[index]-amount;removed=removed+amount;if widths[index]<=floor+.001 then active[index]=nil end end
+            if removed<=.001 then break end;excess=math.max(0,excess-removed)
+        end
+    end
+    return widths,actualGap
 end
 
 local TableMethods={}
@@ -123,9 +134,9 @@ function TableMethods:FitCell(cell,column)
         cell.text:SetText(value);if cell.text.GetUnboundedStringWidth then return cell.text:GetUnboundedStringWidth()end;if cell.text.GetStringWidth then return cell.text:GetStringWidth()end;return#value*7
     end
     local result=source;if measure(source)>available then
-        local characters=textCharacters(source);local low,high,best=0,#characters,"...";while low<=high do local middle=math.floor((low+high)/2);local candidate=table.concat(characters,"",1,middle).."...";if measure(candidate)<=available then best=candidate;low=middle+1 else high=middle-1 end end;result=best
+        local characters=textCharacters(source);local low,high,best=0,#characters,measure("...")<=available and"..."or"";while low<=high do local middle=math.floor((low+high)/2);local candidate=table.concat(characters,"",1,middle).."...";if measure(candidate)<=available then best=candidate;low=middle+1 else high=middle-1 end end;result=best
     end
-    cell.text:SetText(cell.formatter and cell.formatter(result)or result)
+    cell.text:SetText(result==""and""or cell.formatter and cell.formatter(result)or result)
 end
 function TableMethods:RenderRow(row,data,rowIndex)
     row.frame.rowData=data;local selected=call(self.options.isRowSelected,data,rowIndex,self)==true or(self.selection~=nil and type(data)=="table"and(data.id==self.selection or data.value==self.selection))
@@ -157,11 +168,11 @@ function TableMethods:Relayout()
     self.header:SetHeight(headerHeight);self.scroll:SetPoint("TOPLEFT",self.frame,"TOPLEFT",0,-headerHeight);self.scroll:SetPoint("BOTTOMRIGHT",self.frame,"BOTTOMRIGHT",0,0)
     local bodyWidth=math.max(1,(self.scroll.GetWidth and self.scroll:GetWidth()or width)-(self.options.scrollbarWidth or 24));self.content:SetWidth(bodyWidth)
     local tracks={};for index,column in ipairs(self.columns)do tracks[index]={width=column.width,percent=column.percent,weight=column.weight or column.flex,min=column.minWidth,max=column.maxWidth}end
-    self.columnWidths=compactWidths(Layout:ResolveTracks(tracks,bodyWidth,gap),self.columns,bodyWidth,gap);local x=0
+    local actualGap;self.columnWidths,actualGap=compactWidths(Layout:ResolveTracks(tracks,bodyWidth,gap),self.columns,bodyWidth,gap);actualGap=actualGap or gap;local x=0
     for index,columnWidth in ipairs(self.columnWidths)do
         local header=self.headers[index];if header then header:ClearAllPoints();header:SetPoint("TOPLEFT",self.header,"TOPLEFT",x,0);header:SetSize(math.max(1,columnWidth),headerHeight)end
         for rowIndex,row in ipairs(self.rowFrames)do if rowIndex<=#self.rows then local cell=row.cells[index];if cell then cell.frame:ClearAllPoints();cell.frame:SetPoint("TOPLEFT",row.frame,"TOPLEFT",x,0);cell.frame:SetSize(math.max(1,columnWidth),rowHeight);self:FitCell(cell,self.columns[index])end end end
-        x=x+columnWidth+(index<#self.columnWidths and gap or 0)
+        x=x+columnWidth+(index<#self.columnWidths and actualGap or 0)
     end
     for index,row in ipairs(self.rowFrames)do if index<=#self.rows then row.frame:ClearAllPoints();row.frame:SetPoint("TOPLEFT",self.content,"TOPLEFT",0,-((index-1)*rowHeight));row.frame:SetSize(bodyWidth,rowHeight)end end
     self.content:SetHeight(math.max(1,#self.rows*rowHeight));self.empty:SetWidth(math.max(1,width-24));self.relayouting=false

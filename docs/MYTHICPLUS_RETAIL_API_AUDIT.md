@@ -45,7 +45,7 @@ API definitions are in Blizzard's generated `MythicPlusInfoDocumentation.lua`, `
 
 `C_ChallengeMode.GetMapTable()` defines the entire current pool. A scan sorts IDs for deterministic display, requires each ID to be unique, and requires metadata and successful best-run reads for every member. It does not assume a fixed pool size. `challengeMapId` is the row key; localized dungeon name is presentation only. `GetMapUIInfo` may return nothing before map info is ready.
 
-If a stored season differs from the known current season, shared status marks the block stale. No bootstrap scan is requested; the old rating remains visible until a relevant event or explicit refresh successfully commits a replacement. A missing current-season API does not establish a season mismatch.
+If a stored season differs from the known current season, shared status marks the block stale. No bootstrap scan is requested; the snapshot remains stored, but the Character Overview hides its previous-season rating and dungeon rows until a relevant event or explicit refresh successfully commits a replacement. If the current-season API is unavailable, the Character Overview reports season context as unknown and also hides the seasonal values.
 
 ## Best runs, score and affixes
 
