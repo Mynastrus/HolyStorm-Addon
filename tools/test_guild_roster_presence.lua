@@ -74,6 +74,7 @@ local function makeAddon(name,version)
   return module
  end
  addon.FilterManager.RegisterTemplate=function()return true end
+ addon.FilterManager.GetActiveFilters=function()return{}end
  addon.Data.CharacterStore={}
  function addon.Data.CharacterStore:Upsert()return true end
  function addon.Data.CharacterStore:Get()return nil end

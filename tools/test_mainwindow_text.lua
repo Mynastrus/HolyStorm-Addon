@@ -11,9 +11,9 @@ local function region(kind,parent,template)
  function object:SetHeight(height)self.height=height end
  function object:GetWidth()return self.width end
  function object:GetHeight()return self.height end
- function object:SetPoint()end
+ function object:SetPoint(...)self.points=self.points or{};self.points[#self.points+1]={...}end
  function object:SetAllPoints()end
- function object:ClearAllPoints()end
+ function object:ClearAllPoints()self.points={}end
  function object:SetScript(event,callback)self.scripts[event]=callback end
  function object:HookScript(event,callback)self.scripts[event]=callback end
  function object:CreateFontString()local text=region("font",self);self.children[#self.children+1]=text;return text end
@@ -34,6 +34,7 @@ local function region(kind,parent,template)
  function object:Show()self.shown=true end
  function object:Hide()self.shown=false end
  function object:SetShown(value)self.shown=value end
+ function object:IsShown()return self.shown end
  function object:EnableMouse()end
  function object:RegisterForDrag()end
  function object:SetFrameStrata()end
@@ -56,7 +57,7 @@ end
 
 local locale={WINDOW_TITLE="Holy Storm",WINDOW_TITLE_OPTIONS="Holy Storm Options",STATUS_BAR_READY="Holy Storm v%s - Ready",DASHBOARD_UPDATE_UNKNOWN="Update time unknown",DASHBOARD_REFRESH="Refresh data",DASHBOARD_REFRESH_TOOLTIP="Refresh character data through the normal scan workflow.",SYNC_RUNNING="Sync running",SYNC_TOOLTIP_TITLE="Synchronization activity",SYNC_ACTIVITY_CHARACTER="Character data is being synchronized",SYNC_ACTIVITY_POI="POIs are being synchronized",SYNC_ACTIVITY_POSITIONS="Position data is being synchronized",SYNC_ACTIVITY_TRANSFER="Synchronization data is being transferred"}
 local module={dashboardProviders={}}
-local addon={version="DEV",Libraries={},Events={listeners={}}}
+local addon={version="DEV",Libraries={},Events={listeners={}},Utils={SafeCall=function(_,callback,...)return pcall(callback,...)end}}
 function addon.Events:Register(event,owner,callback)self.listeners[event]=callback end
 function addon:RegisterRequiredModule()return module end
 function addon:ApplyModuleMetadata()end
@@ -108,6 +109,20 @@ module.SaveWindowPosition=function()end
 module:OnInitialize()
 
 assert(dashboardBuilt and module.dashboardRefreshed,"MainWindow creates the existing dashboard and proceeds through initialization")
+local toolbarBuilds,toolbarLayouts=0,0
+assert(module.toolbarSlot and module.toolbarSlot.parent==module.contentInset and module.content.parent==module.toolbarSlot.parent,"the toolbar slot is a framework sibling above the page content")
+assert(module:RegisterPageToolbar("toolbar.page","test-owner",{
+ height=function(width)return width<800 and 80 or 50 end,
+ build=function(parent)toolbarBuilds=toolbarBuilds+1;assert(parent.parent==module.toolbarSlot,"toolbar contents are parented to the central slot")end,
+ layout=function(_,width,height)toolbarLayouts=toolbarLayouts+1;assert(height==(width<800 and 80 or 50),"toolbar relayout receives current dimensions")end,
+}))
+module:SetActiveToolbarPage("toolbar.page")
+assert(toolbarBuilds==1 and toolbarLayouts==1 and module.toolbarSlot:IsShown()and module.toolbarSlot:GetHeight()==50,"page activation allocates a non-scrolling toolbar")
+assert(module.content.points[1][5]==-61,"page content moves below the toolbar with a clear gap")
+module.toolbarSlot:SetWidth(700);module:LayoutPageToolbar()
+assert(toolbarLayouts==2 and module.toolbarSlot:GetHeight()==80 and module.content.points[1][5]==-91,"resizing recalculates toolbar height and page content position")
+module:SetActiveToolbarPage("page.without.toolbar")
+assert(not module.toolbarSlot:IsShown()and module.content.points[1][5]==-5,"switching to a page without a toolbar releases its space")
 assert(module.windowTitle and module.windowTitle.text==locale.WINDOW_TITLE,"the localized Holy Storm window title is assigned")
 local refreshButton
 for _,frame in ipairs(frames)do if frame.template=="UIPanelButtonTemplate"then refreshButton=frame;break end end

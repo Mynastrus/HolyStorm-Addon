@@ -1,9 +1,9 @@
-local addonVersion="2.0.0"
+local addonVersion="2.1.0"
 local HolyStorm=LibStub("AceAddon-3.0"):GetAddon("Holy_Storm")
 local localeLibrary=LibStub("AceLocale-3.0",true)
 
 local UIManager={
-    version=addonVersion,driver=nil,pages={},views={},viewOrder={},dirty={},scheduled={},initializedExtensions={},dashboardProviders={},
+    version=addonVersion,driver=nil,pages={},pageToolbars={},views={},viewOrder={},dirty={},scheduled={},initializedExtensions={},dashboardProviders={},
     runtimeMetrics={pageRefreshes=0,byPage={}},
     Layout=HolyStorm.UILayout,Components=HolyStorm.UIComponents,
 }
@@ -29,6 +29,7 @@ function UIManager:SetDriver(driver)
     self.driver=driver;HolyStorm.State:Set("uiReady",driver~=nil)
     HolyStorm.Events:Register("HS_UI_STATUS_REQUESTED","ui-manager-status",function(_,text)if UIManager.driver then UIManager.driver:SetStatusText(text)end end)
     if driver and driver.RegisterDashboardProvider then for id,definition in pairs(self.dashboardProviders)do driver:RegisterDashboardProvider(id,definition)end end
+    if driver and driver.RegisterPageToolbar then for id,toolbar in pairs(self.pageToolbars)do driver:RegisterPageToolbar(id,toolbar.owner,toolbar.definition)end end
     if HolyStorm.Administration and HolyStorm.Administration.RefreshNavigation then HolyStorm.Administration:RefreshNavigation()end
     self:RefreshViewAvailability();self:FlushExtensions();return true
 end
@@ -42,8 +43,26 @@ function UIManager:RegisterPage(id,frame,title,refresh,events)
     if self.driver then self.driver:RegisterPage(id,frame,title,function()UIManager:RefreshPage(id)end)end
     return true
 end
+function UIManager:RegisterPageToolbar(pageId,owner,definition)
+    if not validId(pageId)or type(owner)~="string"or owner==""or type(definition)~="table"or type(definition.build)~="function"or type(definition.layout)~="function"or type(definition.height)~="function"then return false,"INVALID_PAGE_TOOLBAR"end
+    local current=self.pageToolbars[pageId]
+    if current then return false,current.owner==owner and"PAGE_TOOLBAR_EXISTS"or"PAGE_TOOLBAR_OWNER_CONFLICT"end
+    self.pageToolbars[pageId]={owner=owner,definition=definition}
+    if self.driver and self.driver.RegisterPageToolbar then
+        local ok,reason=self.driver:RegisterPageToolbar(pageId,owner,definition)
+        if not ok then self.pageToolbars[pageId]=nil;return false,reason or"PAGE_TOOLBAR_REJECTED"end
+    end
+    return true
+end
+function UIManager:UnregisterPageToolbar(pageId,owner)
+    local current=self.pageToolbars[pageId]
+    if not current then return false end
+    if owner and current.owner~=owner then return false,"OWNER_MISMATCH"end
+    if self.driver and self.driver.UnregisterPageToolbar then self.driver:UnregisterPageToolbar(pageId,current.owner)end
+    self.pageToolbars[pageId]=nil;return true
+end
 function UIManager:UnregisterPage(id)
-    HolyStorm.Events:UnregisterOwner("ui:"..tostring(id));if self.driver and self.driver.UnregisterPage then self.driver:UnregisterPage(id)end
+    HolyStorm.Events:UnregisterOwner("ui:"..tostring(id));self:UnregisterPageToolbar(id);if self.driver and self.driver.UnregisterPage then self.driver:UnregisterPage(id)end
     self.pages[id],self.dirty[id],self.scheduled[id]=nil,nil,nil
 end
 function UIManager:MarkDirty(id,deferVisible)

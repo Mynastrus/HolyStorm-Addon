@@ -1,4 +1,4 @@
-local addonVersion = "4.0.1"
+local addonVersion = "4.1.0"
 local HolyStorm = LibStub("AceAddon-3.0"):GetAddon("Holy_Storm")
 
 local Rules = {
@@ -18,7 +18,19 @@ if HolyStorm.DataManager then
     HolyStorm.DataManager:RegisterSchema({id=demandsSchema,owner="CharacterRuleData",version=1,versionField=false,storage={backend="database",scope="global",path={"filters","demands"}},default=function()return{}end,validate=function(value)return type(value)=="table","INVALID_DEMANDS"end})
 end
 
-local function lower(value) return string.lower(tostring(value or "")) end
+local unicodeLowerMap={}
+local function encodeTwoByte(codepoint)return string.char(0xC0+math.floor(codepoint/64),0x80+(codepoint%64))end
+local function encodeThreeByte(codepoint)return string.char(0xE0+math.floor(codepoint/4096),0x80+(math.floor(codepoint/64)%64),0x80+(codepoint%64))end
+for codepoint=0xC0,0xDE do
+    if codepoint~=0xD7 then unicodeLowerMap[encodeTwoByte(codepoint)]=encodeTwoByte(codepoint+0x20)end
+end
+unicodeLowerMap[encodeTwoByte(0x178)]=encodeTwoByte(0xFF)
+unicodeLowerMap[encodeThreeByte(0x1E9E)]=encodeTwoByte(0xDF)
+local function lower(value)
+    local text=string.lower(tostring(value or ""))
+    local folded=text:gsub("[\192-\244][\128-\191]+",function(character)return unicodeLowerMap[character]or character end)
+    return folded
+end
 local function equals(left,right)
     if type(left)=="number" or type(right)=="number" then return tonumber(left)~=nil and tonumber(left)==tonumber(right) end
     return left==right

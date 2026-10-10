@@ -32,6 +32,7 @@ local dynamicLookupPrefixes={
  ["LIVE/Holy_Storm_Characters/UI/CharacterUI.lua"]={"FACTION_","STATUS_","STAT_"},
  ["LIVE/Holy_Storm_Characters/UI/CharacterOverview.lua"]={"FACTION_","STAT_"},
  ["LIVE/Holy_Storm_Characters/UI/StoredFeatureTabs.lua"]={"RAID_DIFFICULTY_"},
+ ["LIVE/Holy_Storm_Guild/Guild.lua"]={"ROSTER_STATUS_","ROSTER_ADDON_"},
  ["LIVE/Holy_Storm_UI/UI/Framework/Dashboard.lua"]={{namespace="Holy_Storm_CharacterUI",prefix="RAID_DIFFICULTY_"}},
 }
 for _,path in ipairs(luaFiles)do
