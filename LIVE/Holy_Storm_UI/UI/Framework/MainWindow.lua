@@ -1,4 +1,4 @@
-local addonVersion = "2.6.1"
+local addonVersion = "2.6.2"
 local HolyStorm = LibStub("AceAddon-3.0"):GetAddon("Holy_Storm")
 local L = LibStub("AceLocale-3.0"):GetLocale("Holy_Storm_UI")
 
@@ -285,7 +285,7 @@ end
 function UI:RegisterPageContextHeader(id,owner,definition)
     if type(id)~="string"or id==""or type(owner)~="string"or owner==""or type(definition)~="table"or type(definition.build)~="function"or type(definition.layout)~="function"or type(definition.height)~="function"then return false,"INVALID_PAGE_CONTEXT_HEADER"end
     if self.pageContextHeaders[id]then return false,self.pageContextHeaders[id].owner==owner and"PAGE_CONTEXT_HEADER_EXISTS"or"PAGE_CONTEXT_HEADER_OWNER_CONFLICT"end
-    self.pageContextHeaders[id]={owner=owner,build=definition.build,layout=definition.layout,height=definition.height}
+    self.pageContextHeaders[id]={owner=owner,build=definition.build,layout=definition.layout,height=definition.height,contentGap=definition.contentGap}
     local built,buildReason=self:EnsurePageContextHeader(id)
     if self.contextHeaderSlot and(not built or not self.pageContextHeaders[id].frame)then
         self.pageContextHeaders[id]=nil
@@ -325,7 +325,10 @@ function UI:LayoutPageContextHeader()
     local ok,height=HolyStorm.Utils.SafeCall("ui.context-header.height:"..self.activeContextHeaderPage,active.height,width)
     height=ok and math.max(1,math.min(240,tonumber(height)or 1))or 1
     slot:SetHeight(height);slot:Show();active.frame:Show()
-    content:ClearAllPoints();content:SetPoint("TOPLEFT",inset,"TOPLEFT",5,-(11+height));content:SetPoint("BOTTOMRIGHT",inset,"BOTTOMRIGHT",-5,30)
+    local contentGap=tonumber(active.contentGap)
+    if contentGap==nil then contentGap=6 end
+    contentGap=math.max(0,math.min(24,contentGap))
+    content:ClearAllPoints();content:SetPoint("TOPLEFT",inset,"TOPLEFT",5,-(5+height+contentGap));content:SetPoint("BOTTOMRIGHT",inset,"BOTTOMRIGHT",-5,30)
     HolyStorm.Utils.SafeCall("ui.context-header.layout:"..self.activeContextHeaderPage,active.layout,active.frame,width,height)
     return true
 end

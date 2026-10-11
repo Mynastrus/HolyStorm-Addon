@@ -203,8 +203,11 @@ entfernt Events, Navigation und Frame über den Destroy-Lifecycle.
 oberhalb des Inhaltsbereichs bereit. `UIManager` verwaltet die seitenbezogene
 Registrierung; die UI kennt keine Fachmodule. `RegisterPageContextHeader(id,
 owner, definition)` nimmt `build(parent, driver)`, `height(width)` und
-`layout(frame, width, height)` entgegen. Header und Content sind Geschwister im
-Hauptfenster-Inset. Der Header liegt damit außerhalb eines Scroll-Childs.
+`layout(frame, width, height)` entgegen. Das optionale `contentGap` bestimmt den
+Abstand zwischen Header-Slot und Seiteninhalt in UI-Einheiten; ohne Angabe gilt
+der bisherige Abstand von 6, Werte werden auf 0 bis 24 begrenzt. Header und
+Content sind Geschwister im Hauptfenster-Inset. Der Header liegt damit außerhalb
+eines Scroll-Childs.
 
 Beim Seitenwechsel zeigt `MainWindow` nur den Header der aktiven Seite und
 verschiebt den Content um dessen gemessene Höhe. Seiten ohne Header geben den
@@ -213,6 +216,9 @@ auf; es gibt keinen zusätzlichen Update-Loop. `CharacterOverview` verwendet
 seinen bestehenden `HeaderBar` für Identität, Status und Aktualisieren. Das
 Gildenroster füllt denselben Slot mit Suche und Filtern. Headerinhalte und
 Filterlogik bleiben jeweils beim zuständigen Feature-Modul.
+
+GuildRoster setzt `contentGap` auf 2 UI-Einheiten; CharacterOverview behält den
+Standardwert von 6.
 
 ## Availability und optionale Module
 

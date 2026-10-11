@@ -23,6 +23,7 @@ local HolyStorm={
     Data={CharacterStore={Get=function(_,guid)characterReads=characterReads+1;return{guid=guid}end}},
 }
 function HolyStorm:IsModuleAvailable()return true end
+function HolyStorm:GetModule(id)if id=="UI"then return self.UI end end
 function HolyStorm:RegisterModule(definition,initializer)self.guildDefinition=definition;initializer(self.GuildRoster)end
 HolyStorm.GuildRoster={}
 HolyStorm.PermissionEngine={HasPermission=function()return true end}
@@ -200,7 +201,7 @@ end
 -- Build the actual header controls with native dropdown callbacks, then inspect
 -- the root/submenu entries and exercise checkbox toggles without a game client.
 local function fakeWidget(name)
-    local widget={name=name,scripts={},shown=true,text="",points={}}
+    local widget={name=name,scripts={},shown=true,text="",points={},anchors={},children={}}
     function widget:SetScript(event,callback)self.scripts[event]=callback end
     function widget:SetText(value)self.text=value or"";if self.scripts.OnTextChanged then self.scripts.OnTextChanged(self,false)end end
     function widget:GetText()return self.text end
@@ -211,19 +212,21 @@ local function fakeWidget(name)
     function widget:HasFocus()return self.focused==true end
     function widget:SetFocus()self.focused=true;if self.scripts.OnEditFocusGained then self.scripts.OnEditFocusGained(self)end end
     function widget:ClearFocus()self.focused=false;if self.scripts.OnEditFocusLost then self.scripts.OnEditFocusLost(self)end end
-    function widget:CreateFontString()return fakeWidget(name.."-font")end
-    function widget:SetPoint(...)self.pointArgs={...};local args={...};self.points={x=args[4],y=args[5]}end
-    function widget:ClearAllPoints()self.points={}end
+    function widget:CreateFontString()local child=fakeWidget(name.."-font");child.parent=self;self.children[#self.children+1]=child;return child end
+    function widget:SetPoint(...)self.pointArgs={...};local args={...};self.anchors[#self.anchors+1]=args;self.points={x=args[4],y=args[5]}end
+    function widget:ClearAllPoints()self.points={};self.anchors={}end
     function widget:SetAllPoints(parent)self.allPoints=parent end
     function widget:SetParent(parent)self.parent=parent end
     function widget:GetWidth()return self.width or 650 end
     function widget:SetSize(w,h)self.width,self.height=w,h end
     function widget:SetWidth(w)self.width=w end
     function widget:SetHeight(h)self.height=h end
+    function widget:SetScrollChild(child)self.scrollChild=child end
     function widget:SetNormalTexture(value)self.normalTexture=value end
     function widget:SetPushedTexture(value)self.pushedTexture=value end
     function widget:SetHighlightTexture(value,blend)self.highlightTexture,self.highlightBlend=value,blend end
     function widget:SetTextColor(r,g,b)self.color={r,g,b}end
+    function widget:SetFontObject(value)self.fontObject=value end
     function widget:SetJustifyH(value)self.justifyH=value end
     function widget:SetWordWrap(value)self.wordWrap=value end
     function widget:SetupMenu(generator)self.menuGenerator=generator end
@@ -249,8 +252,8 @@ function menuNode(kind,text,data)
     return node
 end
 local activeDropdown
-CreateFrame=function(frameType,name,parent,template)return fakeWidget(template or name or frameType or"frame")end
-HolyStorm.PolicyUI.Edit=function(_,parent,width)return fakeWidget("search-edit")end
+CreateFrame=function(frameType,name,parent,template)local widget=fakeWidget(template or name or frameType or"frame");widget.parent=parent;if parent and parent.children then parent.children[#parent.children+1]=widget end;return widget end
+HolyStorm.PolicyUI.Edit=function(_,parent,width)local widget=fakeWidget("search-edit");widget.parent=parent;if parent and parent.children then parent.children[#parent.children+1]=widget end;return widget end
 HolyStorm.Administration={Open=function(_,section)assert(section=="filters")end}
 GameTooltip={SetOwner=function()end,SetText=function()end,Show=function()end,Hide=function()end}
 StaticPopupDialogs={};ACCEPT="Accept";CANCEL="Cancel"
@@ -272,6 +275,8 @@ mainWindow.contextHeaderSlot=fakeWidget("context-header-slot")
 mainWindow.contextHeaderSlot.width=650
 mainWindow.contentInset=fakeWidget("content-inset")
 mainWindow.content=fakeWidget("page-content")
+mainWindow.pages={}
+function mainWindow:AddRightDockIcon()return true end
 assert(HolyStorm.UI:SetDriver(mainWindow),"UIManager initializes against the MainWindow driver")
 local registrationOK,registrationReason=GuildRoster:RegisterContextHeader()
 assert(registrationOK and registrationReason==nil,"GuildRoster header registers through the initialized UI facade")
@@ -280,6 +285,9 @@ mainWindow:SetActiveContextHeaderPage("guildRoster")
 local contextHeader=mainWindow.pageContextHeaders.guildRoster.frame
 assert(contextHeader.shown,"registered context header becomes visible on its page")
 assert(GuildRoster.searchBox and GuildRoster.filterMenu and GuildRoster.savedFilterMenu and GuildRoster.refreshButton,"header builds the four required controls")
+assert(GuildRoster.searchBox.parent==contextHeader and GuildRoster.filterMenu.parent==contextHeader and GuildRoster.savedFilterMenu.parent==contextHeader and GuildRoster.refreshButton.parent==contextHeader,"all four roster controls are children of the shared context header")
+assert(GuildRoster.searchBox.points.y==-3 and GuildRoster.searchBox.height==24 and GuildRoster.filterMenu.points.y==-3 and GuildRoster.savedFilterMenu.points.y==-3 and GuildRoster.refreshButton.points.y==-3,"the four controls share one vertically centered row with only the header's 3-unit inner padding")
+assert(mainWindow.content.anchors[1][5]==-37 and mainWindow.content.anchors[2][5]==30,"Guild content begins with a 2-unit gap below the 30-unit header and retains the status-bar inset")
 assert(GuildRoster.filterMenu.SetText and GuildRoster.filterMenu.SetupMenu and GuildRoster.filterMenu.SetDefaultText==nil and GuildRoster.filterMenu.OverrideText==nil,"filter template uses only the actual Retail filter-dropdown text/menu methods")
 for _,name in ipairs({"clearSearchButton","saveFilterButton","manageFiltersButton","resetFiltersButton","statusMenu","rankMenu","classMenu","addonStatusMenu","resultLabel"})do
     assert(GuildRoster[name]==nil,"legacy permanent header control is not created: "..name)
@@ -342,6 +350,18 @@ assert(HolyStorm.UI:UnregisterPageContextHeader("guildRoster","GuildRoster"),"he
 assert(GuildRoster:RegisterContextHeader(),"page-owned header builds again after explicit unregister")
 mainWindow:SetActiveContextHeaderPage("guildRoster")
 assert(mainWindow.pageContextHeaders.guildRoster.frame.shown,"rebuilt header is visible after re-registration")
+
+-- Build the actual GuildRoster page and check its table header and scroll viewport
+-- against the shared page content frame.
+assert(HolyStorm.UI:UnregisterPageContextHeader("guildRoster","GuildRoster"),"the initial test header can be replaced by page initialization")
+HolyStorm.UIComponents.CreateEmptyState=function(_,parent,options)local frame=fakeWidget("empty-state");frame.parent=parent;return{frame=frame,SetText=function(self,value)self.text=value end}end
+GuildRoster:InitializeUI()
+mainWindow:SetActiveContextHeaderPage("guildRoster")
+local tableHeader,rosterScroll=GuildRoster.page.children[1],GuildRoster.page.children[2]
+assert(GuildRoster.page.allPoints==mainWindow.content,"the roster page fills the remaining MainWindow content viewport")
+assert(tableHeader and tableHeader.height==24 and tableHeader.anchors[1][5]==-1,"the table column header begins at the top of the Guild page viewport")
+assert(rosterScroll and rosterScroll.anchors[1][5]==-28 and rosterScroll.anchors[2][4]==-28 and rosterScroll.anchors[2][5]==4,"the scroll frame starts immediately after the 24-unit table header and fills the remaining page height")
+assert(mainWindow.pageContextHeaders.guildRoster.frame.shown and GuildRoster.searchBox.parent==mainWindow.pageContextHeaders.guildRoster.frame,"page initialization remounts one visible roster header without a stale copy")
 
 -- A search for one character cannot reuse a previous character's row object or filter result.
 GuildRoster.activeFilterDefinitions={};GuildRoster.filterState={search="",status="ALL",rank="ALL",class="ALL",addonStatus="RECOGNIZED"};GuildRoster.quickFilter=GuildRoster:BuildQuickFilter(GuildRoster.filterState)

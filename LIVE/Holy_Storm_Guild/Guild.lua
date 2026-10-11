@@ -1,4 +1,4 @@
-local addonVersion = "2.5.1"
+local addonVersion = "2.5.2"
 local HolyStorm = LibStub("AceAddon-3.0"):GetAddon("Holy_Storm")
 local L = LibStub("AceLocale-3.0"):GetLocale("Holy_Storm_GuildRoster")
 if HolyStorm.PermissionRegistry then HolyStorm.PermissionRegistry:RegisterLegacyAlias("guild.roster.read","guild-roster-read");HolyStorm.PermissionRegistry:RegisterLegacyAlias("roster.manage","roster-manage")end
@@ -541,6 +541,7 @@ end
 function GuildRoster:RegisterContextHeader()
     local ok,reason=HolyStorm.UI:RegisterPageContextHeader("guildRoster","GuildRoster",{
         height=function(width)return GuildRoster:GetContextHeaderHeight(width)end,
+        contentGap=2,
         build=function(parent)GuildRoster:CreateContextHeader(parent)end,
         layout=function(parent,width,height)GuildRoster:LayoutContextHeader(parent,width,height)end,
     })
