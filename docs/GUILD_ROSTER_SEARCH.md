@@ -2,20 +2,20 @@
 
 The GuildRoster module owns search state, quick-filter options, rule fields, and the controls it contributes. `UIManager` owns page registrations and forwards the optional context-header contract. `MainWindow` owns the shared context-header slot and content viewport; neither framework layer depends on GuildRoster.
 
-GuildRoster is now version 2.5.2, CharacterOverview 2.1.0, UIManager 2.2.0, and MainWindow 2.6.2. RuleEngine remains at 4.1.0.
+GuildRoster is now version 2.5.3, CharacterOverview 2.1.1, UIManager 2.2.0, and MainWindow 2.6.3. RuleEngine remains at 4.1.0.
 
 ## Window and page header structure
 
-The title is rendered by `MainWindow`. Directly below it, the window has a page context-header slot. The slot and page content are sibling frames under the window inset, so the slot does not scroll with a page's scroll child. `HolyStorm.UI:RegisterPageContextHeader(pageId, owner, definition)` lets a page provide its own header without adding feature dependencies to the framework. The definition supplies:
+The title is rendered by `MainWindow`. The page context-header slot is a child of the window `Inset`; the page content container is a child of `MainWindow`, anchored below the slot and against the inset's lower edge. The slot stays outside a page's scroll child. `HolyStorm.UI:RegisterPageContextHeader(pageId, owner, definition)` lets a page provide its own header without adding feature dependencies to the framework. The definition supplies:
 
 - `build(parent, driver)`: create or mount the page-owned header controls.
 - `height(width)`: return the required height for the available window width.
 - `layout(frame, width, height)`: reflow controls after the window is resized.
 - `contentGap`: optional header-to-page-content spacing in UI units; it defaults to 6 and is clamped to 0–24.
 
-The driver activates one header with its page, hides the previous one, and moves the content viewport below the active header. Pages without a context header use the full original content area. Unregistering a page also removes its header registration and frame.
+The driver activates one header with its page and hides the previous one. The slot anchors directly below the title container, 5 units below its bottom, extending 3 units beyond its left edge and 1 unit beyond its right edge. On the Retail ButtonFrame this preserves the old Character HeaderBar bounds (frame x=61 through width−23) and keeps the roster search to the right of the portrait. The content viewport starts at the slot bottom plus the page's `contentGap` and retains its existing bottom inset, so the header height is reserved once. Pages without a context header use the full original content area. Unregistering a page also removes its header registration and frame.
 
-CharacterOverview now mounts its existing `HolyStormHeaderBar` (portrait, character name, short details, data status, and refresh action) in this slot at 40 UI units. Its established data and refresh behavior is unchanged. GuildRoster mounts its search and filter controls in the same slot. Other pages do not reserve header space unless they register a header.
+CharacterOverview mounts its existing `HolyStormHeaderBar` (portrait, character name, short details, data status, and refresh action) in this slot at its actual 34 UI-unit component height. Its established data and refresh behavior is unchanged. GuildRoster mounts its search and filter controls in the same slot. Other pages do not reserve header space unless they register a header.
 
 ## Guild roster controls and layout
 

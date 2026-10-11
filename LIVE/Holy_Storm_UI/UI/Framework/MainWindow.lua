@@ -1,4 +1,4 @@
-local addonVersion = "2.6.2"
+local addonVersion = "2.6.3"
 local HolyStorm = LibStub("AceAddon-3.0"):GetAddon("Holy_Storm")
 local L = LibStub("AceLocale-3.0"):GetLocale("Holy_Storm_UI")
 
@@ -14,6 +14,9 @@ HolyStorm:ApplyModuleMetadata(UI, {
 local UNKNOWN = "|cff888888\226\128\147|r"
 local CLASS_FALLBACK_ICON = "Interface\\Icons\\INV_Misc_QuestionMark"
 local SPEC_FALLBACK_ICON = "Interface\\Icons\\INV_Misc_QuestionMark"
+local CONTEXT_HEADER_LEFT_EXTENSION = 3
+local CONTEXT_HEADER_RIGHT_EXTENSION = 1
+local CONTEXT_HEADER_TITLE_GAP = 5
 
 function UI:OnInitialize()
     local frame = CreateFrame("Frame", "HolyStormMainFrame", UIParent, "ButtonFrameTemplate")
@@ -164,7 +167,7 @@ function UI:OnInitialize()
     resize:SetScript("OnMouseUp", function() frame:StopMovingOrSizing(); UI:SaveWindowSize() end)
 
     self.frame, self.content, self.scroll, self.page, self.pages = frame, content, scroll, page, {}
-    self.contentInset,self.contextHeaderSlot,self.activeContextHeaderPage=inset,contextHeaderSlot,nil
+    self.contentInset,self.contextHeaderSlot,self.titleParent,self.activeContextHeaderPage=inset,contextHeaderSlot,titleParent,nil
     self.dashboardElements, self.dashboardWidgets, self.windowTitle, self.status = dashboard, dashboardWidgets, title, status
     self.syncActivityButton, self.syncActivityLabel, self.syncSpinner = syncActivity, syncLabel, syncSpinner
     self.syncActivityTooltip = syncTooltip
@@ -312,6 +315,19 @@ function UI:SetActiveContextHeaderPage(id)
     self:LayoutPageContextHeader()
 end
 
+function UI:AnchorPageContextHeaderSlot()
+    local slot,titleParent=self.contextHeaderSlot,self.titleParent
+    if not slot or not titleParent then
+        return false,"CONTEXT_HEADER_ANCHOR_UNAVAILABLE"
+    end
+    -- The TitleContainer reserves the portrait width. Its edges plus 3/1 units
+    -- match CharacterOverview's old content+52/-12 HeaderBar bounds.
+    slot:ClearAllPoints()
+    slot:SetPoint("TOPLEFT",titleParent,"BOTTOMLEFT",CONTEXT_HEADER_LEFT_EXTENSION,-CONTEXT_HEADER_TITLE_GAP)
+    slot:SetPoint("TOPRIGHT",titleParent,"BOTTOMRIGHT",CONTEXT_HEADER_RIGHT_EXTENSION,-CONTEXT_HEADER_TITLE_GAP)
+    return true
+end
+
 function UI:LayoutPageContextHeader()
     local slot,inset,content=self.contextHeaderSlot,self.contentInset,self.content
     if not slot or not inset or not content then return false end
@@ -321,6 +337,13 @@ function UI:LayoutPageContextHeader()
         slot:Hide();content:ClearAllPoints();content:SetPoint("TOPLEFT",inset,"TOPLEFT",5,-5);content:SetPoint("BOTTOMRIGHT",inset,"BOTTOMRIGHT",-5,30)
         return true
     end
+    local anchored,anchorReason=self:AnchorPageContextHeaderSlot()
+    if not anchored then
+        slot:Hide();content:ClearAllPoints();content:SetPoint("TOPLEFT",inset,"TOPLEFT",5,-5);content:SetPoint("BOTTOMRIGHT",inset,"BOTTOMRIGHT",-5,30)
+        local logger=HolyStorm.Logger
+        if logger and type(logger.Write)=="function"then logger:Write("ERROR","MainWindow","ui","Context header has no title anchor",{code=anchorReason,pageId=self.activeContextHeaderPage})end
+        return false,anchorReason
+    end
     local width=math.max(1,slot:GetWidth()or content:GetWidth()or 1)
     local ok,height=HolyStorm.Utils.SafeCall("ui.context-header.height:"..self.activeContextHeaderPage,active.height,width)
     height=ok and math.max(1,math.min(240,tonumber(height)or 1))or 1
@@ -328,7 +351,7 @@ function UI:LayoutPageContextHeader()
     local contentGap=tonumber(active.contentGap)
     if contentGap==nil then contentGap=6 end
     contentGap=math.max(0,math.min(24,contentGap))
-    content:ClearAllPoints();content:SetPoint("TOPLEFT",inset,"TOPLEFT",5,-(5+height+contentGap));content:SetPoint("BOTTOMRIGHT",inset,"BOTTOMRIGHT",-5,30)
+    content:ClearAllPoints();content:SetPoint("TOPLEFT",slot,"BOTTOMLEFT",0,-contentGap);content:SetPoint("BOTTOMRIGHT",inset,"BOTTOMRIGHT",-5,30)
     HolyStorm.Utils.SafeCall("ui.context-header.layout:"..self.activeContextHeaderPage,active.layout,active.frame,width,height)
     return true
 end

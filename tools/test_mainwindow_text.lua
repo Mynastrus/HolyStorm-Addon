@@ -11,6 +11,7 @@ local function region(kind,parent,template)
  function object:SetHeight(height)self.height=height end
  function object:GetWidth()return self.width end
  function object:GetHeight()return self.height end
+ function object:GetTop()return self.top or 560 end
  function object:SetPoint(...)self.points=self.points or{};self.points[#self.points+1]={...}end
  function object:SetAllPoints(target)self.allPoints=target or self.parent end
  function object:ClearAllPoints()self.points={}end
@@ -51,7 +52,6 @@ local function region(kind,parent,template)
  function object:StartMoving()end
  function object:StopMovingOrSizing()end
  function object:GetLeft()return 0 end
- function object:GetTop()return 560 end
  return object
 end
 
@@ -88,7 +88,14 @@ function LibStub(name)
  if name=="AceGUI-3.0"then return{Create=function(_,kind)local frame=region("ace:"..kind);local widget=region("widget:"..kind);widget.frame=frame;if kind=="Icon"then widget.image=region("texture",frame)end;return widget end}end
  error("Unexpected library "..name)
 end
-function CreateFrame(kind,name,parent,template)local value=region(kind,parent,template);value.name=name;frames[#frames+1]=value;return value end
+function CreateFrame(kind,name,parent,template)
+ local value=region(kind,parent,template);value.name=name;frames[#frames+1]=value
+ if template=="ButtonFrameTemplate"then
+  value.TitleContainer=region("TitleContainer",value);value.TitleContainer.top=559;value.TitleContainer.bottom=539;value.TitleContainer.left=58;value.TitleContainer.right=876;value.TitleContainer:SetSize(818,20)
+  value.Inset=region("Inset",value);value.Inset.top=500;value.Inset.bottom=26;value.Inset:SetSize(892,534)
+ end
+ return value
+end
 
 UIParent=region("parent")
 UISpecialFrames={}
@@ -109,8 +116,9 @@ module.SaveWindowPosition=function()end
 module:OnInitialize()
 
 assert(dashboardBuilt and module.dashboardRefreshed,"MainWindow creates the existing dashboard and proceeds through initialization")
+assert(module.titleParent.top==559 and module.titleParent.bottom==539 and module.titleParent:GetHeight()==20 and module.titleParent:GetWidth()==818,"the geometry fixture uses the current Retail PortraitFrame TitleContainer bounds")
 local headerBuilds,headerLayouts=0,0
-assert(module.contextHeaderSlot and module.contextHeaderSlot.parent==module.contentInset and module.content.parent==module.contextHeaderSlot.parent,"the page context header slot is a framework sibling above the page content")
+assert(module.contextHeaderSlot and module.contextHeaderSlot.parent==module.contentInset and module.content.parent==module.frame,"the context slot is an Inset child and page content is a MainWindow child")
 local function headerDefinition(baseHeight,widthResponsive,contentGap)
  local function getHeight(width)return widthResponsive and width<800 and baseHeight+30 or baseHeight end
  return{
@@ -120,23 +128,29 @@ local function headerDefinition(baseHeight,widthResponsive,contentGap)
   layout=function(_,width,height)headerLayouts=headerLayouts+1;assert(height==getHeight(width),"context header relayout receives current dimensions")end,
  }
 end
-assert(module:RegisterPageContextHeader("character","characters",headerDefinition(40,false)))
+assert(module:RegisterPageContextHeader("character","characters",headerDefinition(34,false)))
 assert(module:RegisterPageContextHeader("guildRoster","GuildRoster",headerDefinition(50,true,2)))
 local characterPage=CreateFrame("Frame",nil,module.content);local rosterPage=CreateFrame("Frame",nil,module.content);local plainPage=CreateFrame("Frame",nil,module.content)
 module:RegisterPage("character",characterPage,"Character");module:RegisterPage("guildRoster",rosterPage,"Roster");module:RegisterPage("plain",plainPage,"Plain")
 module.SetRightDockSelected=function()end
 module:ShowPage("character")
 local characterHeader=module.pageContextHeaders.character.frame;local rosterHeader=module.pageContextHeaders.guildRoster.frame
-assert(headerBuilds==2 and headerLayouts==1 and module.contextHeaderSlot:IsShown()and module.contextHeaderSlot:GetHeight()==40 and characterHeader:IsShown()and not rosterHeader:IsShown(),"Character Overview activates its own non-scrolling context header")
-assert(module.content.points[1][5]==-51 and module.content.points[2][1]=="BOTTOMRIGHT"and module.content.points[2][4]==-5 and module.content.points[2][5]==30 and module.scroll.frame.allPoints==module.content,"Character content begins below its context header and keeps the complete remaining window height")
+assert(headerBuilds==2 and headerLayouts==1 and module.contextHeaderSlot:IsShown()and module.contextHeaderSlot:GetHeight()==34 and characterHeader:IsShown()and not rosterHeader:IsShown(),"Character Overview activates its own non-scrolling context header")
+assert(module.contextHeaderSlot.points[1][2]==module.titleParent and module.contextHeaderSlot.points[1][3]=="BOTTOMLEFT"and module.contextHeaderSlot.points[1][4]==3 and module.contextHeaderSlot.points[1][5]==-5 and module.contextHeaderSlot.points[2][2]==module.titleParent and module.contextHeaderSlot.points[2][3]=="BOTTOMRIGHT"and module.contextHeaderSlot.points[2][4]==1 and module.contextHeaderSlot.points[2][5]==-5,"the shared slot attaches 5 units below the title and preserves the previous HeaderBar's portrait-safe horizontal bounds")
+assert(module.titleParent.bottom+module.contextHeaderSlot.points[1][5]==534 and module.frame:GetTop()-(module.titleParent.bottom+module.contextHeaderSlot.points[1][5])==26,"the slot top sits 5 units below the title bottom, 26 units from the MainWindow top")
+local slotLeft,slotRight=module.titleParent.left+module.contextHeaderSlot.points[1][4],module.titleParent.right+module.contextHeaderSlot.points[2][4]
+assert(slotLeft==61 and slotLeft>57 and slotRight==module.frame:GetWidth()-23,"the shared row starts beyond the portrait edge and retains the previous HeaderBar right edge")
+assert(module.content.points[1][1]=="TOPLEFT"and module.content.points[1][2]==module.contextHeaderSlot and module.content.points[1][5]==-6 and module.content.points[2][1]=="BOTTOMRIGHT"and module.content.points[2][4]==-5 and module.content.points[2][5]==30 and module.scroll.frame.allPoints==module.content,"Character content starts from the slot bottom plus one 6-unit page gap and keeps the status-bar inset")
+assert(module.contextHeaderSlot:GetHeight()==34,"CharacterOverview reserves the actual 34-unit HeaderBar height")
+assert(module:AnchorPageContextHeaderSlot(),"direct title-container anchors preserve their UI-unit spacing independently of screen scale")
 module:ShowPage("guildRoster")
-assert(headerLayouts==2 and module.contextHeaderSlot:GetHeight()==50 and not characterHeader:IsShown()and rosterHeader:IsShown()and module.content.points[1][5]==-57,"switching to the roster replaces the Character header and uses its compact page-to-header gap")
+assert(headerLayouts==2 and module.contextHeaderSlot:GetHeight()==50 and not characterHeader:IsShown()and rosterHeader:IsShown()and module.content.points[1][2]==module.contextHeaderSlot and module.content.points[1][5]==-2,"switching to the roster replaces the Character header and uses its compact page-to-header gap")
 module.contextHeaderSlot:SetWidth(700);module.contextHeaderSlot.scripts.OnSizeChanged(module.contextHeaderSlot,700)
-assert(headerLayouts==3 and module.contextHeaderSlot:GetHeight()==80 and module.content.points[1][5]==-87,"resizing recalculates roster header height and page content position")
+assert(headerLayouts==3 and module.contextHeaderSlot:GetHeight()==80 and module.content.points[1][2]==module.contextHeaderSlot and module.content.points[1][5]==-2 and module.contextHeaderSlot.points[1][5]==-5,"resizing recalculates the roster header height without changing its direct title anchor")
 module:ShowPage("character")
-assert(headerLayouts==4 and module.contextHeaderSlot:GetHeight()==40 and characterHeader:IsShown()and not rosterHeader:IsShown()and module.content.points[1][5]==-51,"switching back restores the Character header and its original content offset")
+assert(headerLayouts==4 and module.contextHeaderSlot:GetHeight()==34 and characterHeader:IsShown()and not rosterHeader:IsShown()and module.content.points[1][2]==module.contextHeaderSlot and module.content.points[1][5]==-6,"switching back restores the Character header and its original content spacing")
 module:ShowPage("guildRoster")
-assert(headerLayouts==5 and module.contextHeaderSlot:GetHeight()==80 and not characterHeader:IsShown()and rosterHeader:IsShown()and module.content.points[1][5]==-87,"switching to the roster again restores its compact header spacing at the current width")
+assert(headerLayouts==5 and module.contextHeaderSlot:GetHeight()==80 and not characterHeader:IsShown()and rosterHeader:IsShown()and module.content.points[1][2]==module.contextHeaderSlot and module.content.points[1][5]==-2,"switching to the roster again restores its compact header spacing at the current width")
 module:ShowPage("plain")
 assert(not module.contextHeaderSlot:IsShown()and not characterHeader:IsShown()and not rosterHeader:IsShown()and module.content.points[1][5]==-5 and module.content.points[2][5]==30,"switching to a page without a context header releases its space")
 module:ShowModules()

@@ -1,4 +1,4 @@
-local addonVersion = "2.5.2"
+local addonVersion = "2.5.3"
 local HolyStorm = LibStub("AceAddon-3.0"):GetAddon("Holy_Storm")
 local L = LibStub("AceLocale-3.0"):GetLocale("Holy_Storm_GuildRoster")
 if HolyStorm.PermissionRegistry then HolyStorm.PermissionRegistry:RegisterLegacyAlias("guild.roster.read","guild-roster-read");HolyStorm.PermissionRegistry:RegisterLegacyAlias("roster.manage","roster-manage")end

@@ -205,16 +205,29 @@ Registrierung; die UI kennt keine Fachmodule. `RegisterPageContextHeader(id,
 owner, definition)` nimmt `build(parent, driver)`, `height(width)` und
 `layout(frame, width, height)` entgegen. Das optionale `contentGap` bestimmt den
 Abstand zwischen Header-Slot und Seiteninhalt in UI-Einheiten; ohne Angabe gilt
-der bisherige Abstand von 6, Werte werden auf 0 bis 24 begrenzt. Header und
-Content sind Geschwister im Hauptfenster-Inset. Der Header liegt damit außerhalb
-eines Scroll-Childs.
+der bisherige Abstand von 6, Werte werden auf 0 bis 24 begrenzt. Der Context-
+Header-Slot ist ein Kind des `Inset`; der Content-Container ist ein Kind des
+MainWindow-Frames. Beide werden gegen das `Inset` ausgerichtet. Der Header liegt
+außerhalb des Scroll-Childs.
 
-Beim Seitenwechsel zeigt `MainWindow` nur den Header der aktiven Seite und
-verschiebt den Content um dessen gemessene Höhe. Seiten ohne Header geben den
-Platz vollständig frei. Fenstergrößenänderungen rufen die Header-Layoutfunktion
-auf; es gibt keinen zusätzlichen Update-Loop. `CharacterOverview` verwendet
-seinen bestehenden `HeaderBar` für Identität, Status und Aktualisieren. Das
-Gildenroster füllt denselben Slot mit Suche und Filtern. Headerinhalte und
+Beim Seitenwechsel zeigt `MainWindow` nur den Header der aktiven Seite. Der
+Slot ist direkt an der Unterkante des `TitleContainer` verankert: 5 UI-Einheiten
+Abstand nach unten, 3 Einheiten über die linke und 1 Einheit über die rechte
+Kante hinaus. In der Retail-ButtonFrame-Vorlage liegt der `TitleContainer` von
+x=58 bis Fensterbreite−24; der Slot liegt damit von x=61 bis Fensterbreite−23. Das
+entspricht den bisherigen Innenkanten der Character-HeaderBar und hält die
+Suchleiste rechts neben dem Portrait. Das Portrait reicht horizontal bis x=57
+und 55 Einheiten unter die obere Fensterkante; der neue Slot beginnt bei x=61
+und 26 Einheiten unter der Oberkante. Hintergrund- und TopTile-Texturen reichen
+in diesen Bereich hinein, reservieren dort aber keine zusätzliche Layouthöhe.
+Der bisherige Slot begann am `Inset` bei y=−65, obwohl dessen Oberkante bei
+y=−60 liegt und der `TitleContainer` bei y=−21 endet.
+Der Content beginnt am unteren Anchor des Slots plus dem Seitenabstand. So wird
+die Headerhöhe genau einmal reserviert. Seiten ohne Header geben den Platz
+vollständig frei. Fenstergrößenänderungen rufen die Header-Layoutfunktion auf;
+es gibt keinen zusätzlichen Update-Loop. `CharacterOverview` verwendet seinen
+bestehenden 34-Einheiten-`HeaderBar` für Identität, Status und Aktualisieren.
+Das Gildenroster füllt denselben Slot mit Suche und Filtern. Headerinhalte und
 Filterlogik bleiben jeweils beim zuständigen Feature-Modul.
 
 GuildRoster setzt `contentGap` auf 2 UI-Einheiten; CharacterOverview behält den

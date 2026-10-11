@@ -272,8 +272,9 @@ function HolyStorm:GetUIExtensions()return{}end
 HolyStorm.State={Set=function(self,key,value)self[key]=value end}
 assert(loadfile(root.."LIVE/Holy_Storm_UI/UI/Framework/MainWindow.lua"))()
 mainWindow.contextHeaderSlot=fakeWidget("context-header-slot")
-mainWindow.contextHeaderSlot.width=650
+mainWindow.contextHeaderSlot.width=566 -- portrait-safe HeaderBar width at the 650-unit MainWindow minimum.
 mainWindow.contentInset=fakeWidget("content-inset")
+mainWindow.titleParent=fakeWidget("title-container")
 mainWindow.content=fakeWidget("page-content")
 mainWindow.pages={}
 function mainWindow:AddRightDockIcon()return true end
@@ -287,7 +288,9 @@ assert(contextHeader.shown,"registered context header becomes visible on its pag
 assert(GuildRoster.searchBox and GuildRoster.filterMenu and GuildRoster.savedFilterMenu and GuildRoster.refreshButton,"header builds the four required controls")
 assert(GuildRoster.searchBox.parent==contextHeader and GuildRoster.filterMenu.parent==contextHeader and GuildRoster.savedFilterMenu.parent==contextHeader and GuildRoster.refreshButton.parent==contextHeader,"all four roster controls are children of the shared context header")
 assert(GuildRoster.searchBox.points.y==-3 and GuildRoster.searchBox.height==24 and GuildRoster.filterMenu.points.y==-3 and GuildRoster.savedFilterMenu.points.y==-3 and GuildRoster.refreshButton.points.y==-3,"the four controls share one vertically centered row with only the header's 3-unit inner padding")
-assert(mainWindow.content.anchors[1][5]==-37 and mainWindow.content.anchors[2][5]==30,"Guild content begins with a 2-unit gap below the 30-unit header and retains the status-bar inset")
+assert(mainWindow.contextHeaderSlot.anchors[1][1]=="TOPLEFT"and mainWindow.contextHeaderSlot.anchors[1][2]==mainWindow.titleParent and mainWindow.contextHeaderSlot.anchors[1][3]=="BOTTOMLEFT"and mainWindow.contextHeaderSlot.anchors[1][4]==3 and mainWindow.contextHeaderSlot.anchors[1][5]==-5 and mainWindow.contextHeaderSlot.anchors[2][2]==mainWindow.titleParent and mainWindow.contextHeaderSlot.anchors[2][3]=="BOTTOMRIGHT"and mainWindow.contextHeaderSlot.anchors[2][4]==1 and mainWindow.contextHeaderSlot.anchors[2][5]==-5,"the Guild slot attaches beneath the title while preserving the portrait-safe HeaderBar content band")
+assert(mainWindow.content.anchors[1][1]=="TOPLEFT"and mainWindow.content.anchors[1][2]==mainWindow.contextHeaderSlot and mainWindow.content.anchors[1][3]=="BOTTOMLEFT"and mainWindow.content.anchors[1][5]==-2 and mainWindow.content.anchors[2][5]==30,"Guild content starts from the 30-unit slot bottom plus its 2-unit page gap and retains the status-bar inset")
+assert(GuildRoster.searchBox.width==277,"the Guild search keeps the available 277-unit field at the minimum 650-unit window width after portrait-safe header insets")
 assert(GuildRoster.filterMenu.SetText and GuildRoster.filterMenu.SetupMenu and GuildRoster.filterMenu.SetDefaultText==nil and GuildRoster.filterMenu.OverrideText==nil,"filter template uses only the actual Retail filter-dropdown text/menu methods")
 for _,name in ipairs({"clearSearchButton","saveFilterButton","manageFiltersButton","resetFiltersButton","statusMenu","rankMenu","classMenu","addonStatusMenu","resultLabel"})do
     assert(GuildRoster[name]==nil,"legacy permanent header control is not created: "..name)
