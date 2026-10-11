@@ -1,4 +1,4 @@
-local addonVersion = "2.6.0"
+local addonVersion = "2.6.1"
 local HolyStorm = LibStub("AceAddon-3.0"):GetAddon("Holy_Storm")
 local L = LibStub("AceLocale-3.0"):GetLocale("Holy_Storm_UI")
 
@@ -277,8 +277,8 @@ function UI:EnsurePageContextHeader(id)
     if not definition or definition.frame or not self.contextHeaderSlot then return definition and definition.frame~=nil end
     local content=CreateFrame("Frame",nil,self.contextHeaderSlot);content:SetAllPoints(self.contextHeaderSlot);content:Hide()
     definition.frame=content
-    local ok=HolyStorm.Utils.SafeCall("ui.context-header.build:"..id,definition.build,content,self)
-    if not ok then content:Hide();content:SetParent(nil);definition.frame=nil;return false end
+    local ok,reason=HolyStorm.Utils.SafeCall("ui.context-header.build:"..id,definition.build,content,self)
+    if not ok then content:Hide();content:SetParent(nil);definition.frame=nil;return false,reason end
     return true
 end
 
@@ -286,8 +286,13 @@ function UI:RegisterPageContextHeader(id,owner,definition)
     if type(id)~="string"or id==""or type(owner)~="string"or owner==""or type(definition)~="table"or type(definition.build)~="function"or type(definition.layout)~="function"or type(definition.height)~="function"then return false,"INVALID_PAGE_CONTEXT_HEADER"end
     if self.pageContextHeaders[id]then return false,self.pageContextHeaders[id].owner==owner and"PAGE_CONTEXT_HEADER_EXISTS"or"PAGE_CONTEXT_HEADER_OWNER_CONFLICT"end
     self.pageContextHeaders[id]={owner=owner,build=definition.build,layout=definition.layout,height=definition.height}
-    self:EnsurePageContextHeader(id)
-    if not self.pageContextHeaders[id].frame and self.contextHeaderSlot then self.pageContextHeaders[id]=nil;return false,"PAGE_CONTEXT_HEADER_BUILD_FAILED"end
+    local built,buildReason=self:EnsurePageContextHeader(id)
+    if self.contextHeaderSlot and(not built or not self.pageContextHeaders[id].frame)then
+        self.pageContextHeaders[id]=nil
+        local reason="PAGE_CONTEXT_HEADER_BUILD_FAILED"
+        if buildReason~=nil then reason=reason..": "..tostring(buildReason)end
+        return false,reason
+    end
     if self.activeContextHeaderPage==id then self:LayoutPageContextHeader()end
     return true
 end

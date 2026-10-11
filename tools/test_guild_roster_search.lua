@@ -6,13 +6,18 @@ local function copy(value,seen)
     local out={};seen[value]=out;for key,child in pairs(value)do out[copy(key,seen)]=copy(child,seen)end;return out
 end
 local listeners={}
+local safeCallDiagnostics={}
 local locale=setmetatable({},{__index=function(_,key)return key end})
 locale.ROSTER_RESULT_COUNT="%d of %d members";locale.ROSTER_NO_MATCHES="No guild members match these filters.";locale.NO_MEMBERS="No guild members could be found."
 locale.ROSTER_FILTER_COUNT="Filter (%d)";locale.ROSTER_FILTER_COUNT_SHORT="F (%d)";locale.ROSTER_SAVED_MENU="Saved";locale.ROSTER_SAVED_MENU_COUNT="Saved (%d)";locale.ROSTER_SAVED_MENU_SHORT="Saved";locale.ROSTER_SAVED_MENU_SHORT_COUNT="Saved (%d)";locale.ROSTER_FILTER_BUTTON="Filter";locale.ROSTER_FILTER_BUTTON_SHORT="Filter";locale.ROSTER_SEARCH_PLACEHOLDER="Search guild members...";locale.ROSTER_SEARCH_PLACEHOLDER_SHORT="Search..."
 local filters={localFilters={},globalFilters={},active={}}
 local characterReads=0
 local HolyStorm={
-    Utils={DeepCopy=copy,Trim=function(value)return tostring(value or""):match("^%s*(.-)%s*$")end,SafeCall=function(_,fn,...)return pcall(fn,...)end,Now=function()return 1 end},
+    Utils={DeepCopy=copy,Trim=function(value)return tostring(value or""):match("^%s*(.-)%s*$")end,SafeCall=function(source,fn,...)
+        local args={...};local results={pcall(function()return fn((table.unpack or unpack)(args))end)}
+        if not results[1]then safeCallDiagnostics[#safeCallDiagnostics+1]={source=source,error=results[2]}end
+        return (table.unpack or unpack)(results)
+    end,Now=function()return 1 end},
     db={global={rules={global={}},filters={global={},demands={}},},profile={rules={localRules={}},filters={localFilters={},activeByContext={}}}},
     Events={Emit=function(_,event,...)for _,fn in pairs(listeners[event]or{})do fn(event,...)end end,Register=function(_,event,owner,fn)listeners[event]=listeners[event]or{};listeners[event][owner]=fn end,UnregisterOwner=function()end},
     Data={CharacterStore={Get=function(_,guid)characterReads=characterReads+1;return{guid=guid}end}},
@@ -162,7 +167,7 @@ assert(GuildRoster.filterState.search==""and next(GuildRoster.filterState.status
 GuildRoster.RefreshQuickFilterLabels=refreshQuickLabels;GuildRoster.RefreshSavedFilterMenuText=refreshSavedLabel
 
 local function layoutWidget(name)
-    return{name=name,points={},ClearAllPoints=function(self)self.points={}end,SetPoint=function(self,_,_,_,x,y)self.points={x=x,y=y}end,SetSize=function(self,w,h)self.width,self.height=w,h end,SetWidth=function(self,w)self.width=w end,SetHeight=function(self,h)self.height=h end}
+    return{name=name,points={},ClearAllPoints=function(self)self.points={}end,SetPoint=function(self,_,_,_,x,y)self.points={x=x,y=y}end,SetSize=function(self,w,h)self.width,self.height=w,h end,SetWidth=function(self,w)self.width=w end,SetHeight=function(self,h)self.height=h end,SetText=function(self,value)self.text=value end}
 end
 -- Physical window widths can differ at the same UI scale; these values also
 -- model the effective UI-unit widths seen under Retail's supported scales.
@@ -209,6 +214,9 @@ local function fakeWidget(name)
     function widget:CreateFontString()return fakeWidget(name.."-font")end
     function widget:SetPoint(...)self.pointArgs={...};local args={...};self.points={x=args[4],y=args[5]}end
     function widget:ClearAllPoints()self.points={}end
+    function widget:SetAllPoints(parent)self.allPoints=parent end
+    function widget:SetParent(parent)self.parent=parent end
+    function widget:GetWidth()return self.width or 650 end
     function widget:SetSize(w,h)self.width,self.height=w,h end
     function widget:SetWidth(w)self.width=w end
     function widget:SetHeight(h)self.height=h end
@@ -218,12 +226,12 @@ local function fakeWidget(name)
     function widget:SetTextColor(r,g,b)self.color={r,g,b}end
     function widget:SetJustifyH(value)self.justifyH=value end
     function widget:SetWordWrap(value)self.wordWrap=value end
-    function widget:SetDefaultText(value)self.defaultText=value end
-    function widget:OverrideText(value)self.displayText=value end
     function widget:SetupMenu(generator)self.menuGenerator=generator end
     function widget:GenerateMenu()
         local root=menuNode("root",nil);self.menuGenerator(self,root);self.generatedMenu=root;return root
     end
+    function widget:OpenMenu()self:GenerateMenu();self.menuOpen=true;return self.generatedMenu end
+    function widget:CloseMenu()self.menuOpen=false end
     return widget
 end
 function menuNode(kind,text,data)
@@ -248,9 +256,31 @@ GameTooltip={SetOwner=function()end,SetText=function()end,Show=function()end,Hid
 StaticPopupDialogs={};ACCEPT="Accept";CANCEL="Cancel"
 MenuResponse={Refresh="refresh",CloseAll="close-all"}
 GuildRoster.resultLabel=nil
-local contextHeader=fakeWidget("context-header")
-GuildRoster:CreateContextHeader(contextHeader)
+
+-- Exercise the production registration path: UIManager facade -> MainWindow
+-- driver -> GuildRoster builder. The widget contract below intentionally omits
+-- methods that the Retail filter-dropdown template does not provide.
+HolyStorm.UILayout={};HolyStorm.UIComponents={}
+assert(loadfile(root.."LIVE/Holy_Storm_UI/UI/Framework/UIManager.lua"))()
+local mainWindow={}
+function HolyStorm:RegisterRequiredModule(id)assert(id=="UI");return mainWindow end
+function HolyStorm:ApplyModuleMetadata()end
+function HolyStorm:GetUIExtensions()return{}end
+HolyStorm.State={Set=function(self,key,value)self[key]=value end}
+assert(loadfile(root.."LIVE/Holy_Storm_UI/UI/Framework/MainWindow.lua"))()
+mainWindow.contextHeaderSlot=fakeWidget("context-header-slot")
+mainWindow.contextHeaderSlot.width=650
+mainWindow.contentInset=fakeWidget("content-inset")
+mainWindow.content=fakeWidget("page-content")
+assert(HolyStorm.UI:SetDriver(mainWindow),"UIManager initializes against the MainWindow driver")
+local registrationOK,registrationReason=GuildRoster:RegisterContextHeader()
+assert(registrationOK and registrationReason==nil,"GuildRoster header registers through the initialized UI facade")
+assert(HolyStorm.UI.pageContextHeaders.guildRoster and mainWindow.pageContextHeaders.guildRoster.frame,"MainWindow executes the registered header builder immediately")
+mainWindow:SetActiveContextHeaderPage("guildRoster")
+local contextHeader=mainWindow.pageContextHeaders.guildRoster.frame
+assert(contextHeader.shown,"registered context header becomes visible on its page")
 assert(GuildRoster.searchBox and GuildRoster.filterMenu and GuildRoster.savedFilterMenu and GuildRoster.refreshButton,"header builds the four required controls")
+assert(GuildRoster.filterMenu.SetText and GuildRoster.filterMenu.SetupMenu and GuildRoster.filterMenu.SetDefaultText==nil and GuildRoster.filterMenu.OverrideText==nil,"filter template uses only the actual Retail filter-dropdown text/menu methods")
 for _,name in ipairs({"clearSearchButton","saveFilterButton","manageFiltersButton","resetFiltersButton","statusMenu","rankMenu","classMenu","addonStatusMenu","resultLabel"})do
     assert(GuildRoster[name]==nil,"legacy permanent header control is not created: "..name)
 end
@@ -261,7 +291,7 @@ GuildRoster:LayoutContextHeader(contextHeader,650,30)
 assert(GuildRoster.searchPlaceholder.text==locale.ROSTER_SEARCH_PLACEHOLDER,"wide layout restores the full localized search hint")
 GuildRoster.searchBox:SetFocus();assert(not GuildRoster.searchPlaceholder.shown,"search placeholder hides while the edit box is focused")
 GuildRoster.searchBox:ClearFocus();assert(GuildRoster.searchPlaceholder.shown,"search placeholder returns on an empty unfocused edit box")
-local filterRoot=GuildRoster.filterMenu:GenerateMenu()
+local filterRoot=GuildRoster.filterMenu:OpenMenu()
 local categoryRows={};for _,entry in ipairs(filterRoot.children)do if entry.kind=="button"then categoryRows[entry.text]=entry end end
 assert(categoryRows[locale.ROSTER_FILTER_STATUS]and categoryRows[locale.ROSTER_FILTER_RANK]and categoryRows[locale.ROSTER_FILTER_CLASS]and categoryRows[locale.ROSTER_FILTER_ADDON],"filter dropdown exposes four hierarchical categories")
 local statusRows=categoryRows[locale.ROSTER_FILTER_STATUS].children;local statusOptions={}
@@ -273,18 +303,48 @@ GuildRoster.OnQuickFiltersChanged=function(self)self.quickFilter=self:BuildQuick
 local onlineResponse=statusOptions[locale.ROSTER_STATUS_ONLINE].setSelected(statusOptions[locale.ROSTER_STATUS_ONLINE].data)
 local offlineResponse=statusOptions[locale.ROSTER_STATUS_OFFLINE].setSelected(statusOptions[locale.ROSTER_STATUS_OFFLINE].data)
 assert(onlineResponse==MenuResponse.Refresh and offlineResponse==MenuResponse.Refresh,"checkbox selection refreshes in place so the submenu stays open")
-assert(GuildRoster.filterState.status.ONLINE and GuildRoster.filterState.status.OFFLINE and GuildRoster.filterMenu.displayText=="Filter (2)","filter submenu supports checked multi-selection and updates its active count")
+assert(GuildRoster.filterState.status.ONLINE and GuildRoster.filterState.status.OFFLINE and GuildRoster.filterMenu.text=="Filter (2)","filter submenu supports checked multi-selection and updates its active count")
+assert(GuildRoster.filterMenu.menuOpen,"multi-select checkbox refresh leaves the native dropdown open")
+GuildRoster.filterMenu:CloseMenu();assert(not GuildRoster.filterMenu.menuOpen,"native filter dropdown closes cleanly")
 GuildRoster.OnQuickFiltersChanged=quickChanged
-local savedRoot=GuildRoster.savedFilterMenu:GenerateMenu();local savedLabels={};for _,entry in ipairs(savedRoot.children)do if entry.text then savedLabels[entry.text]=entry end end
+local savedRoot=GuildRoster.savedFilterMenu:OpenMenu();local savedLabels={};for _,entry in ipairs(savedRoot.children)do if entry.text then savedLabels[entry.text]=entry end end
 assert(savedLabels[locale.ROSTER_SAVE_CURRENT_FILTER]and savedLabels[locale.ROSTER_MANAGE_FILTERS]and savedLabels[locale.ROSTER_CLEAR_SAVED_SELECTION],"saved dropdown contains save, manage and clear-selection actions")
 local mageProfile;for _,entry in ipairs(savedRoot.children)do if entry.kind=="checkbox"and entry.data and entry.data.id=="mages"then mageProfile=entry;break end end
 assert(mageProfile and mageProfile.isSelected(mageProfile.data)==false,"saved profiles remain native multi-select checkbox entries")
 assert(mageProfile.setSelected(mageProfile.data)==MenuResponse.Refresh and GuildRoster:IsSavedFilterActive("mages","global"),"saved profile selection still flows through FilterManager")
+local emittedStatus,originalEmit= nil,HolyStorm.Events.Emit
+HolyStorm.Events.Emit=function(self,event,text)if event=="HS_UI_STATUS_REQUESTED"then emittedStatus=text else return originalEmit(self,event,text)end end
+local administration=HolyStorm.Administration;HolyStorm.Administration=nil
+assert(savedLabels[locale.ROSTER_MANAGE_FILTERS].callback()==MenuResponse.CloseAll and emittedStatus==locale.ROSTER_FILTER_MANAGEMENT_UNAVAILABLE,"missing optional administration dependency reports a localized status without breaking the saved menu")
+HolyStorm.Administration=administration;HolyStorm.Events.Emit=originalEmit
+GuildRoster.savedFilterMenu:CloseMenu();assert(not GuildRoster.savedFilterMenu.menuOpen,"native saved-filter dropdown closes cleanly")
 GuildRoster:ClearSavedFilterSelection()
 assert(GuildRoster.refreshButton.normalTexture and GuildRoster.refreshButton.scripts.OnClick,"refresh control uses the icon button and roster refresh action")
+
+-- A failed actual build returns its cause, writes a structured diagnostic,
+-- unregisters the bad header, and does not retry from unrelated page changes.
+assert(HolyStorm.UI:UnregisterPageContextHeader("guildRoster","GuildRoster"),"framework unregisters the page-owned header")
+local policyUI=HolyStorm.PolicyUI;HolyStorm.PolicyUI=nil
+local runtimeLogs={}
+HolyStorm.Logger={Write=function(_,level,source,category,message,context)runtimeLogs[#runtimeLogs+1]={level=level,source=source,category=category,message=message,context=context}end}
+local failed,buildFailure=GuildRoster:RegisterContextHeader()
+assert(not failed and buildFailure:find("PAGE_CONTEXT_HEADER_BUILD_FAILED",1,true),"framework reports a build failure with its stable code")
+assert(not HolyStorm.UI.pageContextHeaders.guildRoster and not mainWindow.pageContextHeaders.guildRoster,"failed header is removed from both registration layers")
+assert(runtimeLogs[#runtimeLogs].context.code=="PAGE_CONTEXT_HEADER_BUILD_FAILED"and runtimeLogs[#runtimeLogs].context.pageId=="guildRoster"and runtimeLogs[#runtimeLogs].context.reason==buildFailure,"header registration failure is recorded with structured page and cause fields")
+local failuresBeforeSwitch=#safeCallDiagnostics
+mainWindow:SetActiveContextHeaderPage("guildRoster")
+assert(#safeCallDiagnostics==failuresBeforeSwitch,"failed header registration does not start a retry loop on page switches")
+HolyStorm.PolicyUI=policyUI
+assert(GuildRoster:RegisterContextHeader(),"header rebuild succeeds when its required UI dependency is restored")
+mainWindow:SetActiveContextHeaderPage("character");assert(not mainWindow.pageContextHeaders.guildRoster.frame.shown,"page switch hides the guild header")
+mainWindow:SetActiveContextHeaderPage("guildRoster");assert(mainWindow.pageContextHeaders.guildRoster.frame.shown,"returning to the page shows the existing header")
+assert(HolyStorm.UI:UnregisterPageContextHeader("guildRoster","GuildRoster"),"header cleanup remains owner-scoped")
+assert(GuildRoster:RegisterContextHeader(),"page-owned header builds again after explicit unregister")
+mainWindow:SetActiveContextHeaderPage("guildRoster")
+assert(mainWindow.pageContextHeaders.guildRoster.frame.shown,"rebuilt header is visible after re-registration")
 
 -- A search for one character cannot reuse a previous character's row object or filter result.
 GuildRoster.activeFilterDefinitions={};GuildRoster.filterState={search="",status="ALL",rank="ALL",class="ALL",addonStatus="RECOGNIZED"};GuildRoster.quickFilter=GuildRoster:BuildQuickFilter(GuildRoster.filterState)
 assert(GuildRoster:MatchesMember(recognized),"the first character matches the current filter")
 assert(not GuildRoster:MatchesMember(unknown),"switching to a different character reevaluates its own addon status")
-print("Guild roster search, saved-filter composition, privacy, unknown states, performance and responsive context header tests passed")
+print("Guild roster search, saved-filter composition, privacy, unknown states, performance, Retail dropdown contract and runtime context-header lifecycle tests passed")

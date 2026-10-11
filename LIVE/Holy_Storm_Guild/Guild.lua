@@ -1,4 +1,4 @@
-local addonVersion = "2.5.0"
+local addonVersion = "2.5.1"
 local HolyStorm = LibStub("AceAddon-3.0"):GetAddon("Holy_Storm")
 local L = LibStub("AceLocale-3.0"):GetLocale("Holy_Storm_GuildRoster")
 if HolyStorm.PermissionRegistry then HolyStorm.PermissionRegistry:RegisterLegacyAlias("guild.roster.read","guild-roster-read");HolyStorm.PermissionRegistry:RegisterLegacyAlias("roster.manage","roster-manage")end
@@ -330,7 +330,7 @@ function GuildRoster:RefreshSavedFilterMenuText()
     else
         text=count>0 and string.format(L["ROSTER_SAVED_MENU_COUNT"],count)or L["ROSTER_SAVED_MENU"]
     end
-    if menu.OverrideText then menu:OverrideText(text)end
+    menu:SetText(text)
 end
 
 function GuildRoster:RefreshQuickFilterLabels()
@@ -344,7 +344,7 @@ function GuildRoster:RefreshQuickFilterLabels()
         else
             text=self.compactContextHeader and L["ROSTER_FILTER_BUTTON_SHORT"]or L["ROSTER_FILTER_BUTTON"]
         end
-        if self.filterMenu.OverrideText then self.filterMenu:OverrideText(text)end
+        self.filterMenu:SetText(text)
     end
 end
 
@@ -412,7 +412,7 @@ function GuildRoster:CreateContextHeader(parent)
         }end
         return{}
     end
-    filterMenu:SetDefaultText(L["ROSTER_FILTER_BUTTON"])
+    filterMenu:SetText(L["ROSTER_FILTER_BUTTON"])
     filterMenu:SetupMenu(function(_,rootDescription)
         for _,category in ipairs(categories)do
             local submenu=rootDescription:CreateButton(category.label)
@@ -442,7 +442,7 @@ function GuildRoster:CreateContextHeader(parent)
 
     local saved=CreateFrame("DropdownButton",nil,parent,"WowStyle1FilterDropdownTemplate")
     self.savedFilterMenu=saved
-    saved:SetDefaultText(L["ROSTER_SAVED_MENU"])
+    saved:SetText(L["ROSTER_SAVED_MENU"])
     saved:SetupMenu(function(_,rootDescription)
         rootDescription:CreateTitle(L["ROSTER_SAVED_FILTERS_TITLE"])
         for _,item in ipairs(GuildRoster:GetSavedFilterItems())do
@@ -462,7 +462,12 @@ function GuildRoster:CreateContextHeader(parent)
             return MenuResponse.CloseAll
         end)
         rootDescription:CreateButton(L["ROSTER_MANAGE_FILTERS"],function()
-            HolyStorm.Administration:Open("filters")
+            local administration=HolyStorm.Administration
+            if administration and type(administration.Open)=="function"then
+                administration:Open("filters")
+            else
+                HolyStorm.Events:Emit("HS_UI_STATUS_REQUESTED",L["ROSTER_FILTER_MANAGEMENT_UNAVAILABLE"])
+            end
             return MenuResponse.CloseAll
         end)
         local clear=rootDescription:CreateButton(L["ROSTER_CLEAR_SAVED_SELECTION"],function()
@@ -539,7 +544,17 @@ function GuildRoster:RegisterContextHeader()
         build=function(parent)GuildRoster:CreateContextHeader(parent)end,
         layout=function(parent,width,height)GuildRoster:LayoutContextHeader(parent,width,height)end,
     })
-    if not ok then HolyStorm.Utils.SafeCall("guild.context-header.register",function()error(tostring(reason))end)end
+    if not ok then
+        local logger=HolyStorm.Logger
+        if logger and type(logger.Write)=="function"then
+            logger:Write("ERROR","GuildRoster","ui.context-header","Guild roster context header registration failed.",{
+                code="PAGE_CONTEXT_HEADER_BUILD_FAILED",pageId="guildRoster",owner="GuildRoster",reason=tostring(reason),
+            })
+        else
+            HolyStorm.Utils.SafeCall("guild.context-header.register",function()error(tostring(reason))end)
+        end
+    end
+    return ok,reason
 end
 
 function GuildRoster:CreateColumn(parent, left, right)
