@@ -1,5 +1,15 @@
 # Holy Storm Changelog
 
+## 5.11.1 — 24.10.2026
+
+### English
+
+- Fixed release packaging so internal architecture and audit documentation is omitted from installed addon folders.
+
+### Deutsch
+
+- Die Paketierung schließt interne Architektur- und Audit-Dokumentation nun aus den installierten Addon-Ordnern aus.
+
 ## 5.11.0 — 24.10.2026
 
 ### English
