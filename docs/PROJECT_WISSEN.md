@@ -117,3 +117,14 @@ Offen für technische Ausarbeitung: Quellen der Charakterzuordnung, Polling/Webh
 - Webportal zeigt nach OAuth-Anmeldung die verwaltbaren Gilden und verbundenen Discord-Server; pro Gilde können Klassenrollen aktiviert/deaktiviert sowie Gildenrang-Zuordnungen verwaltet werden.
 - Discord-Bot übernimmt die Ausführung (Rollen anlegen und synchronisieren), kann Registrierung bzw. Verknüpfung anstoßen und soll optional Einstellungen per Slash-Befehl/Interaktionen ändern können. Beide Oberflächen nutzen die zentrale API und dieselbe Datenbank als gemeinsame Quelle; Berechtigungsprüfung und Validierung erfolgen serverseitig.
 - **Status:** fachlich entschieden, technische Umsetzung offen.
+
+## 2026-10-28 – Holy-Storm-Pilot und modulare Discord-Pakete
+
+- **Entschieden:** Zunächst ausschließlich eigene Gilde Holy Storm und ihren Discord-Server testen; Architektur für andere Gilden/Server vorbereiten, aber noch nicht öffentlich anbieten.
+- **Entschieden:** Bot soll je nach Auswahl Kategorien und Channels automatisch erstellen und konfigurieren können, um den Server dynamisch aufzubauen.
+- **Entschieden:** Funktionspakete sind einzeln durch berechtigte Gildenleiter aktivierbar und deaktivierbar. Beispiel: Klassen-Paket erstellt WoW-Klassenrollen und synchronisiert sie mit verknüpften Charakteren. Weitere Pakete für Kategorien und Channels sind zu planen.
+- Einstellungen primär im Webportal, optional in Discord, über dieselbe zentrale API.
+- **Empfehlung:** Vorschau vor Strukturänderungen; verwaltete Discord-Rollen, Kanäle und Kategorien anhand ihrer IDs speichern, um Duplikate zu vermeiden. Beim Abschalten keine automatischen Löschungen von Kanälen oder Inhalten ohne Bestätigung.
+- **Technik:** Rollenverwaltung benötigt Manage Roles und passende Rollenhierarchie; Channels/Kategorien benötigen Manage Channels. Administrator ist nicht pauschal erforderlich.
+- **Offen:** Paketliste, Abhängigkeiten, Kanalnamen, Berechtigungen, Verhalten beim Abschalten und Umgang mit bereits vorhandenen Discord-Ressourcen.
+- **Status:** Konzeptanforderungen, noch nicht implementiert.
