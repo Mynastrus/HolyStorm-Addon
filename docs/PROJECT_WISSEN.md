@@ -82,3 +82,12 @@ Offen für technische Ausarbeitung: Quellen der Charakterzuordnung, Polling/Webh
 - **Sicherheitsanforderung:** Gildenleiter-Berechtigung nicht nur aus einer Gildenzugehörigkeit ableiten, sondern verlässlichen Roster-Rang/Gildenleiterstatus mit aktueller API prüfen; OAuth-Konto- und Charakterbesitz nachweisen; IDs serverseitig verifizieren. Auch Bot-Installation, Serverzuordnung und aktuelle Serververwaltungsrechte unabhängig prüfen.
 - Mehrmandantenfähigkeit: Bot-Einstellungen und Rollenmapping strikt nach Discord-Server und verknüpfter WoW-Gilde isolieren.
 - **Status:** fachlich konkretisierter Entwurf, nicht implementiert.
+
+## 2026-10-28 – Registrierung direkt aus Discord (Machbarkeitsfrage)
+
+- **Idee / zur Entscheidung:** Nutzer sollen die Holy-Storm-Registrierung auch direkt in Discord über den Bot beginnen können, ohne manuell zuerst die Website aufzurufen.
+- **Technisch möglich:** Discord-Slash-Command `/registrieren`, Buttons, Auswahlfelder und Modals starten den Ablauf; der Bot kennt die Discord-User-ID aus einer validierten Interaction und kann einen kurzlebigen, einmaligen Verknüpfungsvorgang in der zentralen API anlegen.
+- **Notwendiger externer Schritt:** Die Autorisierung des Battle.net-Kontos und die Freigabe des `wow.profile`-Scopes erfolgen über Blizzards OAuth-Anmeldeseite im Browser. Discord-Bot darf nicht nach Battle.net-Passwort fragen. Der Callback verbindet die verifizierte Battle.net-Identität sicher mit der gestarteten Discord-Interaction (state/nonce, TTL, Einmalnutzung).
+- **Nach erfolgreichem Callback:** API legt/verknüpft Holy-Storm-Konto; importiert WoW-Charaktere nach Berechtigung; prüft ggf. Gildenleiterstatus; Discord-Bot bestätigt den Erfolg per privater Antwort/DM, sofern zulässig. Derselbe Account wird später über die Website nutzbar.
+- **Noch offen:** Registrierung als optionaler Discord-Einstieg oder bevorzugter Standard; Bestätigungs-UX, Ablauf bei bereits vorhandenem Konto und notwendige Sicherheits-/Datenschutzmaßnahmen.
+- **Status:** Machbarkeitskonzept, noch nicht implementiert.
