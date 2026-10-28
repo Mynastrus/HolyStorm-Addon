@@ -73,3 +73,12 @@ Offen für technische Ausarbeitung: Quellen der Charakterzuordnung, Polling/Webh
 - **Geplanter Ablauf:** WoW-Gildenleiter meldet sich per Battle.net an, Holy Storm prüft seine Gildenverwaltungsberechtigung, danach verknüpft er einen Discord-Server, auf dem er die nötigen Discord-Managementrechte besitzt, installiert/autorisiert den Bot und konfiguriert ihn über die Website.
 - **Offen / technisch zu prüfen:** Ob und wie der Gildenleiterstatus zuverlässig über verfügbare Blizzard-Daten nachweisbar ist; Verifikation der Discord-Serverberechtigung; Discord-OAuth-Scopes und Bot-Berechtigungen; Entzug von Berechtigungen, Installation/Deinstallation, Gildenwechsel, Mehrfachzuordnungen und Datentrennung.
 - **Wichtig:** Das ist ein Architekturentwurf, keine Zusage bereits vorhandener Datenbanken oder Live-Bot-Funktionen.
+
+## 2026-10-28 – Discord-Bot-Installation: konkretisierter Ablauf
+
+- **Vom Nutzer festgelegter Zielablauf:** Battle.net-OAuth-Login → eigene Charaktere und ihre Gilden über Blizzard-API ermitteln → anhand des Roster-Rangs Gildenleitung prüfen → Discord-Konto per OAuth verknüpfen → Discord-Nutzer ist einer WoW-Gildenleitung zugeordnet → Bot auf einem ausgewählten Discord-Server installieren.
+- Der Nutzer möchte bei der Installation **Administrator-Berechtigung für den Bot anfordern**, die der Installierende im Discord-Dialog bestätigt. Diese Produktanforderung ist als Wunsch notiert; Sicherheitsprüfung vor Umsetzung: Administrator ist sehr weitreichend, minimal benötigte Einzelberechtigungen bevorzugen, sofern der Funktionsumfang es erlaubt.
+- Die Installation durch Discord-Nutzer setzt ausreichende Serverberechtigung voraus (Discord-Dokumentation: `MANAGE_GUILD` für Server-Installation, nicht zwingend selbst Administrator).
+- **Sicherheitsanforderung:** Gildenleiter-Berechtigung nicht nur aus einer Gildenzugehörigkeit ableiten, sondern verlässlichen Roster-Rang/Gildenleiterstatus mit aktueller API prüfen; OAuth-Konto- und Charakterbesitz nachweisen; IDs serverseitig verifizieren. Auch Bot-Installation, Serverzuordnung und aktuelle Serververwaltungsrechte unabhängig prüfen.
+- Mehrmandantenfähigkeit: Bot-Einstellungen und Rollenmapping strikt nach Discord-Server und verknüpfter WoW-Gilde isolieren.
+- **Status:** fachlich konkretisierter Entwurf, nicht implementiert.
