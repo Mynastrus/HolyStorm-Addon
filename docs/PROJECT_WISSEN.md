@@ -175,3 +175,12 @@ Offen für technische Ausarbeitung: Quellen der Charakterzuordnung, Polling/Webh
 - **Entschieden aus vorherigem Gespräch:** Beim Nachrücken gilt Rollenbedarf vor Anmeldezeit innerhalb gleicher Eignung; angebotene Plätze müssen aktiv bestätigt werden.
 - **Offen:** Umgang mit vorläufigen Teilnehmern und Reservierungen bei Rollenquoten, Alternativeinsatz nach Rückfrage, Raidleitung-Override bei Mindestwerten, Zusammenstellung und Reihenfolge, Verfügbarkeit/Aktualität der Itemlevel-Daten.
 - **Status:** Fachregeln entschieden; Detailalgorithmus und Implementierung offen.
+
+## 2026-10-28 – Erweiterte Raid-Zugangsvoraussetzungen
+
+- **Entschieden:** Die Raidleitung kann pro Event zusätzlich zu Mindestlevel und Mindest-Itemlevel erforderliche Vorquests/Quest-Abschlüsse und konkrete WoW-Erfolge als Teilnahmevoraussetzungen festlegen.
+- **Entschieden:** Alle Voraussetzungen werden im Raid-Event klar sichtbar als **Anforderungen / Requirements** in der Beschreibung angezeigt, auch auf Discord und später in Website, App und Companion.
+- **Geplante Prüfung:** Wo die Blizzard-API den Quest-/Erfolgsstatus des betreffenden verknüpften Charakters belastbar bereitstellt, automatisch prüfen. Kontoweite Erfolge, Charakterbindung und API-Zugriffs-/Datenlücken ausdrücklich berücksichtigen.
+- **Sicherheit/UX:** Nicht verifizierbare Bedingungen als „nicht automatisch prüfbar“ markieren, nicht ungeprüft als erfüllt behaupten. Raidleitung kann solche Bedingungen nach eigenen Regeln manuell bestätigen oder Ausnahmen erteilen. Charakter- und Spezialisierungswechsel müssen die Zulassungsprüfung erneut auslösen.
+- **Offen:** Umgang mit unerfüllten Anforderungen (Anmeldung sperren oder vorbehaltlich zulassen), Quest-IDs/Erfolgs-IDs, kontoweit vs. charakterbezogen, Mindest-Itemlevel-Definition.
+- **Status:** Produktanforderung bestätigt, noch nicht implementiert.
