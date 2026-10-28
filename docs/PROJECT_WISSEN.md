@@ -136,3 +136,14 @@ Offen für technische Ausarbeitung: Quellen der Charakterzuordnung, Polling/Webh
 - **Entschieden:** Gildenleiter aktivieren/deaktivieren Pakete einzeln; das Webportal ist die empfohlene Konfigurationsoberfläche, Discord die optionale Alternative.
 - **Umsetzungshinweise:** Paketdefinitionen versionieren, Ressourcen über Discord-IDs verfolgen, vor Änderungen Vorschau anzeigen, bestehende Serverstruktur berücksichtigen; bei Deaktivierung keine Kanäle oder Inhalte kommentarlos löschen.
 - **Status:** bestätigte Anforderung, noch nicht implementiert. Detailumfang einzelner Pakete wird später ausgearbeitet.
+
+## 2026-10-28 – Priorität Discord-Bot und kanalübergreifende Raid-Anmeldungen
+
+- **Priorität 1 (entschieden):** Zuverlässig funktionierender Holy-Storm-Discord-Bot für den internen Pilotbetrieb; Slash-Kommandogruppe bevorzugt `/hs`. Erweiterte Pakete zur automatischen Erstellung kompletter Kategorien/Kanäle/Raidstrukturen bleiben zunächst optional bzw. nachrangig.
+- **Entschieden:** Eine zentrale Raid-/Event-API mit einer gemeinsamen persistierten Datenquelle; Discord, Website und später Mobil-/Desktop-App nutzen dieselben Events und Anmeldungen. Anmelden, abmelden und Status ändern müssen von allen Oberflächen aus denselben Datensatz aktualisieren.
+- **Entschieden:** Discord soll die Raid-Anmeldeliste automatisch aktualisieren; Website/App zeigen denselben aktuellen Stand. Technisch Discord-Nachrichten gezielt editieren; Aktualisierungen ereignisbasiert (API-Events/WebSocket wo passend), mit idempotenten Schreiboperationen und periodischer Abstimmung bei verpassten Events.
+- **Entschieden:** Beim Anmelden Hauptcharakter als Voreinstellung vorschlagen; Spieler dürfen einen anderen verknüpften, zulässigen Charakter auswählen.
+- **Entschieden:** Pro Anmeldung Charakter und Spezialisierung festhalten und zugehörige Raid-Rolle (Tank, Heiler, Nahkampf-DD, Fernkampf-DD) ableiten/anzeigen, insbesondere bei Multi-Rollen-Klassen (z. B. Druide Balance = Fernkampf-DD, Wiederherstellung = Heiler).
+- **Später geplant:** Companion-Addon zeigt Events ingame und bietet Anmeldungen an. WoW-Addon kann nicht selbst beliebig direkt externe HTTP-APIs aufrufen oder zuverlässig beim Logout einen externen Server kontaktieren; tatsächlicher Transfer benötigt einen unterstützten Companion-/Import-/Export-/Client-Weg und belastbare Konfliktauflösung. Logout/Relog-Synchronisierung als Ziel, nicht als bereits technisch gesichert.
+- **Offen für spätere Ausarbeitung:** Event-Typen/Termine/Zeitzonen, Zusage-/Absage-/Vielleicht-/Wartelistenstatus, Raid-Leiter-Rechte, Main-Charakter-Regel, Spezialisierungsvalidierung, Teilnehmerlimits, Datenschutz und Verbindungs-/Offline-Strategien. Event-/Teilnehmer-Daten sinnvollerweise als eigenes fachliches Modul/Schema; Datenbankzuschnitt noch entscheiden.
+- **Status:** Anforderungen und Umsetzungsreihenfolge festgehalten, nicht implementiert.
