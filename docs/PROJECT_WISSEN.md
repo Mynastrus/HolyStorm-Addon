@@ -110,3 +110,10 @@ Offen für technische Ausarbeitung: Quellen der Charakterzuordnung, Polling/Webh
 - **Offen:** Gemeinsame oder gildengetrennte Klassenrollen bei mehreren Gilden auf demselben Discord-Server; insbesondere Rollenentzug nur, wenn keine andere aktivierte Gilde die jeweilige Klasse benötigt.
 - **Berechtigungen geprüft:** Discord verlangt `MANAGE_ROLES` für das Erstellen und Verwalten von Rollen; Botrolle muss oberhalb verwalteter Rollen stehen. `ADMINISTRATOR` ist dafür nicht notwendig und hebt Rollenhierarchie nicht auf. Quelle: https://discord.com/developers/docs/topics/permissions und https://discord.com/developers/docs/resources/guild
 - **Status:** Fachanforderung dokumentiert; noch nicht implementiert.
+
+## 2026-10-28 – Konfiguration ausschließlich im Webportal
+
+- **Entschieden:** Die Einstellungen für Discord-Gildenrollen und optionale WoW-Klassenrollen werden durch berechtigte Gildenleiter im Holy-Storm-Webportal vorgenommen, nicht per Discord-Befehlen.
+- Webportal zeigt nach OAuth-Anmeldung die verwaltbaren Gilden und verbundenen Discord-Server; pro Gilde können Klassenrollen aktiviert/deaktiviert sowie Gildenrang-Zuordnungen verwaltet werden.
+- Discord-Bot übernimmt die Ausführung (Rollen anlegen und synchronisieren) und kann Registrierung bzw. Verknüpfung anstoßen; Konfigurations-Quelle ist die zentrale API/Datenbank.
+- **Status:** fachlich entschieden, technische Umsetzung offen.
