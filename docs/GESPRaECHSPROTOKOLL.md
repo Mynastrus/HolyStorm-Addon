@@ -31,3 +31,10 @@ Chronologische Zusammenfassung unserer fachlichen Gespräche. Nicht als wortgetr
 - **Details:**
 - **Betroffene Bereiche:**
 - **Nächster Schritt / Prüfung:**
+
+## 2026-10-28 – Datenbanktrennung und Discord-Bot für mehrere Server
+- **Anforderung:** Eine reine Import-/Cache-Datenbank für WoW-/Blizzard-API-Daten, eine separate Nutzer-/OAuth-Datenbank und eine eigene Discord-Konfigurationsdatenbank.
+- **Anforderung:** Holy-Storm-Discord-Bot soll von berechtigten Gildenleitern auf unterschiedlichen Discord-Servern installiert und pro Server eingerichtet werden können.
+- **Konzeptvorschlag:** Drei getrennte MySQL-Schemas `hs_wow`, `hs_users`, `hs_discord`; mandantenfähige Discord-Bot-Verwaltung einschließlich Zuordnung zu WoW-Gilden.
+- **Zu prüfen:** Blizzard-API-Nachweis Gildenleitung, Discord-Serververwaltungsrechte, Bot-OAuth-Installation, Multi-Gilden-Server, Rechteisolierung und Sicherheitskonzept.
+- **Status:** Diskussion/Konzept, nicht implementiert.
