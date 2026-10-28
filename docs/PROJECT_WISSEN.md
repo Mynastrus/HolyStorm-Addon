@@ -62,3 +62,14 @@ Offen für technische Ausarbeitung: Quellen der Charakterzuordnung, Polling/Webh
 - Vor Codeänderungen aktuelle Repository-Struktur und vorhandene Tests prüfen.
 - Nie Zugangsdaten oder persönliche Kontodaten in die Dokumentation committen.
 - Entscheidungen, die mehrere Repositories betreffen, sollten später in eine zentrale übergreifende Dokumentationsquelle gespiegelt werden.
+
+## 2026-10-28 – Datenbankarchitektur und Multi-Server-Discord (Konzept)
+
+- **Vorgeschlagen, noch nicht implementiert:** getrennte logische MySQL-Datenbanken `hs_wow` (aus Blizzard importierte WoW-Daten), `hs_users` (Holy-Storm-Konten und Battle.net-/Discord-OAuth), `hs_discord` (Discord-Konfiguration, Server-, Gilden- und Rollenverknüpfungen).
+- Datenbanken dürfen auf demselben MySQL-Server liegen; unabhängige Zugriffsrechte pro Dienst/Schema einrichten. Bei übergreifenden Beziehungen stabile IDs und Service-Schnittstellen verwenden, statt unkontrollierte direkte Schreibzugriffe.
+- `hs_wow`: Charaktere, Gilden, Ränge, Realms, API-Abrufzeitpunkte und Importstatus; importierte Daten von nutzereigenen Einstellungen trennen.
+- `hs_users`: User-IDs, OAuth-Identitäten und Charakterzuordnungen, Sitzungen; OAuth-Secrets/Tokens nicht unverschlüsselt speichern, minimal benötigte Scopes und Löschkonzept.
+- `hs_discord`: Discord-Guild-IDs, WoW-Gilden↔Discord-Server-Zuordnung, Bot-Installationsstatus, Einstellungen, Rollenmapping, Sync-Status/Audit. Ein Bot soll auf mehreren Discord-Servern nutzbar sein (**mandantenfähig**), mit isolierten Rechten/Einstellungen je Server. Optional mehrere WoW-Gilden pro Discord-Server erlauben.
+- **Geplanter Ablauf:** WoW-Gildenleiter meldet sich per Battle.net an, Holy Storm prüft seine Gildenverwaltungsberechtigung, danach verknüpft er einen Discord-Server, auf dem er die nötigen Discord-Managementrechte besitzt, installiert/autorisiert den Bot und konfiguriert ihn über die Website.
+- **Offen / technisch zu prüfen:** Ob und wie der Gildenleiterstatus zuverlässig über verfügbare Blizzard-Daten nachweisbar ist; Verifikation der Discord-Serverberechtigung; Discord-OAuth-Scopes und Bot-Berechtigungen; Entzug von Berechtigungen, Installation/Deinstallation, Gildenwechsel, Mehrfachzuordnungen und Datentrennung.
+- **Wichtig:** Das ist ein Architekturentwurf, keine Zusage bereits vorhandener Datenbanken oder Live-Bot-Funktionen.
