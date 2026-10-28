@@ -128,3 +128,11 @@ Offen für technische Ausarbeitung: Quellen der Charakterzuordnung, Polling/Webh
 - **Technik:** Rollenverwaltung benötigt Manage Roles und passende Rollenhierarchie; Channels/Kategorien benötigen Manage Channels. Administrator ist nicht pauschal erforderlich.
 - **Offen:** Paketliste, Abhängigkeiten, Kanalnamen, Berechtigungen, Verhalten beim Abschalten und Umgang mit bereits vorhandenen Discord-Ressourcen.
 - **Status:** Konzeptanforderungen, noch nicht implementiert.
+
+## 2026-10-28 – Vollständige Discord-Serverstrukturen als Pakete
+
+- **Entschieden:** Pakete dürfen komplette vorkonfigurierte Discord-Strukturen erstellen, nicht nur einzelne Rollen oder Kanäle.
+- **Beispiel Raid-Paket (Konzept):** eigene Raid-Kategorie mit passenden Textkanälen (z. B. Anmeldung und Organisation), Sprachkanälen, zugehörigen Rollen und vorkonfigurierten Kanalberechtigungen.
+- **Entschieden:** Gildenleiter aktivieren/deaktivieren Pakete einzeln; das Webportal ist die empfohlene Konfigurationsoberfläche, Discord die optionale Alternative.
+- **Umsetzungshinweise:** Paketdefinitionen versionieren, Ressourcen über Discord-IDs verfolgen, vor Änderungen Vorschau anzeigen, bestehende Serverstruktur berücksichtigen; bei Deaktivierung keine Kanäle oder Inhalte kommentarlos löschen.
+- **Status:** bestätigte Anforderung, noch nicht implementiert. Detailumfang einzelner Pakete wird später ausgearbeitet.
