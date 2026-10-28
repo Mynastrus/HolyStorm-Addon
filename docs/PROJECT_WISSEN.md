@@ -111,9 +111,9 @@ Offen für technische Ausarbeitung: Quellen der Charakterzuordnung, Polling/Webh
 - **Berechtigungen geprüft:** Discord verlangt `MANAGE_ROLES` für das Erstellen und Verwalten von Rollen; Botrolle muss oberhalb verwalteter Rollen stehen. `ADMINISTRATOR` ist dafür nicht notwendig und hebt Rollenhierarchie nicht auf. Quelle: https://discord.com/developers/docs/topics/permissions und https://discord.com/developers/docs/resources/guild
 - **Status:** Fachanforderung dokumentiert; noch nicht implementiert.
 
-## 2026-10-28 – Konfiguration ausschließlich im Webportal
+## 2026-10-28 – Konfiguration im Webportal und optional über Discord
 
-- **Entschieden:** Die Einstellungen für Discord-Gildenrollen und optionale WoW-Klassenrollen werden durch berechtigte Gildenleiter im Holy-Storm-Webportal vorgenommen, nicht per Discord-Befehlen.
+- **Entschieden:** Die Einstellungen für Discord-Gildenrollen und optionale WoW-Klassenrollen werden bevorzugt im Holy-Storm-Webportal vorgenommen; optional sollen dieselben Einstellungen auch über Discord möglich sein. Das Webportal wird als einfacherer Weg empfohlen.
 - Webportal zeigt nach OAuth-Anmeldung die verwaltbaren Gilden und verbundenen Discord-Server; pro Gilde können Klassenrollen aktiviert/deaktiviert sowie Gildenrang-Zuordnungen verwaltet werden.
-- Discord-Bot übernimmt die Ausführung (Rollen anlegen und synchronisieren) und kann Registrierung bzw. Verknüpfung anstoßen; Konfigurations-Quelle ist die zentrale API/Datenbank.
+- Discord-Bot übernimmt die Ausführung (Rollen anlegen und synchronisieren), kann Registrierung bzw. Verknüpfung anstoßen und soll optional Einstellungen per Slash-Befehl/Interaktionen ändern können. Beide Oberflächen nutzen die zentrale API und dieselbe Datenbank als gemeinsame Quelle; Berechtigungsprüfung und Validierung erfolgen serverseitig.
 - **Status:** fachlich entschieden, technische Umsetzung offen.
