@@ -102,3 +102,11 @@ Offen für technische Ausarbeitung: Quellen der Charakterzuordnung, Polling/Webh
 - **Sicherheit/Logik:** Eine Rollenabbildung benötigt mindestens Discord-Server-ID, WoW-Gilden-ID, Rangindex sowie Discord-Rollen-ID; so kollidieren gleichnamige Ränge verschiedener Gilden nicht. Klassenrollenumfang pro Gilde/Server konfigurieren, um Mehrgilden-Mehrdeutigkeiten zu vermeiden. Discord-Rollenrechte und Hierarchie des Bots müssen vor automatischer Erstellung/Zuweisung geprüft werden.
 - **Noch offen:** Ob Klassenrollen aus allen verknüpften Charakteren oder nur aus Charakteren der auf dem Discord-Server zugeordneten Gilden entstehen; Benennung von Rollen bei mehreren Gilden und Reconciliation gelöschter/umbenannter Rollen.
 - **Status:** beschlossene Fachanforderungen, technische Details noch nicht implementiert.
+
+## 2026-10-28 – Klassenrollen je Gilde optional (bestätigt)
+
+- **Entschieden:** Klassenrollen-Synchronisierung ist pro zugeordneter WoW-Gilde auf einem Discord-Server ein-/ausschaltbar. Gildenrangrollen bleiben davon unabhängig aktiv.
+- Wenn die Klassenrollenfunktion für eine Gilde aktiviert ist, legt der Bot benötigte Rollen an und vergibt sie anhand der verknüpften Charaktere dieser Gilde. Bei deaktivierter Funktion keine automatische Klassenrollenvergabe für diese Gilde.
+- **Offen:** Gemeinsame oder gildengetrennte Klassenrollen bei mehreren Gilden auf demselben Discord-Server; insbesondere Rollenentzug nur, wenn keine andere aktivierte Gilde die jeweilige Klasse benötigt.
+- **Berechtigungen geprüft:** Discord verlangt `MANAGE_ROLES` für das Erstellen und Verwalten von Rollen; Botrolle muss oberhalb verwalteter Rollen stehen. `ADMINISTRATOR` ist dafür nicht notwendig und hebt Rollenhierarchie nicht auf. Quelle: https://discord.com/developers/docs/topics/permissions und https://discord.com/developers/docs/resources/guild
+- **Status:** Fachanforderung dokumentiert; noch nicht implementiert.
