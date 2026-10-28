@@ -91,3 +91,14 @@ Offen für technische Ausarbeitung: Quellen der Charakterzuordnung, Polling/Webh
 - **Nach erfolgreichem Callback:** API legt/verknüpft Holy-Storm-Konto; importiert WoW-Charaktere nach Berechtigung; prüft ggf. Gildenleiterstatus; Discord-Bot bestätigt den Erfolg per privater Antwort/DM, sofern zulässig. Derselbe Account wird später über die Website nutzbar.
 - **Noch offen:** Registrierung als optionaler Discord-Einstieg oder bevorzugter Standard; Bestätigungs-UX, Ablauf bei bereits vorhandenem Konto und notwendige Sicherheits-/Datenschutzmaßnahmen.
 - **Status:** Machbarkeitskonzept, noch nicht implementiert.
+
+## 2026-10-28 – Discord-Rollen über mehrere Gilden und Server (Anforderungen)
+
+- **Entschieden:** Registrierung wahlweise auf holystorm.de oder per Discord-Slash-Befehl; beide Wege nutzen dasselbe zentrale Benutzerkonto und OAuth-Verknüpfungen.
+- **Entschieden:** Ein Discord-Server kann mehrere WoW-Gilden abbilden; eine gemeinsame Plattform unterstützt viele Discord-Server und WoW-Gilden.
+- **Entschieden:** Der jeweils berechtigte Gildenleiter konfiguriert pro WoW-Gilde ihre Gildenränge mit Namen und Reihenfolge/Rangnummer (nicht allein Freitextnamen als ID). Die Rangnummern und aktuelle Rangzuordnung sind gegen Blizzard-Roster-Daten zu validieren.
+- **Entschieden:** Der Bot kann die zugeordneten Discord-Gildenrangrollen automatisch anlegen, speichern und anhand der aktuell verknüpften Charaktere vergeben/entziehen. Ein Benutzer bekommt alle unterschiedlichen zutreffenden Rangrollen.
+- **Entschieden:** WoW-Klassenrollen (z. B. Krieger und Magier) werden ebenfalls automatisch erstellt und je nach Charakterbestand vergeben; Spieler mit mehreren Klassen erhalten alle zutreffenden Klassenrollen.
+- **Sicherheit/Logik:** Eine Rollenabbildung benötigt mindestens Discord-Server-ID, WoW-Gilden-ID, Rangindex sowie Discord-Rollen-ID; so kollidieren gleichnamige Ränge verschiedener Gilden nicht. Klassenrollenumfang pro Gilde/Server konfigurieren, um Mehrgilden-Mehrdeutigkeiten zu vermeiden. Discord-Rollenrechte und Hierarchie des Bots müssen vor automatischer Erstellung/Zuweisung geprüft werden.
+- **Noch offen:** Ob Klassenrollen aus allen verknüpften Charakteren oder nur aus Charakteren der auf dem Discord-Server zugeordneten Gilden entstehen; Benennung von Rollen bei mehreren Gilden und Reconciliation gelöschter/umbenannter Rollen.
+- **Status:** beschlossene Fachanforderungen, technische Details noch nicht implementiert.
