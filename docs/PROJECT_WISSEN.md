@@ -165,3 +165,13 @@ Offen für technische Ausarbeitung: Quellen der Charakterzuordnung, Polling/Webh
 - **Technische Empfehlung:** eigener Zwischenstatus „Bestätigung ausstehend“ für angebotenen Platz; optional konfigurierbare Antwortfrist. Bei Ablehnung oder Fristablauf Platz an den nächsten nach Rollenbedarf geeigneten Wartelistenplatz anbieten. Doppelte Zusagen und parallele Angebote durch atomare Reservierungen verhindern.
 - **Offen:** Konkrete Frist, Benachrichtigungskanäle und Eskalation bei Nichtzustellung.
 - **Status:** Bestätigungspflicht und spätere App-Push-Benachrichtigung beschlossen; konkrete Ablaufparameter noch offen.
+
+## 2026-10-28 – Automatische rollenbasierte Warteliste und Raid-Voraussetzungen
+
+- **Entschieden:** Teilnehmer können sich nicht selbst auf die Warteliste setzen. Sie werden automatisch dort eingeordnet, wenn die maximale Teilnehmerzahl insgesamt oder das Kontingent für ihre ausgewählte Rolle erreicht ist. Beispiel: Bei 20 Gesamtplätzen werden nach Vollbelegung weitere Anmeldungen wartend geführt; bei nur zwei Heilerplätzen kommt der dritte Heiler auch dann auf die Warteliste, wenn andere Rollen noch freie Plätze haben.
+- **Entschieden:** Die Raidleitung definiert bei Erstellung Gesamtplätze und gewünschte Rollenverteilung (Tanks, Heiler, DDs; optional feinere Unterteilung). Die konkrete Rollenverteilung muss konsistent zur Gesamtzahl sein; Beispiel „2 Tanks, 2 Heiler, 9 DDs“ umfasst 13 Plätze, nicht 20.
+- **Entschieden:** Bei Anmeldung kann der Spieler neben dem bevorzugten Charakter und dessen Spezialisierung alternative geeignete Charaktere, Spezialisierungen und Rollen angeben („könnte auch …“). Diese Alternativen gelten zunächst als Angebote, nicht als mehrere belegte Raidplätze. Die Raidleitung darf unter geeigneten Optionen auswählen und umstellen.
+- **Entschieden:** Die Raidleitung legt für einen Raid Mindest-Charakterlevel und Mindest-Itemlevel fest. Die Plattform prüft ausgewählte Haupt-/Alternativcharaktere gegen verfügbare, möglichst aktuelle WoW-Daten; fehlende oder veraltete Daten werden ausdrücklich gekennzeichnet statt als nachgewiesen behandelt. Itemlevelprüfung passend zum gewünschten Regelwerk (z. B. equipped vs. average) später festlegen.
+- **Entschieden aus vorherigem Gespräch:** Beim Nachrücken gilt Rollenbedarf vor Anmeldezeit innerhalb gleicher Eignung; angebotene Plätze müssen aktiv bestätigt werden.
+- **Offen:** Umgang mit vorläufigen Teilnehmern und Reservierungen bei Rollenquoten, Alternativeinsatz nach Rückfrage, Raidleitung-Override bei Mindestwerten, Zusammenstellung und Reihenfolge, Verfügbarkeit/Aktualität der Itemlevel-Daten.
+- **Status:** Fachregeln entschieden; Detailalgorithmus und Implementierung offen.
