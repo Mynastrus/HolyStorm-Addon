@@ -156,3 +156,12 @@ Offen für technische Ausarbeitung: Quellen der Charakterzuordnung, Polling/Webh
 - **Empfohlene konkrete Logik zur späteren Detailentscheidung:** Zugesagte Plätze besetzen primär bestätigte Teilnehmer. Frei werdende Plätze werden aus der Warteliste bevorzugt nach benötigter Rolle (Tank/Heiler/Nahkampf-DD/Fernkampf-DD), innerhalb geeigneter Kandidaten nach frühem Anmeldezeitpunkt besetzt. Vorläufig angemeldete Personen zählen gesondert, damit sie Plätze nicht unbemerkt dauerhaft blockieren. Raidleitung kann umsortieren. Charakter und Spezialisierung sind Bestandteil der Anmeldung.
 - **Offen:** Ob Wartelisten-Nachrücken automatisch verbindlich wird oder zuerst eine Bestätigung erfordert; wie Anmeldefristen, vorläufige Teilnehmer, Rollenquoten und Nachrückbenachrichtigungen gehandhabt werden.
 - **Status:** vier Status und Grundprinzipien bestätigt, Detailalgorithmus noch zu beschließen und zu implementieren.
+
+## 2026-10-28 – Nachrücken mit verpflichtender Bestätigung
+
+- **Entschieden:** Wer von der Raid-Warteliste nachrückt, wird nicht sofort als fest zugesagt behandelt. Stattdessen erhält die Person ein **Nachrückangebot**, das sie aktiv bestätigen oder ablehnen kann.
+- **Geplant für die Handy-App:** Push-Benachrichtigung („Du bist für den Raid nachgerückt – bitte bestätige deine Teilnahme“) mit Bestätigungs- bzw. Ablehnmöglichkeit; Push benötigt später App-Einwilligung und funktionsfähige Geräte-/Push-Infrastruktur.
+- **MVP-Vorschlag:** Derselbe Bestätigungsprozess zunächst über Discord-Bot-Interaktionen/private Nachrichten oder einen persönlichen Hinweis mit Link, falls DM-Zustellung nicht möglich ist; später Website und App ebenfalls über die zentrale Raid-API.
+- **Technische Empfehlung:** eigener Zwischenstatus „Bestätigung ausstehend“ für angebotenen Platz; optional konfigurierbare Antwortfrist. Bei Ablehnung oder Fristablauf Platz an den nächsten nach Rollenbedarf geeigneten Wartelistenplatz anbieten. Doppelte Zusagen und parallele Angebote durch atomare Reservierungen verhindern.
+- **Offen:** Konkrete Frist, Benachrichtigungskanäle und Eskalation bei Nichtzustellung.
+- **Status:** Bestätigungspflicht und spätere App-Push-Benachrichtigung beschlossen; konkrete Ablaufparameter noch offen.
