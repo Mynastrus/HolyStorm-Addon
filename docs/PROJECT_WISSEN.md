@@ -184,3 +184,11 @@ Offen für technische Ausarbeitung: Quellen der Charakterzuordnung, Polling/Webh
 - **Sicherheit/UX:** Nicht verifizierbare Bedingungen als „nicht automatisch prüfbar“ markieren, nicht ungeprüft als erfüllt behaupten. Raidleitung kann solche Bedingungen nach eigenen Regeln manuell bestätigen oder Ausnahmen erteilen. Charakter- und Spezialisierungswechsel müssen die Zulassungsprüfung erneut auslösen.
 - **Offen:** Umgang mit unerfüllten Anforderungen (Anmeldung sperren oder vorbehaltlich zulassen), Quest-IDs/Erfolgs-IDs, kontoweit vs. charakterbezogen, Mindest-Itemlevel-Definition.
 - **Status:** Produktanforderung bestätigt, noch nicht implementiert.
+
+## 2026-10-28 – Ausnahmen bei Raid-Voraussetzungen
+
+- **Entschieden:** Die Raidleitung darf Ausnahmen genehmigen, auch wenn ein angemeldeter Charakter einzelne Teilnahmevoraussetzungen (Level, Itemlevel, Vorquests, Erfolge etc.) nicht erfüllt.
+- **Entschieden:** Für betroffene Anmeldungen gibt es eine separate Unterkategorie **„Erfüllt nicht die Voraussetzungen“** in der Raid-Teilnehmerverwaltung. Damit bleiben sie klar erkennbar und werden nicht stillschweigend als regulär qualifiziert angezeigt.
+- **Empfehlung:** Die Unterkategorie ist ein zusätzliches Qualifikationsmerkmal, getrennt vom eigentlichen Anmeldestatus (Zugesagt, Vorläufig, Abgemeldet, Warteliste, Bestätigung ausstehend). Die Raidleitung kann eine ausdrücklich protokollierte Ausnahme erlauben; die unerfüllten Anforderungen bleiben trotzdem sichtbar.
+- **Offen:** Ob solche Anmeldungen standardmäßig auf Bestätigung der Raidleitung warten und wie sie gegen Rollenplätze und Warteliste zählen.
+- **Status:** Fachentscheidung, noch nicht implementiert.
